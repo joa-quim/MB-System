@@ -246,7 +246,7 @@ measUpdate(measT& currMeas) {
     Matrix beamsVF(3, currMeas.numMeas);
     Matrix tempBeamsVF(3, currMeas.numMeas);
     Matrix beamsIF(3, currMeas.numMeas);
-    int beamIndices[currMeas.numMeas];  //beamsVF to currMeas index correspondence
+    int *beamIndices = (int*)alloca(sizeof(int) * currMeas.numMeas); //beamsVF to currMeas index correspondence (was VLA)
     //	double sumSquaresWeights = 0;
     double sumMeasWeights;
     //double effSampSize = 0.0;
@@ -257,7 +257,7 @@ measUpdate(measT& currMeas) {
     bool successfulMeas = false;
 
     //double nisVal = 0.0;
-    double totalVar[currMeas.numMeas];
+    double *totalVar = (double*)alloca(sizeof(double) * currMeas.numMeas); /* was VLA */
     double mapVar = 1;//map variance for adding into sensor variance
     double modMapVar = 0.01;//map variance for calculating delta_rms and alpha
 
@@ -582,9 +582,9 @@ measUpdate(measT& currMeas) {
                     bool atLeastOneBeamUsed = false;
 
                     //tempWeights allows reverting (ignoring this measirement) if it results in Nan values somehow
-                    double tempWeights[nParticles];
-                    double tempWindowedNis[nParticles];
-                    int numBeamsForEachParticle[nParticles];
+                    double *tempWeights = (double*)alloca(sizeof(double) * nParticles); /* was VLA */
+                    double *tempWindowedNis = (double*)alloca(sizeof(double) * nParticles); /* was VLA */
+                    int *numBeamsForEachParticle = (int*)alloca(sizeof(int) * nParticles); /* was VLA */
                     for(int indexP = 0; indexP < nParticles; indexP++) {
                         tempWeights[indexP] = this->weights[filterIndex].weights[indexP];
                         tempWindowedNis[indexP] = 0.0;
@@ -598,15 +598,15 @@ measUpdate(measT& currMeas) {
                         }
 
                         //particle indices in subcloud
-                        int particleIndicies[nParticles];
+                        int *particleIndicies = (int*)alloca(sizeof(int) * nParticles); /* was VLA */
                         int numParticlesWithBeamM = 0;
 
                         //indices for particles not in the subcloud; needed for correctly handling their weights
-                        int nonSubcloudIndicies[nParticles];
+                        int *nonSubcloudIndicies = (int*)alloca(sizeof(int) * nParticles); /* was VLA */
                         int nonSubcloudCount = 0;
 
                         //we need to normalize the conditional distribution of particles with beam M
-                        double tempSubcloudWeights[nParticles];
+                        double *tempSubcloudWeights = (double*)alloca(sizeof(double) * nParticles); /* was VLA */
                         double sumWeightsInSubcloud = 0.0;
 
                         for(int indexP = 0; indexP < nParticles; indexP++){
@@ -634,7 +634,7 @@ measUpdate(measT& currMeas) {
                         }
 
                         //for calculating alpha and weight updates
-                        double weightUpdatesForSubcloud[nParticles];
+                        double *weightUpdatesForSubcloud = (double*)alloca(sizeof(double) * nParticles); /* was VLA */
                         double totalVariance = mapVar + currMeas.covariance[beamIndices[indexM]] + this->depthBiasCov[filterIndex];
                         double meanExpectedMeasurementDifference = 0;
                         double partialDeltaRmsComputation = 0;
@@ -799,8 +799,8 @@ measUpdate(measT& currMeas) {
                     //	max of MAX_CROSS_BEAM_COMPARISONS
                     //	Also find the particle with the fewest good beams in case it's less
                     //	currently takes beams in numbered order rather than randomly or ordered by terrain information
-                    int numGoodBeamsParticle[nParticles];
-                    int goodBeamIndicies[nParticles * MAX_CROSS_BEAM_COMPARISONS];
+                    int *numGoodBeamsParticle = (int*)alloca(sizeof(int) * nParticles); /* was VLA */
+                    int *goodBeamIndicies = (int*)alloca(sizeof(int) * nParticles * MAX_CROSS_BEAM_COMPARISONS); /* was VLA */
                     for(int indexP = 0; indexP < nParticles; indexP++) {
                         numGoodBeamsParticle[indexP] = 0;
                     }
@@ -826,13 +826,13 @@ measUpdate(measT& currMeas) {
                     }
 
                     //tempWeights allows reverting (ignoring this measirement) if it results in Nan values somehow
-                    double tempWeights[nParticles];
+                    double *tempWeights = (double*)alloca(sizeof(double) * nParticles); /* was VLA */
                     for(int indexP = 0; indexP < nParticles; indexP++) {
                         tempWeights[indexP] = this->weights[filterIndex].weights[indexP];
                     }
 
                     //compute the weight updates
-                    double tempWeightUpdate[nParticles];
+                    double *tempWeightUpdate = (double*)alloca(sizeof(double) * nParticles); /* was VLA */
                     for(int beamNumber=0; beamNumber < minNumBeams; beamNumber++){
 
                         double partialDeltaRmsComputation = 0;

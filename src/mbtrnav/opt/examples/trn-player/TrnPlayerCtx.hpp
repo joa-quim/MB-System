@@ -20,7 +20,11 @@
 
 #include <cstdio>
 #include <cstdlib>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <getopt.h>
 #include <ostream>
 
@@ -1040,7 +1044,7 @@ public:
                 // pe points to char AFTER end of var name
                 if(pe>pb){
                     size_t var_len = pe-pb;
-                    char var_buf[var_len+1];
+                    char *var_buf = (char *)alloca(var_len+1);
                     memset(var_buf,0,var_len+1);
                     for(uint32_t i=1;i<var_len;i++){
                         var_buf[i-1] = pb[i];

@@ -542,7 +542,7 @@ bool TNavPointMassFilter::generateMeasCorrData(const measT& currMeas) {
 	corrT* newCorr;
 	Matrix beamsVF(3, currMeas.numMeas);
 	Matrix beamsIF, Rvi;
-	int beamIndices[currMeas.numMeas];
+	int *beamIndices = (int*)alloca(sizeof(int) * currMeas.numMeas); /* was VLA */
 	double attitude[3] = {currMeas.phi, currMeas.theta, currMeas.psi};
 	int i;
 	

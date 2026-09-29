@@ -11,7 +11,11 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <sys/socket.h>
 #include <errno.h>
 #ifdef _QNX

@@ -37,8 +37,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <getopt.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_define.h"
 #include "mb_format.h"
 #include "mb_segy.h"
@@ -970,7 +973,7 @@ int main(int argc, char **argv) {
           }
           if (sampleformat == MB_SEGY_SAMPLEFORMAT_ANALYTIC) {
             snprintf(output_file, sizeof(output_file), "%s_cor.%s", output_root, segy_suffix);
-            if ((fpc = fopen(output_file, "w")) == nullptr) {
+            if ((fpc = fopen(output_file, "wb")) == nullptr) {
               fprintf(stderr, "\nError opening output segy file:\n%s\n", output_file);
               fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
               exit(MB_ERROR_WRITE_FAIL);
@@ -981,7 +984,7 @@ int main(int argc, char **argv) {
             }
 
             snprintf(output_file, sizeof(output_file), "%s_hil.%s", output_root, segy_suffix);
-            if ((fph = fopen(output_file, "w")) == nullptr) {
+            if ((fph = fopen(output_file, "wb")) == nullptr) {
               fprintf(stderr, "\nError opening output segy file:\n%s\n", output_file);
               fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
               exit(MB_ERROR_WRITE_FAIL);
@@ -992,7 +995,7 @@ int main(int argc, char **argv) {
             }
 
             snprintf(output_file, sizeof(output_file), "%s_env.%s", output_root, segy_suffix);
-            if ((fpe = fopen(output_file, "w")) == nullptr) {
+            if ((fpe = fopen(output_file, "wb")) == nullptr) {
               fprintf(stderr, "\nError opening output segy file:\n%s\n", output_file);
               fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
               exit(MB_ERROR_WRITE_FAIL);
@@ -1004,7 +1007,7 @@ int main(int argc, char **argv) {
           }
           else if (sampleformat == MB_SEGY_SAMPLEFORMAT_ENVELOPE) {
            snprintf(output_file, sizeof(output_file), "%s_env.%s", output_root, segy_suffix);
-            if ((fpe = fopen(output_file, "w")) == nullptr) {
+            if ((fpe = fopen(output_file, "wb")) == nullptr) {
               fprintf(stderr, "\nError opening output segy file:\n%s\n", output_file);
               fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
               exit(MB_ERROR_WRITE_FAIL);
@@ -1016,7 +1019,7 @@ int main(int argc, char **argv) {
           }
          else /* if (sampleformat == MB_SEGY_SAMPLEFORMAT_TRACE) */ {
            snprintf(output_file, sizeof(output_file), "%s.%s", output_root, segy_suffix);
-            if ((fpe = fopen(output_file, "w")) == nullptr) {
+            if ((fpe = fopen(output_file, "wb")) == nullptr) {
               fprintf(stderr, "\nError opening output segy file:\n%s\n", output_file);
               fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
               exit(MB_ERROR_WRITE_FAIL);

@@ -58,12 +58,27 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#ifdef _WIN32
+#include "dirent_w.h"
+#else
 #include <dirent.h>
+#endif
 #include <getopt.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_define.h"
+
+/* POSIX S_ISREG — MSVC has only the _S_IFMT/_S_IFREG bit constants. */
+#ifdef _WIN32
+#ifndef S_ISREG
+#define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
+#endif
+#endif
+
 #include "mb_format.h"
 #include "mb_status.h"
 
@@ -100,20 +115,23 @@ struct FileList {
     int         capacity;
 };
 
-static void filelist_init(FileList *fl) {
+static int filelist_init(FileList *fl) {
     fl->data     = static_cast<FileRecord *>(malloc(initial_capacity * sizeof(FileRecord)));
     fl->size     = 0;
     fl->capacity = initial_capacity;
-    if (!fl->data) { perror("malloc"); exit(1); }
+    if (!fl->data) { perror("malloc"); return MB_FAILURE; }
+    return MB_SUCCESS;
 }
 
-static void filelist_push(FileList *fl, const FileRecord *rec) {
+static int filelist_push(FileList *fl, const FileRecord *rec) {
     if (fl->size == fl->capacity) {
         fl->capacity *= 2;
-        fl->data = static_cast<FileRecord *>(realloc(fl->data, fl->capacity * sizeof(FileRecord)));
-        if (!fl->data) { perror("realloc"); exit(1); }
+        FileRecord *data = static_cast<FileRecord *>(realloc(fl->data, fl->capacity * sizeof(FileRecord)));
+        if (!data) { perror("realloc"); return MB_FAILURE; }
+        fl->data = data;
     }
     fl->data[fl->size++] = *rec;
+    return MB_SUCCESS;
 }
 
 static void filelist_free(FileList *fl) {
@@ -476,7 +494,10 @@ int main(int argc, char **argv) {
     }
 
     FileList candidates;
-    filelist_init(&candidates);
+    if (filelist_init(&candidates) != MB_SUCCESS) {
+        closedir(dp);
+        return 1;
+    }
 
     struct dirent *de;
     while ((de = readdir(dp)) != nullptr) {
@@ -516,7 +537,11 @@ int main(int argc, char **argv) {
             if (!S_ISREG(st.st_mode)) continue;
         }
 
-        filelist_push(&candidates, &rec);
+        if (filelist_push(&candidates, &rec) != MB_SUCCESS) {
+            closedir(dp);
+            filelist_free(&candidates);
+            return 1;
+        }
     }
     closedir(dp);
 
@@ -527,7 +552,10 @@ int main(int argc, char **argv) {
 
     /* --- Determine format for each candidate and build output list --- */
     FileList outlist;
-    filelist_init(&outlist);
+    if (filelist_init(&outlist) != MB_SUCCESS) {
+        filelist_free(&candidates);
+        return 1;
+    }
 
     for (int i = 0; i < candidates.size; i++) {
         FileRecord *rec = &candidates.data[i];
@@ -560,7 +588,11 @@ int main(int argc, char **argv) {
         if (verbose)
             printf("Adding to list: file:%s format:%d\n", rec->path, fmt);
 
-        filelist_push(&outlist, rec);
+        if (filelist_push(&outlist, rec) != MB_SUCCESS) {
+            filelist_free(&candidates);
+            filelist_free(&outlist);
+            return 1;
+        }
     }
     filelist_free(&candidates);
 
@@ -581,20 +613,32 @@ int main(int argc, char **argv) {
             /* Keep only sort_ok records in a temporary list, sort them,
              * then rebuild outlist. */
             FileList sortable;
-            filelist_init(&sortable);
+            if (filelist_init(&sortable) != MB_SUCCESS) {
+                filelist_free(&outlist);
+                return 1;
+            }
             for (int i = 0; i < outlist.size; i++) {
                 if (outlist.data[i].sort_ok)
-                    filelist_push(&sortable, &outlist.data[i]);
+                    if (filelist_push(&sortable, &outlist.data[i]) != MB_SUCCESS) {
+                        filelist_free(&sortable);
+                        filelist_free(&outlist);
+                        return 1;
+                    }
             }
             qsort(sortable.data, sortable.size, sizeof(FileRecord), kongsberg_cmp);
 
             /* Rebuild paths from sorted timestamps and replace outlist */
             filelist_free(&outlist);
-            filelist_init(&outlist);
+            if (filelist_init(&outlist) != MB_SUCCESS) {
+                filelist_free(&sortable);
+                return 1;
+            }
             for (int i = 0; i < sortable.size; i++) {
                 FileRecord *rec = &sortable.data[i];
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstringop-truncation"
+#endif
                 char newbase[max_path];
                 build_kongsberg_basename(rec, newbase, sizeof(newbase));
                 if (directory[0]) {
@@ -608,8 +652,14 @@ int main(int argc, char **argv) {
                 }
                 strncpy(rec->basename, newbase, sizeof(rec->basename) - 1);
                 rec->basename[sizeof(rec->basename) - 1] = '\0';
-                filelist_push(&outlist, rec);
+                if (filelist_push(&outlist, rec) != MB_SUCCESS) {
+                    filelist_free(&sortable);
+                    filelist_free(&outlist);
+                    return 1;
+                }
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
+#endif
             }
             filelist_free(&sortable);
         }
@@ -651,3 +701,4 @@ int main(int argc, char **argv) {
     filelist_free(&outlist);
     return 0;
 }
+

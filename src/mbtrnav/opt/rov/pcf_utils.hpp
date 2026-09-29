@@ -15,7 +15,11 @@
 #include <sstream>
 #include <iostream>
 
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 
 namespace pcf
 {

@@ -35,8 +35,17 @@
 #include <cstdlib>
 #include <cstring>
 #include <getopt.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
+#include <sys/stat.h>
+#ifdef _WIN32
+#include "dirent_w.h"
+#else
+#include <dirent.h>
+#endif
 #include "mb_define.h"
 #include "mb_format.h"
 #include "mb_process.h"
@@ -54,6 +63,67 @@ constexpr char usage_message[] =
     "\t--raw {-U}\n\t--unlock {-Y}\n\t--datalistp {-Z}\n";
 
 /*--------------------------------------------------------------------*/
+
+/*--------------------------------------------------------------------*/
+/* Copy a swath file and its ancillary files (every file in its directory
+ * whose name starts with the swath file name, as "cp file* ." did) into
+ * the current directory. Done in-process: there is no "cp" on Windows.
+ * Nothing is copied when the file already lives in the current directory. */
+static void mbdatalist_copy_file_family(FILE *output, const char *file) {
+	const char *slash = strrchr(file, '/');
+#ifdef _WIN32
+	const char *bslash = strrchr(file, '\\');
+	if (bslash != nullptr && (slash == nullptr || bslash > slash))
+		slash = bslash;
+#endif
+	if (slash == nullptr)
+		return;
+	char dir[MB_PATH_MAXLINE];
+	const size_t dirlen = (size_t)(slash - file);
+	if (dirlen == 0 || dirlen >= sizeof(dir))
+		return;
+	memcpy(dir, file, dirlen);
+	dir[dirlen] = '\0';
+	if (strcmp(dir, ".") == 0)
+		return;
+	const char *root = slash + 1;
+	const size_t rootlen = strlen(root);
+	DIR *dp = opendir(dir);
+	if (dp == nullptr) {
+		fprintf(output, "Unable to open directory %s\n", dir);
+		return;
+	}
+	struct dirent *de;
+	while ((de = readdir(dp)) != nullptr) {
+		if (strncmp(de->d_name, root, rootlen) != 0)
+			continue;
+		char src[2 * MB_PATH_MAXLINE];
+		snprintf(src, sizeof(src), "%s/%s", dir, de->d_name);
+		struct stat st;
+		if (stat(src, &st) != 0 || (st.st_mode & S_IFMT) != S_IFREG)
+			continue;
+		FILE *in = fopen(src, "rb");
+		if (in == nullptr)
+			continue;
+		FILE *out = fopen(de->d_name, "wb");
+		if (out == nullptr) {
+			fprintf(output, "Unable to copy %s\n", src);
+			fclose(in);
+			continue;
+		}
+		char buf[65536];
+		size_t n;
+		while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+			if (fwrite(buf, 1, n, out) != n) {
+				fprintf(output, "Unable to copy %s\n", src);
+				break;
+			}
+		}
+		fclose(out);
+		fclose(in);
+	}
+	closedir(dp);
+}
 
 int main(int argc, char **argv) {
 	int verbose = 0;
@@ -236,7 +306,7 @@ int main(int argc, char **argv) {
 		if (errflg) {
 			fprintf(output, "usage: %s\n", usage_message);
 			fprintf(output, "\nProgram <%s> Terminated\n", program_name);
-			exit(MB_ERROR_BAD_USAGE);
+			return MB_ERROR_BAD_USAGE;
 		}
 
 		if (verbose == 1 || help) {
@@ -288,7 +358,7 @@ int main(int argc, char **argv) {
 		if (help) {
 			fprintf(output, "\n%s\n", help_message);
 			fprintf(output, "\nusage: %s\n", usage_message);
-			exit(MB_ERROR_NO_ERROR);
+			return MB_ERROR_NO_ERROR;
 		}
 	}
 
@@ -304,7 +374,7 @@ int main(int argc, char **argv) {
     if (strlen(fileroot) >= MB_PATH_MAXLINE - 6) {
       fprintf(stderr, "\nFile root too long: %s\n", fileroot);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      exit(MB_ERROR_BAD_PARAMETER);
+      return MB_ERROR_BAD_PARAMETER;
     }
     char file[MB_PATH_MAXLINE+10];
 		snprintf(file, sizeof(file), "%sp.mb-1", fileroot);
@@ -313,7 +383,7 @@ int main(int argc, char **argv) {
 		if (fp == nullptr) {
 			fprintf(stderr, "\nUnable to open output file %s\n", file);
 			fprintf(stderr, "Program %s aborted!\n", program_name);
-			exit(MB_ERROR_OPEN_FAIL);
+			return MB_ERROR_OPEN_FAIL;
 		}
 		fprintf(fp, "$PROCESSED\n%s %d\n", read_file, format);
 		fclose(fp);
@@ -322,7 +392,7 @@ int main(int argc, char **argv) {
 
 		/* exit unless building ancillary files has also been requested */
 		if (!make_inf)
-			exit(error);
+			return error;
 	}
 
 	/* get format if required */
@@ -440,11 +510,13 @@ int main(int argc, char **argv) {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			exit(MB_ERROR_OPEN_FAIL);
+			return MB_ERROR_OPEN_FAIL;
 		}
 		mb_path file = "";
 		mb_path dfile = "";
 		mb_path dfilelast = "";
+		char *copied_list = nullptr;
+		size_t copied_len = 0;
 		while (mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight, &error) == MB_SUCCESS) {
 			nfile++;
 			mb_path pwd = "";
@@ -482,17 +554,23 @@ int main(int argc, char **argv) {
 				/* copy file if no bounds checking or in bounds */
 				if (!look_bounds || file_in_bounds) {
 					fprintf(output, "Copying %s %d %f\n", file, format, file_weight);
-					snprintf(command, sizeof(command), "cp %s* .", file);
-					/* shellstatus = */ system(command);
+					mbdatalist_copy_file_family(output, file);
 					char *filename = strrchr(file, '/');
 					if (filename != nullptr)
 						filename++;
 					else
 						filename = file;
-					if (nfile == 1)
-						/* shellstatus = */ remove("datalist.mb-1");
-					snprintf(command, sizeof(command), "echo %s %d %f >> datalist.mb-1", filename, format, file_weight);
-					/* shellstatus = */ system(command);
+					/* the new datalist.mb-1 is written once the input datalist
+					   is closed - it may be that very file, and on Windows an
+					   open file can be neither removed nor safely appended to */
+					snprintf(command, sizeof(command), "%s %d %f\n", filename, format, file_weight);
+					const size_t addlen = strlen(command);
+					char *grown = static_cast<char *>(realloc(copied_list, copied_len + addlen + 1));
+					if (grown != nullptr) {
+						copied_list = grown;
+						memcpy(copied_list + copied_len, command, addlen + 1);
+						copied_len += addlen;
+					}
 				}
 			}
 
@@ -576,6 +654,18 @@ int main(int argc, char **argv) {
 			}
 		}
 		mb_datalist_close(verbose, &datalist, &error);
+
+		/* write the datalist of the copied files */
+		if (copyfiles && copied_list != nullptr) {
+			FILE *dfp = fopen("datalist.mb-1", "w");
+			if (dfp != nullptr) {
+				fputs(copied_list, dfp);
+				fclose(dfp);
+			}
+			else
+				fprintf(stderr, "\nUnable to write datalist.mb-1\n");
+		}
+		free(copied_list);
 	}
 
 	/* set program status */
@@ -596,6 +686,6 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Program %s completed but failed to deallocate all allocated memory - the code has a memory leak somewhere!\n", program_name);
   }
 
-	exit(error);
+	return error;
 }
 /*--------------------------------------------------------------------*/

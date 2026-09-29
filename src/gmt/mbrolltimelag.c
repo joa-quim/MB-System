@@ -1,0 +1,798 @@
+/*--------------------------------------------------------------------
+ *    The MB-system:	mbrolltimelag.c	11/10/2005
+ *
+ *    Copyright (c) 2005-2025 by
+ *    David W. Caress (caress@mbari.org)
+ *      Monterey Bay Aquarium Research Institute
+ *      Moss Landing, California, USA
+ *    Dale N. Chayes 
+ *      Center for Coastal and Ocean Mapping
+ *      University of New Hampshire
+ *      Durham, New Hampshire, USA
+ *    Christian dos Santos Ferreira
+ *      MARUM
+ *      University of Bremen
+ *      Bremen Germany
+ *     
+ *    MB-System was created by Caress and Chayes in 1992 at the
+ *      Lamont-Doherty Earth Observatory
+ *      Columbia University
+ *      Palisades, NY 10964
+ *
+ *    See README.md file for copying and redistribution conditions.
+ *--------------------------------------------------------------------*/
+/*
+ * MBrolltimelag extracts the roll time series and the apparent bottom
+ * slope (linear fit to unflagged soundings for each ping) time series
+ * from swath data, and then calculates the cross correlation between
+ * the roll and the slope minus roll for a specified set of time lags.
+ * The suite of cross correlation calculations are made for each
+ * successive npings pings (default = 100) in each swath file. The
+ * results are output to files, and cross correlation plots are
+ * generated.
+ *
+ * Author:	D. W. Caress
+ * Date:	November 11, 2005
+ */
+/*
+ * GMT-module port of src/utilities/mbrolltimelag.cc. The program's getopt_long() option loop
+ * is kept as it is, running on the reentrant mb_getopt_long() (the state
+ * lives in a local structure, so the module can run any number of times in
+ * one GMT session), and main() becomes GMT_mbrolltimelag(), with every exit()
+ * turned into Return().
+ */
+
+#define THIS_MODULE_NAME "mbrolltimelag"
+#define THIS_MODULE_LIB "mbsystem"
+#define THIS_MODULE_PURPOSE "Estimate the roll time lag from swath bathymetry"
+/* Primary input is the swath file or datalist given with -I; results are written to files by the module itself. */
+#define THIS_MODULE_KEYS "ID{"
+#define THIS_MODULE_NEEDS ""
+#define THIS_MODULE_OPTIONS "->V"
+
+#include "gmt_dev.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
+#include <unistd.h>
+#endif
+#include "mb_define.h"
+
+#include "mb_getopt.h"
+
+/* POSIX popen/pclose — MSVC has _popen/_pclose with the same signatures. */
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
+#endif
+
+#include "mb_format.h"
+#include "mb_status.h"
+
+enum { MBRTL_ALLOC_CHUNK = 1000 };
+
+static const char program_name[] = "MBrolltimelag";
+static const char help_message[] =
+    "MBrolltimelag extracts the roll time series and the apparent\n"
+    "bottom slope time series from swath data, and then calculates\n"
+    "the cross correlation between the roll and the slope minus roll\n"
+    "for a specified set of time lags.";
+static const char usage_message[] =
+    "mbrolltimelag\n"
+    "\t--correlation-threshold=value {-Cvalue}\n"
+    "\t--format=format_id {-Fformat_id}\n"
+    "\t--help {-H}\n"
+    "\t--input=swathdata {-Iswathdata}\n"
+    "\t--lag-range=nlag/lagmin/lagmax {-Tnlag/lagmin/lagmax}\n"
+    "\t--nav-channel=navchannel {-Snavchannel}\n"
+    "\t--npings=nping {-Nnping}\n"
+    "\t--output=outputname {-Ooutputname}\n"
+    "\t--roll-source=rollsource {-Krollsource}\n"
+    "\t--verbose {-V}\n\n";
+
+/*--------------------------------------------------------------------*/
+
+
+/* --- GMT front end ---------------------------------------------------- */
+
+static int usage(struct GMTAPI_CTRL *API, int level) {
+	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
+	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
+	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
+	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
+	return GMT_PARSE_ERROR;
+}
+
+/* The options GMT itself should see: -V (verbosity) and -I (the input the
+ * module keys bind). Everything else, long options included, is parsed by
+ * the program's own option loop below. */
+static char *mb_gmt_options_string(int argc, char **argv) {
+	size_t total = 1;
+	for (int i = 1; i < argc; i++)
+		total += strlen(argv[i]) + 1;
+	char *s = (char *)calloc(total + 8, 1);
+	if (s == NULL)
+		return NULL;
+	for (int i = 1; i < argc; i++) {
+		if (argv[i][0] == '-' && (argv[i][1] == 'V' || (argv[i][1] == 'I' && argv[i][2] != '\0'))) {
+			if (s[0] != '\0')
+				strcat(s, " ");
+			strcat(s, argv[i]);
+		}
+	}
+	return s;
+}
+
+/* gmt_M_free_options() hard-codes a variable named "options", which the
+   program's own option table shadows here, so destroy gmt_options directly */
+#define bailout(code) { mb_getopt_args_free(argc, argv); free(gmt_args); GMT_Destroy_Options(API, &gmt_options); return (code); }
+#define Return(code) { gmt_end_module(GMT, GMT_cpy); bailout(code); }
+EXTERN_MSC int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args);
+
+/*--------------------------------------------------------------------*/
+
+int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
+	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
+	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
+	struct GMT_OPTION *gmt_options = NULL;
+	char *gmt_args = NULL;
+	char **argv = NULL;
+	int argc = 0;
+	struct mb_getopt_state getopt_state;
+	mb_getopt_init(&getopt_state);
+
+	if (!API) return GMT_NOT_A_SESSION;
+	if (gmt_mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+
+	/* the program's own argv[], whatever shape GMT handed us */
+	argc = mb_getopt_args_build(THIS_MODULE_NAME, gmt_mode, args, &argv);
+	if (argc == 2 && (strcmp(argv[1], "-") == 0 || strcmp(argv[1], "?") == 0))
+		bailout(usage(API, GMT_USAGE));
+	if (argc == 2 && strcmp(argv[1], "+") == 0)
+		bailout(usage(API, GMT_SYNOPSIS));
+
+	gmt_args = mb_gmt_options_string(argc, argv);
+	gmt_options = GMT_Create_Options(API, GMT_MODULE_CMD, (gmt_args != NULL && gmt_args[0] != '\0') ? gmt_args : NULL);
+	if (API->error) bailout(API->error);
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
+	                           THIS_MODULE_NEEDS, NULL, &gmt_options, &GMT_cpy)) == NULL) bailout(API->error);
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, gmt_options)) Return(API->error);
+
+	int verbose = 0;
+	double rthreshold = 0.9;
+	int format = 0;
+	int kind = MB_DATA_DATA;
+	int npings = 100;
+	char outroot[MB_PATH_MAXLINE];
+	bool outroot_defined = false;
+	int navchannel = 1;
+	int nlag = 41;
+	double lagstart = -2.0;
+	double lagend = 2.0;
+
+	char swathdata[MB_PATH_MAXLINE];
+	strcpy(swathdata, "datalist.mb-1");
+
+	{
+		static struct mb_getopt_option options[] = {{"verbose", mb_no_argument, NULL, 0},
+		                                   {"help", mb_no_argument, NULL, 0},
+		                                   {"correlation-threshold", mb_required_argument, NULL, 0},
+		                                   {"format", mb_required_argument, NULL, 0},
+		                                   {"input", mb_required_argument, NULL, 0},
+		                                   {"lag-range", mb_required_argument, NULL, 0},
+		                                   {"nav-channel", mb_required_argument, NULL, 0},
+		                                   {"npings", mb_required_argument, NULL, 0},
+		                                   {"output", mb_required_argument, NULL, 0},
+		                                   {"roll-source", mb_required_argument, NULL, 0},
+		                                   {NULL, 0, NULL, 0}};
+
+		int option_index;
+		bool errflg = false;
+		int c;
+		bool help = false;
+		while ((c = mb_getopt_long(&getopt_state, argc, argv, "VvHhC:c:F:f:I:i:K:k:O:o:N:n:S:s:T:t:", options, &option_index)) != -1)
+			switch (c) {
+			case 0:
+				if (strcmp("verbose", options[option_index].name) == 0) {
+					verbose++;
+				}
+				else if (strcmp("help", options[option_index].name) == 0) {
+					help = true;
+				}
+				else if (strcmp("correlation-threshold", options[option_index].name) == 0) {
+					sscanf(getopt_state.optarg, "%lf", &rthreshold);
+				}
+				else if (strcmp("format", options[option_index].name) == 0) {
+					sscanf(getopt_state.optarg, "%d", &format);
+				}
+				else if (strcmp("input", options[option_index].name) == 0) {
+					sscanf(getopt_state.optarg, "%1023s", swathdata);
+				}
+				else if (strcmp("lag-range", options[option_index].name) == 0) {
+					sscanf(getopt_state.optarg, "%d/%lf/%lf", &nlag, &lagstart, &lagend);
+				}
+				else if (strcmp("nav-channel", options[option_index].name) == 0) {
+					sscanf(getopt_state.optarg, "%d", &navchannel);
+					if (navchannel > 0)
+						kind = MB_DATA_NONE;
+				}
+				else if (strcmp("npings", options[option_index].name) == 0) {
+					sscanf(getopt_state.optarg, "%d", &npings);
+				}
+				else if (strcmp("output", options[option_index].name) == 0) {
+					sscanf(getopt_state.optarg, "%1023s", outroot);
+					outroot_defined = true;
+				}
+				else if (strcmp("roll-source", options[option_index].name) == 0) {
+					sscanf(getopt_state.optarg, "%d", &kind);
+				}
+				break;
+			case 'H':
+			case 'h':
+				help = true;
+				break;
+			case 'V':
+			case 'v':
+				verbose++;
+				break;
+			case 'C':
+			case 'c':
+				sscanf(getopt_state.optarg, "%lf", &rthreshold);
+				break;
+			case 'F':
+			case 'f':
+				sscanf(getopt_state.optarg, "%d", &format);
+				break;
+			case 'I':
+			case 'i':
+				sscanf(getopt_state.optarg, "%1023s", swathdata);
+				break;
+			case 'K':
+			case 'k':
+				sscanf(getopt_state.optarg, "%d", &kind);
+				break;
+			case 'N':
+			case 'n':
+				sscanf(getopt_state.optarg, "%d", &npings);
+				break;
+			case 'O':
+			case 'o':
+				sscanf(getopt_state.optarg, "%1023s", outroot);
+				outroot_defined = true;
+				break;
+			case 'S':
+			case 's':
+				sscanf(getopt_state.optarg, "%d", &navchannel);
+				if (navchannel > 0)
+					kind = MB_DATA_NONE;
+				break;
+			case 'T':
+			case 't':
+				sscanf(getopt_state.optarg, "%d/%lf/%lf", &nlag, &lagstart, &lagend);
+				break;
+			case '?':
+				errflg = true;
+			}
+
+		if (errflg) {
+			fprintf(stderr, "usage: %s\n", usage_message);
+			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
+			Return(MB_ERROR_BAD_USAGE);
+		}
+
+		if (verbose == 1 || help) {
+			fprintf(stderr, "\nProgram %s\n", program_name);
+			fprintf(stderr, "MB-system Version %s\n", MB_VERSION);
+		}
+
+		if (verbose >= 2) {
+			fprintf(stderr, "\ndbg2  Program <%s>\n", program_name);
+			fprintf(stderr, "dbg2  MB-system Version %s\n", MB_VERSION);
+			fprintf(stderr, "dbg2  Control Parameters:\n");
+			fprintf(stderr, "dbg2       verbose:         %d\n", verbose);
+			fprintf(stderr, "dbg2       help:            %d\n", help);
+			fprintf(stderr, "dbg2       format:          %d\n", format);
+			fprintf(stderr, "dbg2       rthreshold:      %f\n", rthreshold);
+			fprintf(stderr, "dbg2       swathdata:       %s\n", swathdata);
+			fprintf(stderr, "dbg2       npings:          %d\n", npings);
+			fprintf(stderr, "dbg2       nlag:            %d\n", nlag);
+			fprintf(stderr, "dbg2       lagstart:        %f\n", lagstart);
+			fprintf(stderr, "dbg2       lagend:          %f\n", lagend);
+			fprintf(stderr, "dbg2       navchannel:      %d\n", navchannel);
+			fprintf(stderr, "dbg2       kind:            %d\n", kind);
+		}
+
+		if (help) {
+			fprintf(stderr, "\n%s\n", help_message);
+			fprintf(stderr, "\nusage: %s\n", usage_message);
+			Return(MB_ERROR_NO_ERROR);
+		}
+	}
+
+	int error = MB_ERROR_NO_ERROR;
+
+	/* get format if required */
+	{
+		int formatguess = 0;
+		char swathroot[MB_PATH_MAXLINE];
+		mb_get_format(verbose, swathdata, swathroot, &formatguess, &error);
+		if (format == 0)
+			format = formatguess;
+		if (!outroot_defined)
+			strcpy(outroot, swathroot);
+        }
+
+	/* determine whether to read one file or a list of files */
+	const bool read_datalist = format < 0;
+	bool read_data = false;
+
+	/* get time lag step */
+	const double lagstep = (lagend - lagstart) / (nlag - 1);
+
+	// TODO(schwehr): Why realloc?
+	double *rr = NULL;  // cross correlation parameters
+	int status = mb_reallocd(verbose, __FILE__, __LINE__, nlag * sizeof(double), (void **)&rr, &error);
+
+	int *timelaghistogram = NULL;
+	status &= mb_reallocd(verbose, __FILE__, __LINE__, nlag * sizeof(int), (void **)&timelaghistogram, &error);
+
+	if (status != MB_SUCCESS) {
+		fprintf(stderr, "\nUnable to allocate cross correlation arrays for nlag=%d\n", nlag);
+		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
+		Return(MB_ERROR_MEMORY_FAIL);
+	}
+
+	if (verbose > 0) {
+		fprintf(stderr, "Program %s parameters:\n", program_name);
+		fprintf(stderr, "  Input:                           %s\n", swathdata);
+		fprintf(stderr, "  Format:                          %d\n", format);
+		fprintf(stderr, "  Number of pings per estimate:    %d\n", npings);
+		fprintf(stderr, "  Number of time lag calculations: %d\n", nlag);
+		fprintf(stderr, "  Start time lag reported:         %f\n", lagstart);
+		fprintf(stderr, "  End time lag reported:           %f\n", lagend);
+		fprintf(stderr, "  Time lag step:                   %f\n", lagstep);
+	}
+
+	/* first get roll data from the entire swathdata (which can be a datalist ) */
+	char cmdfile[5*MB_PATH_MAXLINE+200];
+	if (kind > MB_DATA_NONE)
+		snprintf(cmdfile, sizeof(cmdfile), "mbnavlist -I%s -F%d -K%d -OMR", swathdata, format, kind);
+	else
+		snprintf(cmdfile, sizeof(cmdfile), "mbnavlist -I%s -F%d -N%d -OMR", swathdata, format, navchannel);
+	fprintf(stderr, "\nRunning %s...\n", cmdfile);
+
+	int nroll = 0;
+	int nroll_alloc = 0;
+	double *roll_time_d = NULL;
+	double *roll_roll = NULL;
+	FILE *fp = popen(cmdfile, "r");
+	double time_d;
+	double roll;
+  int nscan;
+  while ((nscan = fscanf(fp, "%lf %lf", &time_d, &roll)) == 2) {
+		if (nroll >= nroll_alloc) {
+			nroll_alloc += MBRTL_ALLOC_CHUNK;
+			status &= mb_reallocd(verbose, __FILE__, __LINE__, nroll_alloc * sizeof(double), (void **)&roll_time_d, &error);
+			status &= mb_reallocd(verbose, __FILE__, __LINE__, nroll_alloc * sizeof(double), (void **)&roll_roll, &error);
+			if (status != MB_SUCCESS) {
+				fprintf(stderr, "\nUnable to allocate roll data arrays\n");
+				fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
+				Return(MB_ERROR_MEMORY_FAIL);
+			}
+		}
+		if (nroll == 0 || time_d > roll_time_d[nroll - 1]) {
+			roll_time_d[nroll] = time_d;
+			roll_roll[nroll] = roll;
+			nroll++;
+		}
+  }
+	pclose(fp);
+	fprintf(stderr, "%d roll data read from %s\n", nroll, swathdata);
+
+	/* open total cross correlation file */
+	char xcorfiletot[MB_PATH_MAXLINE+10];
+	FILE *fpt = NULL;
+	if (read_datalist) {
+		snprintf(xcorfiletot, sizeof(xcorfiletot), "%s_xcorr.txt", outroot);
+		if ((fpt = fopen(xcorfiletot, "w")) == NULL) {
+			fprintf(stderr, "\nUnable to open cross correlation output: %s\n", xcorfiletot);
+			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
+			Return(MB_ERROR_OPEN_FAIL);
+		}
+	}
+
+	/* open time lag estimate file */
+	char estimatefile[MB_PATH_MAXLINE+20];
+	snprintf(estimatefile, sizeof(estimatefile), "%s_timelagest.txt", outroot);
+	FILE *fpe = fopen(estimatefile, "w");
+	if (fpe == NULL) {
+		fprintf(stderr, "\nUnable to open estimate output: %s\n", estimatefile);
+		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
+		Return(MB_ERROR_OPEN_FAIL);
+	}
+
+	/* open time lag histogram file */
+	char histfile[MB_PATH_MAXLINE+20];
+	snprintf(histfile, sizeof(histfile), "%s_timelaghist.txt", outroot);
+	FILE *fph = fopen(histfile, "w");
+	if (fph == NULL) {
+		fprintf(stderr, "\nUnable to open histogram output: %s\n", histfile);
+		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
+		Return(MB_ERROR_OPEN_FAIL);
+	}
+
+	/* open time lag model file */
+	char modelfile[MB_PATH_MAXLINE+20];
+	snprintf(modelfile, sizeof(modelfile), "%s_timelagmodel.txt", outroot);
+	FILE *fpm = fopen(modelfile, "w");
+	if (fpm == NULL) {
+		fprintf(stderr, "\nUnable to open time lag model output: %s\n", modelfile);
+		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
+		Return(MB_ERROR_OPEN_FAIL);
+	}
+
+	/* open file list */
+	void *datalist;
+	char swathfile[MB_PATH_MAXLINE];
+	char dfile[MB_PATH_MAXLINE];
+	if (read_datalist) {
+		const int look_processed = MB_DATALIST_LOOK_UNSET;
+		if (mb_datalist_open(verbose, &datalist, swathdata, look_processed, &error) != MB_SUCCESS) {
+			fprintf(stderr, "\nUnable to open data list file: %s\n", swathdata);
+			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
+			Return(MB_ERROR_OPEN_FAIL);
+		}
+		double file_weight;
+		read_data = mb_datalist_read(verbose, datalist, swathfile, dfile, &format, &file_weight, &error) == MB_SUCCESS;
+	} else {
+		/* else copy single filename to be read */
+		strcpy(swathfile, swathdata);
+		read_data = true;
+	}
+
+	/* slope data */
+	int nslopetot = 0;
+	int nslope_alloc = 0;
+	double *slope_time_d = NULL;
+	double *slope_slope = NULL;
+	double *slope_roll = NULL;
+
+	double slope;
+	double timelag;
+	double sumsloperoll;
+	double sumslopesq;
+	double sumrollsq;
+	double slopeminusmean;
+	double rollminusmean;
+	double r;
+	// double sum_x = 0.0;
+	// double sum_y = 0.0;
+	// double sum_xy = 0.0;
+	// double sum_x2 = 0.0;
+	// double sum_y2 = 0.0;
+
+	int nrollmean;
+	double rollmean;
+	double slopemean;
+
+	int nestimate = 0;
+	int nmodel = 0;
+
+	int nr;
+	double rollint;
+
+	int peakk = 0;
+	double peakr = 0.0;
+	double peaktimelag = 0.0;
+	double maxr = 0.0;
+	double maxtimelag = 0.0;
+
+	/* loop over all files to be read */
+	while (read_data) {
+		nestimate = 0;
+		int nslope = 0;
+		double time_d_avg = 0.0;
+		snprintf(cmdfile, sizeof(cmdfile), "mblist -I%s -F%d -OMAR -Q", swathfile, format);
+		fprintf(stderr, "\nRunning %s...\n", cmdfile);
+		fp = popen(cmdfile, "r");
+		while ((nscan = fscanf(fp, "%lf %lf %lf", &time_d, &slope, &roll)) == 3) {
+			if (nslope >= nslope_alloc) {
+				nslope_alloc += MBRTL_ALLOC_CHUNK;
+				status &= mb_reallocd(verbose, __FILE__, __LINE__, nslope_alloc * sizeof(double), (void **)&slope_time_d, &error);
+				status &= mb_reallocd(verbose, __FILE__, __LINE__, nslope_alloc * sizeof(double), (void **)&slope_slope, &error);
+				status &= mb_reallocd(verbose, __FILE__, __LINE__, nslope_alloc * sizeof(double), (void **)&slope_roll, &error);
+				if (status != MB_SUCCESS) {
+					fprintf(stderr, "\nUnable to allocate slope data arrays\n");
+					fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
+					Return(MB_ERROR_MEMORY_FAIL);
+				}
+			}
+			if (nslope == 0 || time_d > slope_time_d[nslope - 1]) {
+				slope_time_d[nslope] = time_d;
+				time_d_avg += time_d;
+				slope_slope[nslope] = roll - slope;
+				slope_roll[nslope] = roll;
+				nslope++;
+			}
+		}
+		pclose(fp);
+		nslopetot += nslope;
+		if (nslope > 0)
+			time_d_avg /= nslope;
+		fprintf(stderr, "%d slope data read from %s\n", nslope, swathfile);
+
+		/* open time lag histogram file */
+		char fhistfile[MB_PATH_MAXLINE+20];
+		snprintf(fhistfile, sizeof(fhistfile), "%s_timelaghist.txt", swathfile);
+		FILE *fpf = fopen(fhistfile, "w");
+		if (fpf == NULL) {
+			fprintf(stderr, "\nUnable to open histogram output: %s\n", fhistfile);
+			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
+			Return(MB_ERROR_OPEN_FAIL);
+		}
+
+		/* open cross correlation file */
+		char xcorfile[MB_PATH_MAXLINE+20];
+		snprintf(xcorfile, sizeof(xcorfile), "%s_xcorr.txt", swathfile);
+		FILE *fpx = fopen(xcorfile, "w");
+		if (fpx == NULL) {
+			fprintf(stderr, "\nUnable to open cross correlation output: %s\n", xcorfile);
+			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
+			Return(MB_ERROR_OPEN_FAIL);
+		}
+
+		/* initialize time lag histogram */
+		for (int k = 0; k < nlag; k++) {
+			timelaghistogram[k] = 0;
+		}
+
+		/* now do cross correlation calculations */
+		for (int i = 0; i < nslope / npings; i++) {
+			/* get ping range in this chunk */
+			const int j0 = i * npings;
+			const int j1 = j0 + npings - 1;
+
+			/* get mean slope in this chunk */
+			slopemean = 0.0;
+			for (int j = j0; j <= j1; j++) {
+				slopemean += slope_slope[j];
+			}
+			slopemean /= npings;
+
+			/* get mean roll in this chunk */
+			rollmean = 0.0;
+			nrollmean = 0;
+			for (int j = 0; j < nroll; j++) {
+				if ((roll_time_d[j] >= slope_time_d[j0] + lagstart) && (roll_time_d[j] <= slope_time_d[j1] + lagend)) {
+					rollmean += roll_roll[j];
+					nrollmean++;
+				}
+			}
+
+			if (nrollmean > 0) {
+				rollmean /= nrollmean;
+
+				/* calculate cross correlation for the specified time lags */
+				fprintf(fpx, ">\n");
+				if (fpt != NULL)
+					fprintf(fpt, ">\n");
+				for (int k = 0; k < nlag; k++) {
+					timelag = lagstart + k * lagstep;
+					sumsloperoll = 0.0;
+					sumslopesq = 0.0;
+					sumrollsq = 0.0;
+					nr = 0;
+
+					for (int j = j0; j <= j1; j++) {
+						/* interpolate lagged roll value */
+						bool found = false;
+						time_d = slope_time_d[j] + timelag;
+						for (int l = nr; l < nroll - 1 && !found; l++) {
+							if (time_d >= roll_time_d[l] && time_d <= roll_time_d[l + 1]) {
+								nr = l;
+								found = true;
+							}
+						}
+						if (!found && time_d < roll_time_d[0]) {
+							rollint = roll_roll[0];
+						}
+						else if (!found && time_d > roll_time_d[nroll - 1]) {
+							rollint = roll_roll[nroll - 1];
+						}
+						else {
+							rollint = roll_roll[nr] + (roll_roll[nr + 1] - roll_roll[nr]) * (time_d - roll_time_d[nr]) /
+							                              (roll_time_d[nr + 1] - roll_time_d[nr]);
+						}
+
+						/* add to sums */
+						slopeminusmean = (slope_slope[j] - slopemean);
+						rollminusmean = (rollint - rollmean);
+						sumslopesq += slopeminusmean * slopeminusmean;
+						sumrollsq += rollminusmean * rollminusmean;
+						sumsloperoll += slopeminusmean * rollminusmean;
+					}
+
+					if (sumslopesq > 0.0 && sumrollsq > 0.0)
+						r = sumsloperoll / sqrt(sumslopesq) / sqrt(sumrollsq);
+					else
+						r = 0.0;
+					rr[k] = r;
+
+					/* output results */
+					fprintf(fpx, "%5.3f %5.3f \n", timelag, r);
+					if (fpt != NULL)
+						fprintf(fpt, "%5.3f %5.3f \n", timelag, r);
+				}
+
+				/* get max and closest peak cross correlations */
+				maxr = 0.0;
+				peakr = 0.0;
+				peaktimelag = 0.0;
+				for (int k = 0; k < nlag; k++) {
+					timelag = lagstart + k * lagstep;
+					if (timelag >= lagstart && timelag <= lagend) {
+						if (rr[k] > maxr) {
+							maxr = rr[k];
+							maxtimelag = timelag;
+						}
+						if (k == 0) {
+							peakk = k;
+							peakr = rr[k];
+							peaktimelag = timelag;
+						}
+						else if (k < nlag - 1 && rr[k] > 0.0 && rr[k] > rr[k - 1] && rr[k] > rr[k + 1] &&
+						         (peaktimelag == lagstart || rr[k] > peakr)) {
+							peakk = k;
+							peakr = rr[k];
+							peaktimelag = timelag;
+						}
+						else if (k == nlag - 1 && peaktimelag == lagstart && rr[k] > peakr) {
+							peakk = k;
+							peakr = rr[k];
+							peaktimelag = timelag;
+						}
+					}
+				}
+			}
+
+			/* print out best correlated time lag estimates */
+			if (peakr > rthreshold) {
+				timelaghistogram[peakk]++;
+
+				/* augment histogram */
+				fprintf(fpe, "%10.3f %6.3f\n", slope_time_d[(j0 + j1) / 2], peaktimelag);
+				fprintf(fpf, "%6.3f\n", peaktimelag);
+				fprintf(fph, "%6.3f\n", peaktimelag);
+				// sum_x += slope_time_d[(j0 + j1) / 2];
+				// sum_y += peaktimelag;
+				// sum_xy += slope_time_d[(j0 + j1) / 2] * peaktimelag;
+				// sum_x2 += slope_time_d[(j0 + j1) / 2] * slope_time_d[(j0 + j1) / 2];
+				// sum_y2 += peaktimelag * peaktimelag;
+				nestimate++;
+			}
+
+			/* print out max and closest peak cross correlations */
+			if (verbose > 0) {
+				fprintf(stderr, "cross correlation pings %5d - %5d: max: %6.3f %5.3f  peak: %6.3f %5.3f\n", j0, j1, maxtimelag,
+				        maxr, peaktimelag, peakr);
+			}
+		}
+
+		/* close cross correlation and histogram files */
+		fclose(fpx);
+		fclose(fpf);
+
+		/* generate plot shellscript for cross correlation file */
+		snprintf(cmdfile, sizeof(cmdfile), "mbm_xyplot -I%s -N", xcorfile);
+		fprintf(stderr, "Running: %s...\n", cmdfile);
+		/* int shellstatus = */ system(cmdfile);
+
+		/* generate plot shellscript for time lag histogram */
+		snprintf(cmdfile, sizeof(cmdfile), "mbm_histplot -I%s -C%g -L\"Frequency Histogram of %s:Time Lag (sec):Frequency:\"", fhistfile, lagstep,
+		        swathfile);
+		fprintf(stderr, "Running: %s...\n", cmdfile);
+		/* int shellstatus = */ system(cmdfile);
+
+		/* output peak time lag */
+		peakk = 0;
+		int peakkmax = 0;
+		int peakksum = 0;
+		timelag = 0.0;
+		for (int k = 0; k < nlag; k++) {
+			if (timelaghistogram[k] > peakkmax) {
+				peakkmax = timelaghistogram[k];
+				peakk = k;
+			}
+			peakksum += timelaghistogram[k];
+		}
+		if (nslope > 0 && peakksum > 0 && peakkmax > 1 && peakkmax > peakksum / 5) {
+			timelag = lagstart + peakk * lagstep;
+			fprintf(fpm, "%f %f\n", time_d_avg, timelag);
+			nmodel++;
+			fprintf(stderr, "Time lag model point: %f %f | nslope:%d peakksum:%d peakkmax:%d\n", time_d_avg, timelag, nslope,
+			        peakksum, peakkmax);
+		}
+		else {
+			if (peakkmax > 0)
+				timelag = lagstart + peakk * lagstep;
+			fprintf(stderr, "Time lag model point: %f %f | nslope:%d peakksum:%d peakkmax:%d | REJECTED\n", time_d_avg, timelag,
+			        nslope, peakksum, peakkmax);
+		}
+
+		/* figure out whether and what to read next */
+		if (read_datalist) {
+			double file_weight;
+			read_data = mb_datalist_read(verbose, datalist, swathfile, dfile, &format, &file_weight, &error) == MB_SUCCESS;
+		} else {
+			read_data = false;
+		}
+
+		/* end loop over files in list */
+	}
+	if (read_datalist) {
+		mb_datalist_close(verbose, &datalist, &error);
+		fclose(fpt);
+	}
+
+	fclose(fpe);
+	fclose(fph);
+	fclose(fpm);
+
+	/* generate plot shellscript for cross correlation file */
+	if (read_datalist) {
+		snprintf(cmdfile, sizeof(cmdfile), "mbm_xyplot -I%s -N -L\"Roll Correlation With Acrosstrack Slope:Time Lag (sec):Correlation:\"",
+		        xcorfiletot);
+		fprintf(stderr, "Running: %s...\n", cmdfile);
+		/* int shellstatus = */ system(cmdfile);
+	}
+
+	/* generate plot shellscript for time lag histogram */
+	snprintf(cmdfile, sizeof(cmdfile), "mbm_histplot -I%s -C%g -L\"Frequency Histogram of %s:Time Lag (sec):Frequency:\"", histfile, lagstep,
+	        swathdata);
+	fprintf(stderr, "Running: %s...\n", cmdfile);
+	/* int shellstatus = */ system(cmdfile);
+
+	/* generate plot shellscript for time lag model if it exists */
+	if (nmodel > 1 || nestimate > 1) {
+		// const double mmm = (nestimate * sum_xy - sum_x * sum_y) / (nestimate * sum_x2 - sum_x * sum_x);
+		// const double bbb = (sum_y - mmm * sum_x) / nestimate; */
+
+		snprintf(cmdfile, sizeof(cmdfile), "mbm_xyplot -I%s -ISc0.05:%s -I%s -ISc0.1:%s -L\"Time lag model of %s:Time (sec):Time Lag (sec):\"",
+		        modelfile, estimatefile, modelfile, modelfile, swathdata);
+		fprintf(stderr, "Running: %s...\n", cmdfile);
+		/* shellstatus = */ system(cmdfile);
+	}
+
+	/* deallocate memory for data arrays */
+	mb_freed(verbose, __FILE__, __LINE__, (void **)&slope_time_d, &error);
+	mb_freed(verbose, __FILE__, __LINE__, (void **)&slope_slope, &error);
+	mb_freed(verbose, __FILE__, __LINE__, (void **)&slope_roll, &error);
+	mb_freed(verbose, __FILE__, __LINE__, (void **)&roll_time_d, &error);
+	mb_freed(verbose, __FILE__, __LINE__, (void **)&roll_roll, &error);
+	mb_freed(verbose, __FILE__, __LINE__, (void **)&rr, &error);
+	mb_freed(verbose, __FILE__, __LINE__, (void **)&timelaghistogram, &error);
+
+	/* check memory */
+	if (verbose >= 4)
+		status &= mb_memory_list(verbose, &error);
+
+	/* give the statistics */
+	if (verbose >= 1) {
+		fprintf(stderr, "\n%d input roll records\n", nroll);
+		fprintf(stderr, "%d input slope\n", nslopetot);
+	}
+
+	if (status == MB_FAILURE) {
+		fprintf(stderr, "WARNING: status is MB_FAILURE\n");
+	}
+
+	Return(error);
+}
+/*--------------------------------------------------------------------*/

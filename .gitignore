@@ -1,4 +1,5 @@
 *.DS_Store
+__pycache__/
 .deps
 /aclocal.m4
 /Makefile
@@ -96,6 +97,8 @@ src/utilities/mbminirovnav
 src/utilities/mbmosaic
 src/utilities/mbnavlist
 src/deprecated/mbneptune2esf
+src/deprecated/mbotpsold
+src/deprecated/otps.h
 src/utilities/mbpreprocess
 src/utilities/mbprocess
 src/deprecated/mbrollbias
@@ -246,3 +249,4 @@ src/utilities/mbswplspreprocess
 includes.txt
 cppcheck.txt
 WINDOWS_PORTING_SESSION.md
+*.history

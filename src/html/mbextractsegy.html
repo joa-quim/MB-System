@@ -11,7 +11,7 @@
 <CENTER><H3><U>MB-System Unix Manual Page</U></H3></CENTER>
 <PRE>
 <H1>mbextractsegy</H1>
-Section:  MB-System 5.0  (1)<BR>Updated:  10 March 2024 <BR><A HREF="#index">Index</A>
+Section:  MB-System 5.0  (1)<BR>Updated:  7 September 2026 <BR><A HREF="#index">Index</A>
 <HR>
 
 <A NAME="lbAB">&nbsp;</A>
@@ -29,11 +29,55 @@ Version 5.0
 <A NAME="lbAD">&nbsp;</A>
 <H2>SYNOPSIS</H2>
 
-<B>mbextractsegy</B> [<B>-B</B><I>yr/mo/da/hr/mn/sc</I> <B>-E</B><I>yr/mo/da/hr/mn/sc</I>
-<B>-F</B><I>format</I> <B>-I</B><I>file</I> <B>-J</B><I>xscale/yscale/maxwidth</I>
-<B>-L</B><I>startline/lineroot</I> <B>-M -O</B><I>segyfile</I> <B>-Q</B><I>routetimefile</I>
-<B>-R</B><I>routefile</I> <B>-S</B><I>sampleformat</I>
-<B>-T</B><I>timeshift</I> <B>-U</B><I>rangethreshold</I> <B>-Z</B><I>plotmax</I> <B>-V -H</B>]
+<B>mbextractsegy</B>
+<BR>
+
+[--begin-time=yr/mo/da/hr/mn/sc/us {-Byr/mo/da/hr/mn/sc/us}
+<BR>
+
+--check-route-bearing {-M}
+<BR>
+
+--end-time=yr/mo/da/hr/mn/sc/us {-Eyr/mo/da/hr/mn/sc/us}
+<BR>
+
+--format=format {-Fformat}
+<BR>
+
+--help {-H}
+<BR>
+
+--input=file {-Ifile}
+<BR>
+
+--output=segyfile {-Osegyfile}
+<BR>
+
+--plot-max=plotmax {-Zplotmax}
+<BR>
+
+--plot-scale=xscale/yscale/maxwidth {-Jxscale/yscale/maxwidth}
+<BR>
+
+--range-threshold=rangethreshold {-Urangethreshold}
+<BR>
+
+--route=routefile {-Rroutefile}
+<BR>
+
+--sample-format=sampleformat {-Ssampleformat}
+<BR>
+
+--start-line=startline/lineroot {-Lstartline/lineroot}
+<BR>
+
+--time-list=timelistfile {-Qtimelistfile}
+<BR>
+
+--time-shift=timeshift {-Ttimeshift}
+<BR>
+
+--verbose {-V}]
 <P>
 <A NAME="lbAE">&nbsp;</A>
 <H2>DESCRIPTION</H2>
@@ -102,12 +146,9 @@ Christian do Santos Ferreira
 <H2>OPTIONS</H2>
 
 <DL COMPACT>
-<DT><B>-B</B>
+<DT><B>--begin-time=yr/mo/da/hr/mn/sc/us -Byr/mo/da/hr/mn/sc/us</B>
 
 <DD>
-<I>yr/mo/da/hr/mn/sc</I>
-<BR>
-
 This option sets the starting time for data allowed in the input data.
 The <B>-E</B> option sets the ending time for data. If the
 starting time is before the ending time, then any data
@@ -117,11 +158,9 @@ after the ending time, then any data between the ending
 and starting time will be ignored. This scheme allows time
 windowing both inside and outside a specified interval.
 Default: <I>yr/mo/da/hr/mn/sc</I> = 1962/2/21/10/30/0.
-<B>-E</B>
+<DT><B>--end-time=yr/mo/da/hr/mn/sc/us -Eyr/mo/da/hr/mn/sc/us</B>
 
-<I>yr/mo/da/hr/mn/sc</I>
-<BR>
-
+<DD>
 This option sets the ending time for data allowed in the input data.
 The <B>-B</B> option sets the starting time for data. If the
 starting time is before the ending time, then any data
@@ -131,12 +170,9 @@ after the ending time, then any data between the ending
 and starting time will be ignored. This scheme allows time
 windowing both inside and outside a specified interval.
 Default: <I>yr/mo/da/hr/mn/sc</I> = 2062/2/21/10/30/0.
-<DT><B>-F</B>
+<DT><B>--format=format -Fformat</B>
 
 <DD>
-<I>format</I>
-<BR>
-
 Sets the data format used if the input is read from stdin
 or from a file. If <I>format</I> &lt; 0, then the input file specified
 with the <B>-I</B> option will actually contain a list of input swath sonar
@@ -146,17 +182,14 @@ format supported by <B>MBIO</B>. A list of the swath sonar data formats
 currently supported by <B>MBIO</B> and their identifier values
 is given in the <B>MBIO</B> manual page. The default format is set
 using the program <B>mbdefaults</B>..
-<DT><B>-H</B>
+<DT><B>--help -H</B>
 
 <DD>
 This &quot;help&quot; flag cause the program to print out a description
 of its operation and then exit immediately.
-<DT><B>-I</B>
+<DT><B>--input=file -Ifile</B>
 
 <DD>
-<I>infile</I>
-<BR>
-
 Sets the input file path. If <I>format</I> &gt; 0 (set with the
 <B>-f</B> option or <B>mbdefaults</B>) then the swath sonar data contained in <I>infile</I>
 is read and processed. If <I>format</I> &lt; 0, then <I>infile</I>
@@ -173,50 +206,37 @@ This program uses the <B>MBIO</B> library and will read or write any swath sonar
 format supported by <B>MBIO</B>. A list of the swath sonar data formats
 currently supported by <B>MBIO</B> and their identifier values
 is given in the <B>MBIO</B> manual page. Default: <I>infile</I> = &quot;stdin&quot;.
-<DT><B>-J</B>
+<DT><B>--plot-scale=xscale/yscale/maxwidth -Jxscale/yscale/maxwidth</B>
 
 <DD>
-<I>xscale/yscale/maxwidth</I>
-<BR>
-
 Sets the scale of the default section plots. The <I>xscale</I> value is
 in inches per shot, and the <I>yscale</I> value is in inches per second.
 The <I>maxwidth</I> value sets the maximum plot width in inches. If
 <I>xscale</I> and the shot range imply a width greater than <I>maxwidth</I>,
 then the section will be broken up into multiple plots.
 Default: <I>xscale</I> = 0.01; <I>yscale</I> = 50.0; <I>maxwidth</I> = 30.0
-<DT><B>-L</B>
+<DT><B>--start-line=startline/lineroot -Lstartline/lineroot</B>
 
 <DD>
-<I>startline/lineroot</I>
-<BR>
-
 This option sets the starting line number and the output filename root
 used when <B>-R</B> is specified so that data are output according
 to planned survey lines. Default: <I>startline</I> = 1; <I>lineroot</I> = &quot;sbp&quot;.
-<DT><B>-M</B>
+<DT><B>--check-route-bearing -M</B>
 
 <DD>
-<BR>
-
 This option causes <B>mbextractsegy</B> to omit data during turns when
 extracting into line files according to a specified set of waypoints
 (<B>-R</B> option). The traces will not be output until the heading is
 within 15 degrees of the next survey line's bearing.
-<DT><B>-O</B>
+<DT><B>--output=segyfile -Osegyfile</B>
 
 <DD>
-<BR>
-
 This option sets the output SEGY file path. If neither <B>-O</B> nore <B>-R</B> are invoked,
 the output SEGY filename (or files if a datalist is being processed) will
 be the input swath filename with &quot;.segy&quot; appended.
-<DT><B>-Q</B>
+<DT><B>--time-list=timelistfile -Qtimelistfile</B>
 
 <DD>
-<I>routetimefile</I>
-<BR>
-
 This option specifies route file containing the times that the survey reached
 the intended waypoints. This text file consists of lines of the form:
 <BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>count&nbsp;waypoint&nbsp;longitude&nbsp;latitude&nbsp;heading&nbsp;time_d<BR>
@@ -235,12 +255,9 @@ the line number starting with <I>starline</I>, both of which are specified
 using the <B>-L</B> options.  If neither <B>-O</B> nore <B>-R</B> are invoked,
 the output SEGY filename (or files if a datalist is being processed) will
 be the input swath filename with &quot;.segy&quot; appended.
-<DT><B>-R</B>
+<DT><B>--route=routefile -Rroutefile</B>
 
 <DD>
-<I>routefile</I>
-<BR>
-
 This option specifies an <B>mbgrdviz</B> route file containing the intended
 waypoints of the survey. If <I>routefile</I> is specified, <B>mbextractsegy</B>
 will output SEGY data in files corresponding to the planned survey lines.
@@ -249,12 +266,9 @@ the line number starting with <I>starline</I>, both of which are specified
 using the <B>-L</B> options.  If neither <B>-O</B> nore <B>-R</B> are invoked,
 the output SEGY filename (or files if a datalist is being processed) will
 be the input swath filename with &quot;.segy&quot; appended.
-<DT><B>-S</B>
+<DT><B>--sample-format=sampleformat -Ssampleformat</B>
 
 <DD>
-<I>sampleformat</I>
-<BR>
-
 Sets the sample format desired for use in the output SEGY data, which in turn
 determines how many SEGY files are output. Each SEGY file will contain one
 trace per ping (or shot); outputting multiple traces per ping creates
@@ -283,23 +297,17 @@ envelope function calculated from the analytic time series. In the case of
 MB_SEGY_SAMPLEFORMAT_ANALYTIC, then there will be three traces (and three
 SEGY files) output, the real part of the analytic data, the imaginary part
 of the analytic data, and the envelope function calculated from the analytic data.
-<DT><B>-T</B>
+<DT><B>--time-shift=timeshift -Ttimeshift</B>
 
 <DD>
-<I>timeshift</I>
-<BR>
-
 This option applies a time shift of <I>timeshift</I> seconds to the
 timestamps stored in the output SEGY trace headers. A positive
 <I>timeshift</I> value shifts the trace timestamps later; a negative
 value shifts them earlier. Default: <I>timeshift</I> = 0.0 (no time
 shift applied).
-<DT><B>-U</B>
+<DT><B>--range-threshold=rangethreshold -Urangethreshold</B>
 
 <DD>
-<I>rangethreshold</I>
-<BR>
-
 If the <B>-R</B> option is specified, <B>mbextractsegy</B> breaks up the
 output into files corresponding to survey lines specified in a route file.
 This option sets the threshold distance in meters used to determine when
@@ -307,15 +315,12 @@ a waypoint along the route has been reached; the program considers the
 next waypoint reached when the range to the waypoint becomes smaller
 than <I>rangethreshold</I> and then ceases to decrease.
 Default: <I>rangethreshold</I> = 25 m.
-<DT><B>-Z</B>
+<DT><B>--plot-max=plotmax -Zplotmax</B>
 
 <DD>
-<I>plotmax</I>
-<BR>
-
 Specifies the trace value corresponding to the maximum grayscale (black)
 in the section plots. Default: <I>plotmax</I> = 50.
-<DT><B>-V</B>
+<DT><B>--verbose -V</B>
 
 <DD>
 This option increases the verbosity of <B>mbextractsegy</B>, causing it
@@ -458,7 +463,7 @@ reflection data..
 </PRE>
 
 <CENTER><P><BR>
-Last Updated: 10 March 2024</P></CENTER>
+Last Updated: 7 September 2026</P></CENTER>
 
 <HR>
 <center>

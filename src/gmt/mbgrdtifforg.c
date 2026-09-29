@@ -1673,7 +1673,7 @@ int GMT_mbgrdtiff(void *V_API, int mode, void *args) {
 	}
 
 	/* open TIFF file */
-	FILE *tfp = fopen(Ctrl->O.file, "w");
+	FILE *tfp = fopen(Ctrl->O.file, "wb");
 	if (tfp == NULL) {
 		API->error++;
 		return (API->error);

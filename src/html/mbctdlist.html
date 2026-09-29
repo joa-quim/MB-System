@@ -11,7 +11,7 @@
 <CENTER><H3><U>MB-System Unix Manual Page</U></H3></CENTER>
 <PRE>
 <H1>mbctdlist</H1>
-Section:  MB-System 5.0  (1)<BR>Updated:  3 June 2013 <BR><A HREF="#index">Index</A>
+Section:  MB-System 5.0  (1)<BR>Updated:  7 September 2026 <BR><A HREF="#index">Index</A>
 <HR>
 
 <A NAME="lbAB">&nbsp;</A>
@@ -27,9 +27,37 @@ Version 5.0
 <A NAME="lbAD">&nbsp;</A>
 <H2>SYNOPSIS</H2>
 
-<B>mbctdlist</B> [<B>-A</B> <B>-D</B><I>decimate</I> <B>-F</B><I>format</I>
-<B>-G</B><I>delimeter</I> <B>-H</B> <B>-I</B><I>file </I>
-<B>-O</B><I>output_format</I> <B>-V</B> <B>-Z</B><I>segment</I>]
+<B>mbctdlist</B>
+<BR>
+
+[--binary {-A}
+<BR>
+
+--decimate=decimate {-Ddecimate}
+<BR>
+
+--format=format {-Fformat}
+<BR>
+
+--delimiter=delimiter {-Gdelimeter}
+<BR>
+
+--help {-H}
+<BR>
+
+--input=file {-Ifile}
+<BR>
+
+--longitude-domain=lonflip {-Llonflip}
+<BR>
+
+--output-format=output_format {-Ooutput_format}
+<BR>
+
+--verbose {-V}
+<BR>
+
+--segment=segment {-Zsegment}]
 <P>
 <A NAME="lbAE">&nbsp;</A>
 <H2>DESCRIPTION</H2>
@@ -83,11 +111,9 @@ Christian do Santos Ferreira
 <H2>OPTIONS</H2>
 
 <DL COMPACT>
-<DT><B>-A</B>
+<DT><B>--binary -A</B>
 
 <DD>
-<BR>
-
 Causes the output to be binary (native double precision floating
 point) rather than ASCII. Some
 output options cannot be represented as single binary floats (e.g.
@@ -95,46 +121,34 @@ time strings and longitude or latitude broken into degrees
 and minutes. These values are output as multiple fields as
 appropriate.
 Default: ASCII output with fields separated by tabs.
-<DT><B>-D</B>
+<DT><B>--decimate=decimate -Ddecimate</B>
 
 <DD>
-<I>decimate</I>
-<BR>
-
 Sets the decimation of the output data. By default (i.e. <I>decimate</I>=1),
 every available data record is output. If <I>decimate</I>&gt;1, then only
 every &quot;<I>decimate</I>&quot;th record will be output. Default: <I>decimate</I>=1.
-<DT><B>-F</B>
+<DT><B>--format=format -Fformat</B>
 
 <DD>
-<I>format</I>
-<BR>
-
 Sets the format for the input swath sonar data using
 <B>MBIO</B> integer format identifiers.
 This program uses the <B>MBIO</B> library and will read any swath sonar
 format supported by <B>MBIO</B>. A list of the swath sonar data formats
 currently supported by <B>MBIO</B> and their identifier values
 is given in the <B>MBIO</B> manual page. Default: <I>format</I> = 11.
-<DT><B>-G</B>
+<DT><B>--delimiter=delimiter -Gdelimeter</B>
 
 <DD>
-<I>delimiter</I>
-<BR>
-
 Sets the character(s) used to separate output fields when ascii
 columns are output. Default: tabs are used as delimiters.
-<DT><B>-H</B>
+<DT><B>--help -H</B>
 
 <DD>
 This &quot;help&quot; flag cause the program to print out a description
 of its operation and then exit immediately.
-<DT><B>-I</B>
+<DT><B>--input=file -Ifile</B>
 
 <DD>
-<I>file</I>
-<BR>
-
 Sets the input filename. If <I>format</I> &gt; 0 (set with the
 <B>-F</B> option) then the swath sonar data contained in <I>file</I>
 is read and processed. If <I>format</I> &lt; 0, then <I>file</I>
@@ -154,12 +168,9 @@ A list of the swath sonar data formats
 currently supported by <B>MBIO</B> and their identifier values
 is given in the <B>MBIO</B> manual page.
 Default: <I>file</I> = &quot;datalist.mb-1&quot;.
-<DT><B>-L</B>
+<DT><B>--longitude-domain=lonflip -Llonflip</B>
 
 <DD>
-<I>lonflip</I>
-<BR>
-
 Sets the range of the longitude values returned.
 If <I>lonflip</I>=-1 then the longitude values will be in
 the range from -360 to 0 degrees. If <I>lonflip</I>=0
@@ -168,15 +179,22 @@ the range from -180 to 180 degrees. If <I>lonflip</I>=1
 then the longitude values will be in
 the range from 0 to 360 degrees.
 Default: <I>lonflip</I> = 0.
-<DT><B>-O</B>
+<DT><B>--output-format=output_format -Ooutput_format</B>
 
 <DD>
-<I>output_format</I>
-<BR>
-
 Determines the form of the output. <I>Output_format</I> is a string composed
 of one or more of the following characters:
 <P>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>/</B>&nbsp;&nbsp;inverts&nbsp;the&nbsp;next&nbsp;simple&nbsp;value&nbsp;(e.g.&nbsp;1/value)<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>-</B>&nbsp;&nbsp;flips&nbsp;the&nbsp;sign&nbsp;of&nbsp;the&nbsp;next&nbsp;simple&nbsp;value<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>1</B>&nbsp;&nbsp;for&nbsp;sensor&nbsp;1&nbsp;value&nbsp;(volts)<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>2</B>&nbsp;&nbsp;for&nbsp;sensor&nbsp;2&nbsp;value&nbsp;(volts)<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>3</B>&nbsp;&nbsp;for&nbsp;sensor&nbsp;3&nbsp;value&nbsp;(volts)<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>4</B>&nbsp;&nbsp;for&nbsp;sensor&nbsp;4&nbsp;value&nbsp;(volts)<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>5</B>&nbsp;&nbsp;for&nbsp;sensor&nbsp;5&nbsp;value&nbsp;(volts)<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>6</B>&nbsp;&nbsp;for&nbsp;sensor&nbsp;6&nbsp;value&nbsp;(volts)<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>7</B>&nbsp;&nbsp;for&nbsp;sensor&nbsp;7&nbsp;value&nbsp;(volts)<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>8</B>&nbsp;&nbsp;for&nbsp;sensor&nbsp;8&nbsp;value&nbsp;(volts)<BR>
 <BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>C</B>&nbsp;&nbsp;for&nbsp;conductivity&nbsp;(S/m)<BR>
 <BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>^C</B>&nbsp;for&nbsp;sonar&nbsp;altitude&nbsp;(meters)<BR>
 <BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>c</B>&nbsp;&nbsp;for&nbsp;temperature&nbsp;(degree&nbsp;C)<BR>
@@ -207,21 +225,18 @@ of one or more of the following characters:
 <BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>Y</B>&nbsp;&nbsp;for&nbsp;latitude&nbsp;(decimal&nbsp;degrees)<BR>
 <BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><B>y</B>&nbsp;&nbsp;for&nbsp;latitude&nbsp;(degrees&nbsp;+&nbsp;decimal&nbsp;minutes&nbsp;+&nbsp;N/S)<BR>
 <P>
-Default <I>output_format</I> = <B>TXYCc^cSs</B> (Time, lon, lat, conductivity,
-temperature, depth, salinity, sound speed).
-<DT><B>-V</B>
+Default <I>output_format</I> = <B>TXYHCc^cSs</B> (Time, lon, lat, heading,
+conductivity, temperature, depth, salinity, sound speed).
+<DT><B>--verbose -V</B>
 
 <DD>
 Normally, <B>mbctdlist</B> works &quot;silently&quot; without outputting
 anything to the stderr stream.  If the
 <B>-V</B> flag is given, then <B>mbctdlist</B> works in a &quot;verbose&quot; mode and
 outputs the program version being used and all error status messages.
-<DT><B>-Z</B>
+<DT><B>--segment=segment -Zsegment</B>
 
 <DD>
-<I>segment</I>
-<BR>
-
 Causes the ascii output of different input swath files
 (e.g. when a datalist is specified with the <B>-I</B> option)
 to be separated by lines with <I>segment</I>. If <I>segment</I>
@@ -229,7 +244,7 @@ is a single character, then the output is a multiple segment
 file of the sort accepted by the <B>GMT</B> program <B>psxy</B>.
 This option only works with ascii output, and is thus disabled
 when the <B>-A</B> option is specified. The most common usage
-is <B>-Z</B>I&gt;.
+is <B>-Z</B><I>&gt;</I>.
 <P>
 </DL>
 <A NAME="lbAH">&nbsp;</A>
@@ -280,7 +295,7 @@ supporting Reson 7k series multibeam sonars.
 </PRE>
 
 <CENTER><P><BR>
-Last Updated: 3 June 2013</P></CENTER>
+Last Updated: 7 September 2026</P></CENTER>
 
 <HR>
 <center>

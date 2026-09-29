@@ -62,7 +62,11 @@ the value at a location (with an LLA query point) will work fine.
 #include "OctreeSupport.hpp"
 #include "Octree.hpp"
 #include <iostream>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 
 
 //#define OUTFILE "tripleIsland.bo"

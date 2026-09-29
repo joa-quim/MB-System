@@ -273,14 +273,14 @@ int mb_copyfile(int verbose, const char *src, const char *dst, int *error)
       *error = MB_ERROR_MEMORY_FAIL;
       return(status); 
     }
-    FILE *hin = fopen(src, "r");
+    FILE *hin = fopen(src, "rb");
     if (!hin) { 
       free(buf); 
       status = MB_FAILURE;
       *error = MB_ERROR_OPEN_FAIL;
       return(status);
     }
-    FILE *hout = fopen(dst, "w");
+    FILE *hout = fopen(dst, "wb");
     if (!hout) { 
       free(buf); 
       fclose(hin); 
@@ -357,14 +357,14 @@ int mb_catfiles(int verbose, const char *src1, const char *src2, const char *dst
 
     /* src1 == dst so concatenate src2 onto src1 in place */
     if (strcmp(src1, dst) == 0) {
-      FILE *hin = fopen(src2, "r");
+      FILE *hin = fopen(src2, "rb");
       if (!hin) { 
         free(buf); 
         status = MB_FAILURE;
         *error = MB_ERROR_OPEN_FAIL;
         return(status);
       }
-      FILE *hout = fopen(dst, "a");
+      FILE *hout = fopen(dst, "ab");
       if (!hout) { 
         free(buf); 
         fclose(hin); 
@@ -398,14 +398,14 @@ int mb_catfiles(int verbose, const char *src1, const char *src2, const char *dst
  
     /* src1 != dst so concatenate src2 onto src1 in dst */
     else {
-      FILE *hin = fopen(src1, "r");
+      FILE *hin = fopen(src1, "rb");
       if (!hin) { 
         free(buf); 
         status = MB_FAILURE;
         *error = MB_ERROR_OPEN_FAIL;
         return(status);
       }
-      FILE *hout = fopen(dst, "w");
+      FILE *hout = fopen(dst, "wb");
       if (!hout) { 
         free(buf); 
         fclose(hin); 
@@ -426,7 +426,7 @@ int mb_catfiles(int verbose, const char *src1, const char *src2, const char *dst
         }
       }
       fclose(hin);
-      hin = fopen(src2, "r");
+      hin = fopen(src2, "rb");
       if (!hin) { 
         free(buf); 
         status = MB_FAILURE;

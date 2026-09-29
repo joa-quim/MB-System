@@ -42,13 +42,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <limits>
 
 #include "mb_aux.h"
 #include "mb_define.h"
 #include "mb_format.h"
-#include "mb_info.h"
 #include "mb_io.h"
 #include "mb_process.h"
 #include "mb_status.h"
@@ -328,7 +331,7 @@ int write_oldgrd(int verbose, char *outfile, float *grid, int nx, int ny, double
 
 	int status = MB_SUCCESS;
 
-	FILE *fp = fopen(outfile, "w");
+	FILE *fp = fopen(outfile, "wb");
 	if (fp == nullptr) {
 		*error = MB_ERROR_OPEN_FAIL;
 		status = MB_FAILURE;
@@ -2598,13 +2601,13 @@ int main(int argc, char **argv) {
 						    mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_SIDESCAN, sizeof(double), (void **)&sslat, &error);
 					if (datatype != MBMOSAIC_DATA_SIDESCAN) {
 						if (error == MB_ERROR_NO_ERROR)
-							status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_AMPLITUDE, sizeof(double),
+							status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double),
 							                           (void **)&gangles, &error);
 						if (error == MB_ERROR_NO_ERROR)
-							status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_AMPLITUDE, sizeof(double), (void **)&slopes,
+							status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), (void **)&slopes,
 							                           &error);
 						if (error == MB_ERROR_NO_ERROR)
-							status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_AMPLITUDE, sizeof(double),
+							status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double),
 							                           (void **)&priorities, &error);
 						if (error == MB_ERROR_NO_ERROR)
 							status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_AMPLITUDE, sizeof(struct footprint),
@@ -3160,10 +3163,13 @@ int main(int argc, char **argv) {
 						    mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_SIDESCAN, sizeof(double), (void **)&sslat, &error);
 					if (datatype != MBMOSAIC_DATA_SIDESCAN) {
 						if (error == MB_ERROR_NO_ERROR)
-							status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_AMPLITUDE, sizeof(double),
+							status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double),
 							                           (void **)&gangles, &error);
 						if (error == MB_ERROR_NO_ERROR)
-							status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_AMPLITUDE, sizeof(double),
+							status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double),
+							                           (void **)&slopes, &error);
+						if (error == MB_ERROR_NO_ERROR)
+							status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double),
 							                           (void **)&priorities, &error);
 						if (error == MB_ERROR_NO_ERROR)
 							status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_AMPLITUDE, sizeof(struct footprint),

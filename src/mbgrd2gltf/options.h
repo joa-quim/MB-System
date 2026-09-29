@@ -37,7 +37,20 @@
 // standard library
 #include <string>
 
+struct mbgrd2gltf_options;   /* the plain C mirror, see mbgrd2gltf_capi.h */
+
 namespace mbgrd2gltf {
+
+/* Split of a grid path into its folder and extension-less basename. Used by
+ * the option parser to derive the default output root, and by the GMT module
+ * bridge so the two agree. */
+struct PathInfo {
+  std::string folder;
+  std::string file_basename;
+};
+
+PathInfo get_path_info(const char* filepath);
+
 class Options {
 private: // members
   std::string _input_filepath;
@@ -59,6 +72,10 @@ private: // members
 
 public: // members
   Options(unsigned argc, const char** argv);
+
+  /* Builds the options from the plain C mirror the GMT module fills in,
+   * instead of from a command line. */
+  explicit Options(const struct mbgrd2gltf_options& options);
 
   const std::string& input_filepath() const { return _input_filepath; }
   const std::string& output_filepath() const { return _output_filepath; }

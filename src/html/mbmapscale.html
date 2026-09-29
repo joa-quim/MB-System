@@ -11,7 +11,7 @@
 <CENTER><H3><U>MB-System Unix Manual Page</U></H3></CENTER>
 <PRE>
 <H1>mbmapscale</H1>
-Section:  MB-System 5.0  (1)<BR>Updated:  2026 <BR><A HREF="#index">Index</A>
+Section:  MB-System 5.0  (1)<BR>Updated:  7 September 2026 <BR><A HREF="#index">Index</A>
 <HR>
 
 <A NAME="lbAB">&nbsp;</A>
@@ -28,7 +28,19 @@ Version 5.0
 <A NAME="lbAD">&nbsp;</A>
 <H2>SYNOPSIS</H2>
 
-<B>mbmapscale</B> [<B>-L</B><I>latitude</I> <B>-A -V -H</B>]
+<B>mbmapscale</B>
+<BR>
+
+[--alvinxy {-A}
+<BR>
+
+--help {-H}
+<BR>
+
+--latitude=latitude {-Llatitude}
+<BR>
+
+--verbose {-V}]
 <P>
 <A NAME="lbAE">&nbsp;</A>
 <H2>DESCRIPTION</H2>
@@ -77,27 +89,26 @@ Christian do Santos Ferreira
 <H2>OPTIONS</H2>
 
 <DL COMPACT>
-<DT><B>-H</B>
-
-<DD>
-This &quot;help&quot; flag causes the program to print out a description
-of its operation and then exit immediately.
-<DT><B>-A</B>
+<DT><B>--alvinxy -A</B>
 
 <DD>
 Calculate the map scale using the 1866 Clark Spheroid as employed by
 the AlvinXY local coordinate convention, rather than the default WGS72
 ellipsoid.
-<DT><B>-L</B>
+<DT><B>--help -H</B>
 
 <DD>
-<I>latitude</I>
+This &quot;help&quot; flag causes the program to print out a description
+of its operation and then exit immediately.
+<DT><B>--latitude=latitude -Llatitude</B>
+
+<DD>
 <BR>
 
 Sets the latitude (in decimal degrees, positive north) at which the
 map scale is calculated. If <B>-L</B> is not specified, the scale is
 calculated at the equator (latitude 0.0).
-<DT><B>-V</B>
+<DT><B>--verbose -V</B>
 
 <DD>
 Normally, <B>mbmapscale</B> only prints out the calculated scale values.
@@ -158,7 +169,7 @@ Never bugs, but perhaps our good friends, the terrestrial isopods.
 </PRE>
 
 <CENTER><P><BR>
-Last Updated: 2026" "MB-System 5.0</P></CENTER>
+Last Updated: 7 September 2026</P></CENTER>
 
 <HR>
 <center>

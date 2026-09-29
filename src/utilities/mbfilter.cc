@@ -48,8 +48,11 @@
 #include <cstring>
 #include <ctime>
 #include <getopt.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_define.h"
 #include "mb_format.h"
 #include "mb_io.h"
@@ -1158,7 +1161,15 @@ int main(int argc, char **argv) {
 	/* buffer handling parameters */
 	int nreadtot = 0;
 	int nwritetot = 0;
-	struct mbfilter_ping_struct ping[MBFILTER_BUFFER_DEFAULT];
+	/* MBFILTER_BUFFER_DEFAULT pings take about 1.25 MB - more than the whole
+	   default Windows stack - so the buffer lives on the heap */
+	struct mbfilter_ping_struct *ping = static_cast<struct mbfilter_ping_struct *>(
+	    calloc(MBFILTER_BUFFER_DEFAULT, sizeof(struct mbfilter_ping_struct)));
+	if (ping == nullptr) {
+		fprintf(stderr, "\nUnable to allocate the ping buffer\n");
+		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
+		exit(MB_ERROR_MEMORY_FAIL);
+	}
 
 	double *weights;
 	double *values;
@@ -1767,6 +1778,8 @@ int main(int argc, char **argv) {
   if ((status = mb_memory_list(verbose, &error)) == MB_FAILURE) {
     fprintf(stderr, "Program %s completed but failed to deallocate all allocated memory - the code has a memory leak somewhere!\n", program_name);
   }
+
+	free(ping);
 
 	exit(error);
 }

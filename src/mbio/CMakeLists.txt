@@ -193,10 +193,9 @@ if(buildGSF)
   set(SRC ${SRC} mbsys_gsf.c mbr_gsfgenmb.c)
 endif()
 
-set(HEADERS 
+set(HEADERS
     mb_define.h
     mb_format.h
-    mb_info.h
     mb_io.h
     mb_process.h
     mb_segy.h
@@ -217,10 +216,17 @@ target_include_directories(mbio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 if(buildGSF)
   target_link_libraries(mbio PRIVATE mbgsf)
 endif()
-target_link_libraries(
-  mbio
-  PRIVATE NetCDF::NetCDF mbbitpack mbbsio mbsapi LibPROJ::LibPROJ
-  PUBLIC TIRPC::TIRPC m)
+if(WIN32)
+  target_link_libraries(
+    mbio
+    PRIVATE NetCDF::NetCDF mbbitpack mbbsio mbsapi LibPROJ::LibPROJ
+    PUBLIC TIRPC::TIRPC)  # libm is built into MSVC CRT
+else()
+  target_link_libraries(
+    mbio
+    PRIVATE NetCDF::NetCDF mbbitpack mbbsio mbsapi LibPROJ::LibPROJ
+    PUBLIC TIRPC::TIRPC m)
+endif()
 if(WIN32)
   target_link_libraries(mbio PRIVATE mb_xdr_win32)
 endif()

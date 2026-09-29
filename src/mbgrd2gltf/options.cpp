@@ -69,11 +69,6 @@ constexpr char usage_message[] =
 
 namespace mbgrd2gltf {
 
-struct PathInfo {
-  std::string folder;
-  std::string file_basename;
-};
-
 PathInfo get_path_info(const char* filepath) {
   const char* start_of_filename = filepath;
 

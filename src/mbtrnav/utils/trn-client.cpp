@@ -16,10 +16,18 @@
 /****************************************************************************/
 
 #include <sys/stat.h>
+#ifdef _WIN32
+#include "dirent_w.h"
+#else
 #include <dirent.h>
+#endif
 #include <sys/types.h>
 #include <sys/socket.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/time.h>
@@ -187,7 +195,7 @@ void *client_worker(void *vworker)
 
     fprintf(stderr,"worker thread quitting\n");
     pthread_exit(NULL);
-
+    return NULL;
 }
 
 static void s_sig_handler(int sig)
@@ -373,7 +381,13 @@ int main(int argc, char** argv)
             exit(-1);
         }
 //        sem_init(&worker->run_sem,0,0);
+#if defined(_WIN32) && !defined(__CYGWIN__)
+        static sem_t s_run_sem_storage;
+        worker->run_sem = &s_run_sem_storage;
+        if(sem_init(worker->run_sem, 0, 0) != 0) worker->run_sem = NULL;
+#else
         worker->run_sem = sem_open(TRNCLI_RUN_SEM_NAME,O_CREAT);
+#endif
         if(NULL == worker->run_sem){
             fprintf(stderr,"NULL semaphore [%d/%s]\n",errno,strerror(errno));
             exit(0);

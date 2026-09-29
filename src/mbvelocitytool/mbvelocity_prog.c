@@ -64,6 +64,7 @@
 
 #include <X11/Intrinsic.h>
 #include "mb_xgraphics.h"
+#include "mb_xmutil.h"
 #include "mbvelocity.h"
 
 static char program_name[] = "MBVELOCITYTOOL";
@@ -280,10 +281,10 @@ int mbvt_init(int argc, char **argv) {
 				btime_i[6] = 0;
 			}
 			else if (strcmp("display-svp-file", options[option_index].name) == 0) {
-				sscanf(optarg, "%s", sfile);
+				sscanf(optarg, "%1023s", sfile);
 			}
 			else if (strcmp("edit-svp-file", options[option_index].name) == 0) {
-				sscanf(optarg, "%s", wfile);
+				sscanf(optarg, "%1023s", wfile);
 			}
 			else if (strcmp("end-time", options[option_index].name) == 0) {
 				sscanf(optarg, "%d/%d/%d/%d/%d/%d", &etime_i[0], &etime_i[1], &etime_i[2], &etime_i[3], &etime_i[4], &etime_i[5]);
@@ -293,7 +294,7 @@ int mbvt_init(int argc, char **argv) {
 				sscanf(optarg, "%d", &format);
 			}
 			else if (strcmp("input", options[option_index].name) == 0) {
-				sscanf(optarg, "%s", ifile);
+				sscanf(optarg, "%1023s", ifile);
 			}
 			break;
 		case 'H':
@@ -320,15 +321,15 @@ int mbvt_init(int argc, char **argv) {
 			break;
 		case 'I':
 		case 'i':
-			sscanf(optarg, "%s", ifile);
+			sscanf(optarg, "%1023s", ifile);
 			break;
 		case 'S':
 		case 's':
-			sscanf(optarg, "%s", sfile);
+			sscanf(optarg, "%1023s", sfile);
 			break;
 		case 'W':
 		case 'w':
-			sscanf(optarg, "%s", wfile);
+			sscanf(optarg, "%1023s", wfile);
 			break;
 		case '?':
 			errflg++;
@@ -2010,8 +2011,11 @@ int mbvt_open_swath_file(char *file, int form, int *numload) {
 		fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 		fprintf(stderr, "\nSwath Sonar File <%s> not initialized for reading\n", swathfile);
 		status = MB_FAILURE;
-		do_error_dialog("Unable to open input swath file.", "File may not exist or you may not have",
-		                "read permission in this directory!");
+		char error1[MB_PATH_MAXLINE];
+		char error2[MB_PATH_MAXLINE];
+		char error3[MB_PATH_MAXLINE];
+		mb_file_open_error_message(swathfile, error1, error2, error3, sizeof(error1));
+		do_error_dialog(error1, error2, error3);
 		return (status);
 	}
 

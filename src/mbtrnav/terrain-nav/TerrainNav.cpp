@@ -10,7 +10,11 @@
  ******************************************************************************/
 
 #include <sys/stat.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <libgen.h>
 #include <cmath>
 #include <math.h>
@@ -987,13 +991,13 @@ void TerrainNav::computeMeasVariance(measT& currMeas) {
 	//compute variance based on sensor's percent range error
 	if(currMeas.dataType == TRN_SENSOR_MB) { // mb measurement
 		for(int i = 0; i < currMeas.numMeas; i++) {
-			double rangeSq = pow(currMeas.crossTrack[i], 2) + pow(currMeas.alongTrack[i], 2)
-					  + pow(currMeas.altitudes[i], 2);
-			currMeas.covariance[i] = rangeSq * pow(perError / 100.0, 2);
+			double rangeSq = pow(currMeas.crossTrack[i], 2.0) + pow(currMeas.alongTrack[i], 2.0)
+					  + pow(currMeas.altitudes[i], 2.0);
+			currMeas.covariance[i] = rangeSq * pow(perError / 100.0, 2.0);
 		}
 	} else { //dvl or altimeter measurement
 		for(int i = 0; i < currMeas.numMeas; i++) {
-			currMeas.covariance[i] = pow(currMeas.ranges[i] * perError / 100.0, 2);
+			currMeas.covariance[i] = pow(currMeas.ranges[i] * perError / 100.0, 2.0);
 		}
 	}
 
@@ -1485,7 +1489,7 @@ char *TerrainNav::getSessionDir(const char *dir_prefix, char *dest, size_t len, 
     const char *db_prefix = (dir_prefix != NULL ? dir_prefix : LOGDIR_DFL);
     size_t db_len = strlen(db_prefix) + 1;
 
-    char dir_base[db_len];
+    char *dir_base = (char*)alloca(db_len);  /* was VLA: char dir_base[db_len]; */
     memset(dir_base, 0, db_len);
 
     snprintf(dir_base, db_len, "%s", db_prefix);
@@ -1506,7 +1510,7 @@ char *TerrainNav::getSessionDir(const char *dir_prefix, char *dest, size_t len, 
     fprintf(stderr,"%s:%d - dir_prefix[%s] db_prefix[%s] dir_base[%s] logPath[%s] del[%s]\n",__func__,  __LINE__,dir_prefix, db_prefix, dir_base, logPath, del);
 
     size_t sd_len = strlen(logPath) + strlen(dir_base) + strlen(del) + strlen("/TRN.dddd");
-    char sessiondir[sd_len];
+    char *sessiondir = (char*)alloca(sd_len);  /* was VLA */
     memset(sessiondir, 0, sd_len);
 
 
@@ -1734,7 +1738,7 @@ char *TerrainNav::initSessionDirectory(const char *path, const char *prefix, cha
     const char *wprefix = prefix != NULL ? prefix : "";
 
     size_t sp_len = strlen(path_cpy) + strlen(wprefix) + strlen(del) + strlen("/TRN.dddd") + 1;
-    char session_path[sp_len];
+    char *session_path = (char*)alloca(sp_len); /* was VLA */
     memset(session_path, 0, sp_len);
 
     // write base path (path/prefix-TRN)
@@ -1769,7 +1773,7 @@ char *TerrainNav::initSessionDirectory(const char *path, const char *prefix, cha
     if (do_symlink){
         size_t sp_len = strlen(session_path) + strlen(LatestLogDirName) + 2;
 
-        char sim_path[sp_len];
+        char *sim_path = (char*)alloca(sp_len); /* was VLA */
         memset(sim_path, 0, sp_len);
 
         // remove existing symlink

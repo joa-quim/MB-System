@@ -1,4 +1,4 @@
-.TH mbmapscale 1 "2026" "MB-System 5.0" "MB-System 5.0"
+.TH mbmapscale 1 "7 September 2026" "MB-System 5.0" "MB-System 5.0"
 .SH NAME
 \fBmbmapscale\fP \- Outputs the local scaling between geographic coordinates
 and meters east and north at a specified latitude.
@@ -7,7 +7,15 @@ and meters east and north at a specified latitude.
 Version 5.0
 
 .SH SYNOPSIS
-\fBmbmapscale\fP [\fB\-L\fIlatitude\fP \fB\-A \-V \-H\fP]
+\fBmbmapscale\fP
+.br
+[--alvinxy {-A}
+.br
+--help {-H}
+.br
+--latitude=latitude {-Llatitude}
+.br
+--verbose {-V}]
 
 .SH DESCRIPTION
 The program \fBmbmapscale\fP outputs the scaling between geographic
@@ -43,23 +51,22 @@ Christian do Santos Ferreira
 
 .SH OPTIONS
 .TP
-.B \-H
-This "help" flag causes the program to print out a description
-of its operation and then exit immediately.
-.TP
-.B \-A
+.B \-\-alvinxy \-A
 Calculate the map scale using the 1866 Clark Spheroid as employed by
 the AlvinXY local coordinate convention, rather than the default WGS72
 ellipsoid.
 .TP
-.B \-L
-\fIlatitude\fP
+.B \-\-help \-H
+This "help" flag causes the program to print out a description
+of its operation and then exit immediately.
+.TP
+.B \-\-latitude=latitude \-Llatitude
 .br
 Sets the latitude (in decimal degrees, positive north) at which the
 map scale is calculated. If \fB\-L\fP is not specified, the scale is
 calculated at the equator (latitude 0.0).
 .TP
-.B \-V
+.B \-\-verbose \-V
 Normally, \fBmbmapscale\fP only prints out the calculated scale values.
 If the \fB\-V\fP flag is given, then \fBmbmapscale\fP works in a "verbose"
 mode and also outputs the program version and control parameters being

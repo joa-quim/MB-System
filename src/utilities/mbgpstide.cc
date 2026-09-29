@@ -72,9 +72,19 @@
 #include <ctime>
 #include <getopt.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_define.h"
+
+/* POSIX popen/pclose — MSVC has _popen/_pclose with the same signatures. */
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
+#endif
+
 #include "mb_io.h"
 #include "mb_status.h"
 #include "mb_format.h"
@@ -151,8 +161,6 @@ int main(int argc, char **argv) {
 				}
 				else if (strcmp("tideformat", options[option_index].name) == 0) {
 					sscanf(optarg, "%d", &tideformat);
-					if (tideformat != 2)
-						tideformat = 1;
 				}
 				else if (strcmp("interval", options[option_index].name) == 0) {
 					sscanf(optarg, "%lf", &interval);

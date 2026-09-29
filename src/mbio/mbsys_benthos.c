@@ -904,11 +904,19 @@ int mbsys_benthos_makess(int verbose, void *mbio_ptr, void *store_ptr,
 	struct mbsys_benthos_struct *store = (struct mbsys_benthos_struct *)store_ptr;
 
 	/* insert data in structure */
+	/* the binning arrays take about 860 KB: on the stack that is most of
+	   the 1 MB default Windows stack (and more than a worker thread has),
+	   so they live on the heap */
+	double *ss = NULL;
+	if (store->kind == MB_DATA_DATA && store->ssrawstbdsamples > 0 && store->ssrawportsamples > 0
+	    && (ss = (double *)malloc(MBSYS_BENTHOS_MAXPIXELS * (3 * sizeof(double) + sizeof(int)))) == NULL) {
+		*error = MB_ERROR_MEMORY_FAIL;
+		return (MB_FAILURE);
+	}
 	if (store->kind == MB_DATA_DATA && store->ssrawstbdsamples > 0 && store->ssrawportsamples > 0) {
-		double ss[MBSYS_BENTHOS_MAXPIXELS];
-		int ss_cnt[MBSYS_BENTHOS_MAXPIXELS];
-		double ssacrosstrack[MBSYS_BENTHOS_MAXPIXELS];
-		double ssalongtrack[MBSYS_BENTHOS_MAXPIXELS];
+		double *ssacrosstrack = ss + MBSYS_BENTHOS_MAXPIXELS;
+		double *ssalongtrack = ssacrosstrack + MBSYS_BENTHOS_MAXPIXELS;
+		int *ss_cnt = (int *)(ssalongtrack + MBSYS_BENTHOS_MAXPIXELS);
 
 		/* zero the sidescan */
 		for (int i = 0; i < MBSYS_BENTHOS_MAXPIXELS; i++) {
@@ -996,6 +1004,7 @@ int mbsys_benthos_makess(int verbose, void *mbio_ptr, void *store_ptr,
 				        store->ss_acrosstrack[i], store->ss_alongtrack[i]);
 		}
 	}
+	free(ss);
 
 	const int status = MB_SUCCESS;
 

@@ -71,7 +71,11 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 // for basename
 #include <libgen.h>
 #include <stdbool.h>

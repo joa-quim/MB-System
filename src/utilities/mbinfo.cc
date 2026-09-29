@@ -42,10 +42,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_define.h"
-#include "mb_info.h"
 #include "mb_io.h"
 #include "mb_status.h"
 

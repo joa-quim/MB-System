@@ -38,8 +38,11 @@
 #include <getopt.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_define.h"
 #include "mb_format.h"
 #include "mb_process.h"
@@ -209,14 +212,14 @@ int main(int argc, char **argv) {
 	const int fstat = stat(iesffile, &file_status);
 	if (fstat == 0 && (file_status.st_mode & S_IFMT) != S_IFDIR) {
 		/* open the input esf file */
-		if ((iesffp = fopen(iesffile, "r")) == nullptr) {
+		if ((iesffp = fopen(iesffile, "rb")) == nullptr) {
 			fprintf(stderr, "\nUnable to edit save file <%s> for reading\n", iesffile);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
 			exit(MB_ERROR_OPEN_FAIL);
 		}
 
 		/* open the output esf file */
-		if (omode == OUTPUT_ESF && (oesffp = fopen(oesffile, "w")) == nullptr) {
+		if (omode == OUTPUT_ESF && (oesffp = fopen(oesffile, "wb")) == nullptr) {
 			fprintf(stderr, "\nUnable to edit save file <%s> for reading\n", iesffile);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
 			exit(MB_ERROR_OPEN_FAIL);

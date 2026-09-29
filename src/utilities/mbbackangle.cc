@@ -42,8 +42,11 @@
 #include <ctime>
 #include <getopt.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_aux.h"
 #include "mb_define.h"
 #include "mb_format.h"
@@ -1004,7 +1007,7 @@ int main(int argc, char **argv) {
 			int cpixels_ss_max = 0;
 			mb_path cformat_name;
 			mb_path csystem_name;
-			mb_path cformat_description;
+			char cformat_description[MB_DESCRIPTION_LENGTH]; /* mb_format_info() fills MB_DESCRIPTION_LENGTH bytes */
 			int cnumfile = 0;
 			int cfiletype = 0;
 			bool cvariable_beams = 0;
@@ -1170,7 +1173,7 @@ int main(int argc, char **argv) {
 				status &=
 				    mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), (void **)&depthacrosstrack, &error);
 			if (error == MB_ERROR_NO_ERROR)
-				status &= mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), (void **)&slopes, &error);
+				status &= mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, 2 * sizeof(double), (void **)&slopes, &error); /* mb_pr_set_bathyslope() writes nbath + 1 slopes */
 			if (error == MB_ERROR_NO_ERROR)
 				status &= mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, 2 * sizeof(double), (void **)&slopeacrosstrack,
 				                           &error);

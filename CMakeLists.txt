@@ -102,9 +102,87 @@ if (${srcdir} STREQUAL ${bindir})
 endif (${srcdir} STREQUAL ${bindir})
 
 add_compile_definitions(CMAKE_BUILD_SYSTEM=1)
+
+# Platform system libs commonly tacked onto utility executables. On POSIX:
+# libm (math) and pthread are external; on MSVC they're built into the CRT
+# and pthreads-win32 is already linked globally.
+if(WIN32)
+  set(MB_SYSLIBS "")
+else()
+  set(MB_SYSLIBS m pthread)
+endif()
 if (CMAKE_C_BYTE_ORDER STREQUAL "LITTLE_ENDIAN")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DBYTESWAPPED")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBYTESWAPPED")
+endif()
+
+# MSVC has no <unistd.h>; the substitute lives in src/mbio/unistd_w.h, pulled in
+# by src/mbio/mb_define.h (force-included below) under #ifdef _WIN32.
+if(MSVC)
+  # Most project libraries have no __declspec(dllexport) markers, so building
+  # them as SHARED produces a .dll with no .lib import library and downstream
+  # targets fail to link. Force auto-export of all symbols, which generates
+  # the import lib automatically. Equivalent to MinGW's --export-all-symbols.
+  set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+
+  # src/mbio holds mb_define.h + unistd_w.h; make resolvable from every TU so the
+  # force-included mb_define.h can pull "unistd_w.h" regardless of the includer.
+  include_directories(${CMAKE_SOURCE_DIR}/src/mbio)
+  # mb_define.h also pulls src/mbaux/mb_xdr_win32.h (the shared Windows XDR shim)
+  # on every force-included TU, so that path must be global too.
+  include_directories(${CMAKE_SOURCE_DIR}/src/mbaux)
+
+  # Silence the most common POSIX-name warnings (open vs _open, etc.)
+  # NOMINMAX prevents Windows.h from defining min/max macros that clobber
+  # std::numeric_limits<>::max(), std::min(), etc.
+  add_compile_definitions(_CRT_NONSTDC_NO_DEPRECATE _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN NOGDI)
+  # Force-include mb_define.h on every translation unit. It carries the Windows
+  # POSIX compatibility shim under #ifdef _WIN32 (clock_gettime, strcasecmp,
+  # sockets, getopt, S_IS*, etc.) plus the <unistd.h> selector. Its XDR shim
+  # has identical XdrOp/XDR types to src/surf/xdr_win32.h, which is guarded with
+  # _MB_WIN_XDR_DEFINED so the two do not collide.
+  # /FI<file> = "include this header at the top of every translation unit".
+  add_compile_options(/FI${CMAKE_SOURCE_DIR}/src/mbio/mb_define.h)
+
+  # getopt (POSIX) — utilities pervasively call getopt; MSVC ships none.
+  if(GETOPT_INCLUDE_DIR)
+    include_directories(${GETOPT_INCLUDE_DIR})
+  endif()
+  if(GETOPT_LIBRARY)
+    link_libraries(${GETOPT_LIBRARY})
+  endif()
+
+  # NetCDF — GMT public headers (gmt_shore.h etc) include <netcdf.h>.
+  if(NetCDF_INCLUDE_DIR)
+    include_directories(${NetCDF_INCLUDE_DIR})
+  endif()
+
+  # GLib (needed by GMT public headers when HAVE_GLIB_GTHREAD set).
+  if(GLIB_INCLUDE_DIR)
+    include_directories(${GLIB_INCLUDE_DIR})
+  endif()
+  if(GLIB_CONFIG_DIR)
+    include_directories(${GLIB_CONFIG_DIR})
+  endif()
+  if(GLIB_LIBRARY)
+    link_libraries(${GLIB_LIBRARY})
+  endif()
+
+  # pthreads-win32 (path supplied via PTHREADINC / PTHREADLIB in ConfigUser.cmake).
+  # Wire include path + global link library so every target that uses pthread_*
+  # resolves it without per-target plumbing.
+  if(PTHREADINC)
+    include_directories(${PTHREADINC})
+    # PTW32_STATIC_LIB only when linking the static variant (pthreadVC2.lib here
+    # is the DLL import lib, so leave it dynamic).
+    add_compile_definitions(HAVE_STRUCT_TIMESPEC)
+  endif()
+  if(PTHREADLIB)
+    link_libraries(${PTHREADLIB})
+  endif()
+
+  # Winsock — htonl/ntohl and friends live in Ws2_32.lib on Windows.
+  link_libraries(Ws2_32)
 endif()
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -124,8 +202,22 @@ option(buildTrnNoRand "build with TRN_NORAND (random seed disabled)" OFF)
 option(buildPCL "build point-cloud-library tools" OFF)
 option(buildQt "build Qt tools" OFF)
 option(buildTests "build unit tests exercised by make test" ON)
+# Default location of the OTPS (OSU Tidal Prediction Software) package, used
+# by mbotps and reported by mbconfig. OTPS is a separate third-party
+# distribution, so this is only a starting guess; override it with
+# -DotpsDir=<dir>, or at runtime with mbotps --otps-path.
 if (DEFINED CACHE{otpsDir})
   set(otpsDir $CACHE{otpsDir})
+elseif (WIN32)
+  # There is no /usr/local on Windows. Fall back to the Program Files
+  # directory the running system reports, normalised to forward slashes.
+  if (DEFINED ENV{ProgramFiles})
+    file(TO_CMAKE_PATH "$ENV{ProgramFiles}" _otps_program_files)
+  else()
+    set(_otps_program_files "C:/Program Files")
+  endif()
+  set(otpsDir "${_otps_program_files}/OTPS")
+  unset(_otps_program_files)
 else()
   set(otpsDir "/usr/local/src/otps")
 endif()
@@ -176,6 +268,62 @@ if(APPLE)
 	endif()
 	if(MACOS_USE_MACPORTS)
 		message("MacOS: using packages installed with MacPorts")
+	endif()
+
+	option(macosUseMbMesa "MacOS+Homebrew: use the private mb-mesa/mb-mesa-glu kegs (a pinned Mesa version) for OpenGL instead of the standard Homebrew mesa/mesa-glu formulae" OFF)
+	# MBMESA_PREFIX/MBMESAGLU_PREFIX can be passed directly (eg. by the
+	# mbsystem-beta Homebrew formula, via Formula["mb-mesa"].opt_prefix in
+	# Ruby) - this must work without shelling out to `brew`, because the
+	# `brew` command itself is NOT on PATH inside a Homebrew build sandbox.
+	# Falling back to `brew --prefix` below is only for interactive/manual
+	# builds run from a normal shell, where `brew` is reachable.
+	if(macosUseMbMesa)
+		if(NOT DEFINED MBMESA_PREFIX)
+			execute_process(
+				COMMAND brew --prefix mb-mesa
+				OUTPUT_VARIABLE MBMESA_PREFIX
+				OUTPUT_STRIP_TRAILING_WHITESPACE
+				RESULT_VARIABLE MBMESA_PREFIX_RESULT
+				ERROR_QUIET
+			)
+			if(NOT MBMESA_PREFIX_RESULT EQUAL 0)
+				message(FATAL_ERROR "macosUseMbMesa is ON but MBMESA_PREFIX was not set and "
+					"'brew --prefix mb-mesa' failed - either pass -DMBMESA_PREFIX=<path> "
+					"directly, or install dwcaress/mbsystem/mb-mesa")
+			endif()
+		endif()
+		if(NOT EXISTS "${MBMESA_PREFIX}")
+			message(FATAL_ERROR "macosUseMbMesa is ON but MBMESA_PREFIX ('${MBMESA_PREFIX}') "
+				"does not exist")
+		endif()
+		message("MacOS: using private mb-mesa keg at ${MBMESA_PREFIX} for OpenGL "
+			"(remove this option once the standard mesa formula is fixed upstream)")
+
+		# mb-mesa-glu is built against mb-mesa's own libGL. Using it here is not
+		# optional: linking mbview against mb-mesa's libGL while pulling GLU from
+		# the standard mesa-glu (built against the standard mesa) loads two
+		# separate libGL images in the same process, so GLU calls (eg.
+		# gluPerspective) silently no-op against an unbound GL context - this is
+		# what caused mbgrdviz's 3D perspective view to render blank.
+		if(NOT DEFINED MBMESAGLU_PREFIX)
+			execute_process(
+				COMMAND brew --prefix mb-mesa-glu
+				OUTPUT_VARIABLE MBMESAGLU_PREFIX
+				OUTPUT_STRIP_TRAILING_WHITESPACE
+				RESULT_VARIABLE MBMESAGLU_PREFIX_RESULT
+				ERROR_QUIET
+			)
+			if(NOT MBMESAGLU_PREFIX_RESULT EQUAL 0)
+				message(FATAL_ERROR "macosUseMbMesa is ON but MBMESAGLU_PREFIX was not set and "
+					"'brew --prefix mb-mesa-glu' failed - either pass -DMBMESAGLU_PREFIX=<path> "
+					"directly, or install dwcaress/mbsystem/mb-mesa-glu")
+			endif()
+		endif()
+		if(NOT EXISTS "${MBMESAGLU_PREFIX}")
+			message(FATAL_ERROR "macosUseMbMesa is ON but MBMESAGLU_PREFIX "
+				"('${MBMESAGLU_PREFIX}') does not exist")
+		endif()
+		message("MacOS: using private mb-mesa-glu keg at ${MBMESAGLU_PREFIX} for GLU")
 	endif()
 	message("----------------------------------------------------------")
 
@@ -267,6 +415,22 @@ if(buildTests)
   add_subdirectory(third_party)
   add_subdirectory(test/mbio)
   add_subdirectory(test/utilities)
+  if(buildGSF)
+    add_subdirectory(test/gsf)
+  endif()
+  add_subdirectory(test/mbgrd2gltf)
+  add_subdirectory(test/otps)
+  add_subdirectory(test/mbnavadjust)
+  if(buildGUIs)
+    add_subdirectory(test/mbedit)
+    add_subdirectory(test/mbgrdviz)
+    add_subdirectory(test/mbeditviz)
+    add_subdirectory(test/mbnavedit)
+    add_subdirectory(test/mbvelocitytool)
+  endif()
+  if(buildOpenCV)
+    add_subdirectory(test/photo)
+  endif()
   if(buildDeprecated)
     add_subdirectory(test/deprecated)
   endif()

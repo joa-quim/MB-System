@@ -1526,8 +1526,9 @@ int mbsys_netcdf_insert(int verbose, void *mbio_ptr, void *store_ptr, int kind, 
 	/* set data kind */
 	store->kind = kind;
 
-	/* allocate memory if needed */
-	if (store->kind == MB_DATA_DATA && nbath > 0 && store->mbAntennaNbr <= 0 && store->mbBeamNbr <= 0) {
+	/* allocate memory if needed - mbsys_netcdf_alloc() sets mbAntennaNbr to 1,
+	   so the arrays themselves tell whether this has been done */
+	if (store->kind == MB_DATA_DATA && nbath > 0 && store->mbDate == NULL) {
 		/* set sonar system */
 		if (nbath == MBSYS_NETCDF_SONAR_BEAMS_SEABEAM) {
 			store->mbSounder = MBSYS_NETCDF_SONAR_SEABEAM;
@@ -1664,6 +1665,8 @@ int mbsys_netcdf_insert(int verbose, void *mbio_ptr, void *store_ptr, int kind, 
 		    mb_mallocd(verbose, __FILE__, __LINE__, store->mbBeamNbr * sizeof(short), (void **)&store->mbSoundingBias, error);
 		status &= mb_mallocd(verbose, __FILE__, __LINE__, store->mbBeamNbr * sizeof(char), (void **)&store->mbSQuality, error);
 		status &= mb_mallocd(verbose, __FILE__, __LINE__, store->mbBeamNbr * sizeof(char), (void **)&store->mbReflectivity, error);
+		/* mbr_wt_mbnetcdf() writes mbQuality too; it was never allocated here */
+		status &= mb_mallocd(verbose, __FILE__, __LINE__, store->mbBeamNbr * sizeof(int), (void **)&store->mbQuality, error);
 		status &=
 		    mb_mallocd(verbose, __FILE__, __LINE__, store->mbBeamNbr * sizeof(char), (void **)&store->mbReceptionHeave, error);
 		status &= mb_mallocd(verbose, __FILE__, __LINE__, store->mbBeamNbr * sizeof(short), (void **)&store->mbAlongSlope, error);
@@ -1724,6 +1727,7 @@ int mbsys_netcdf_insert(int verbose, void *mbio_ptr, void *store_ptr, int kind, 
 			status &= mb_freed(verbose, __FILE__, __LINE__, (void **)&store->mbSoundingBias, error);
 			status &= mb_freed(verbose, __FILE__, __LINE__, (void **)&store->mbSQuality, error);
 			status &= mb_freed(verbose, __FILE__, __LINE__, (void **)&store->mbReflectivity, error);
+			status &= mb_freed(verbose, __FILE__, __LINE__, (void **)&store->mbQuality, error);
 			status &= mb_freed(verbose, __FILE__, __LINE__, (void **)&store->mbReceptionHeave, error);
 			status &= mb_freed(verbose, __FILE__, __LINE__, (void **)&store->mbAlongSlope, error);
 			status &= mb_freed(verbose, __FILE__, __LINE__, (void **)&store->mbAcrossSlope, error);
@@ -1754,8 +1758,13 @@ int mbsys_netcdf_insert(int verbose, void *mbio_ptr, void *store_ptr, int kind, 
 		}
 	}
 
+	/* a data record without beams ahead of the first one with beams leaves
+	   the arrays unallocated (e.g. navigation-only input): nothing can be
+	   stored for it */
+	const bool no_structure = (store->kind == MB_DATA_DATA && store->mbDate == NULL);
+
 	/* insert data in structure */
-	if (store->kind == MB_DATA_DATA) {
+	if (store->kind == MB_DATA_DATA && !no_structure) {
 		/* reset lon and lat attributes */
 		if (strcmp(store->mbOrdinate_name_code, "MB_POSITION_LATITUDE") != 0) {
 			strcpy(store->mbOrdinate_type, "real");
@@ -1817,8 +1826,18 @@ int mbsys_netcdf_insert(int verbose, void *mbio_ptr, void *store_ptr, int kind, 
 		double distancescale = 2.1 * distancemax / store->mbAcrossDistance_valid_maximum;
 
 		/* put distance, depth, and backscatter values
-		    into data structure */
-		store->mbBeamNbr = nbath;
+		    into data structure - the beam arrays hold mbBeamNbr beams (the
+		    netCDF beam dimension, fixed by the first ping): never write more,
+		    and zero the beams a shorter ping does not fill */
+		const int nbath_insert = MIN(nbath, (int)store->mbBeamNbr);
+		const int namp_insert = MIN(namp, nbath_insert);
+		for (int i = nbath_insert; i < (int)store->mbBeamNbr; i++) {
+			store->mbSFlag[i] = 0;
+			store->mbDepth[i] = 0;
+			store->mbAcrossDistance[i] = 0;
+			store->mbAlongDistance[i] = 0;
+			store->mbReflectivity[i] = 0;
+		}
 		/* if (store->mbDepthScale[0] <= 0
 		    || (depthmax */
 		for (unsigned int i = 0; i < store->mbAntennaNbr; i++) {
@@ -1827,7 +1846,7 @@ int mbsys_netcdf_insert(int verbose, void *mbio_ptr, void *store_ptr, int kind, 
 		}
 		depthscale = store->mbDepthScale[0] * store->mbDepthScale_scale_factor;
 		distancescale = store->mbDistanceScale[0] * store->mbDistanceScale_scale_factor;
-		for (int i = 0; i < nbath; i++) {
+		for (int i = 0; i < nbath_insert; i++) {
 			if (beamflag[i] == MB_FLAG_NONE)
 				store->mbSFlag[i] = 2;
 			else if (beamflag[i] == MB_FLAG_NULL)
@@ -1845,7 +1864,7 @@ int mbsys_netcdf_insert(int verbose, void *mbio_ptr, void *store_ptr, int kind, 
 				store->mbAlongDistance[i] = 0;
 			}
 		}
-		for (int i = 0; i < namp; i++) {
+		for (int i = 0; i < namp_insert; i++) {
 			if (beamflag[i] != MB_FLAG_NULL)
 				store->mbReflectivity[i] = (char)(amp[i] / store->mbReflectivity_scale_factor);
 			else
@@ -1861,6 +1880,10 @@ int mbsys_netcdf_insert(int verbose, void *mbio_ptr, void *store_ptr, int kind, 
 	}
 
 	int status = MB_SUCCESS;
+	if (no_structure) {
+		status = MB_FAILURE;
+		*error = MB_ERROR_DATA_NOT_INSERTED;
+	}
 
 	if (verbose >= 2) {
 		fprintf(stderr, "\ndbg2  MBIO function <%s> completed\n", __func__);
@@ -2336,7 +2359,10 @@ int mbsys_netcdf_insert_nav(int verbose, void *mbio_ptr, void *store_ptr, int ti
 	struct mbsys_netcdf_struct *store = (struct mbsys_netcdf_struct *)store_ptr;
 
 	/* insert data in structure */
-	if (store->kind == MB_DATA_DATA) {
+	/* the arrays exist only once a record with beams has been inserted */
+	const bool no_structure = (store->kind == MB_DATA_DATA && store->mbDate == NULL);
+
+	if (store->kind == MB_DATA_DATA && !no_structure) {
 		/* reset lon and lat attributes */
 		if (strcmp(store->mbOrdinate_name_code, "MB_POSITION_LATITUDE") != 0) {
 			strcpy(store->mbOrdinate_type, "real");
@@ -2396,7 +2422,11 @@ int mbsys_netcdf_insert_nav(int verbose, void *mbio_ptr, void *store_ptr, int ti
 		}
 	}
 
-	const int status = MB_SUCCESS;
+	int status = MB_SUCCESS;
+	if (no_structure) {
+		status = MB_FAILURE;
+		*error = MB_ERROR_DATA_NOT_INSERTED;
+	}
 
 	if (verbose >= 2) {
 		fprintf(stderr, "\ndbg2  MBIO function <%s> completed\n", __func__);

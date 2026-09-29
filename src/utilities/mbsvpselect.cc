@@ -198,8 +198,11 @@
 #include <cstring>
 #include <ctime>
 #include <getopt.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include <geodesic.h>
 
 #include "mb_define.h"
@@ -914,6 +917,8 @@ void read_list(char *list, char *list_2) {
 		printf("no memory for the process end of process");
 		exit(1);
 	}
+	/* zero the records: mktime() reads tm_isdst, which is never parsed */
+	memset(inf_hold, 0, (surveyLines_total) * sizeof(inf));
 	int size = surveyLines_total;
 	for (int i = 0; i < surveyLines_total; i++) {
 		fill_struct_inf(&inf_hold[i], holder[i]);
@@ -939,6 +944,8 @@ void read_list(char *list, char *list_2) {
 		printf("no memory for the process end of process");
 		exit(1);
 	}
+	/* zero the records: mktime() reads tm_isdst, which is never parsed */
+	memset(svp_hold, 0, (svp_total) * sizeof(svp));
 #ifdef _WIN32
 	int hour_hold[100][100];	// Have no idea if it's enough JL
 	int min_hold[100][100];

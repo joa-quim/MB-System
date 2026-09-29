@@ -47,8 +47,11 @@
 #include <cstring>
 #include <ctime>
 #include <getopt.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_status.h"
 #include "mb_format.h"
 #include "mb_define.h"
@@ -318,7 +321,7 @@ int main(int argc, char **argv) {
     if (errflg) {
       fprintf(stderr, "usage: %s\n", usage_message);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      exit(MB_ERROR_BAD_USAGE);
+      return MB_ERROR_BAD_USAGE;
     }
 
     if (verbose == 1 || help) {
@@ -372,7 +375,7 @@ int main(int argc, char **argv) {
     if (help) {
       fprintf(stderr, "\n%s\n", help_message);
       fprintf(stderr, "\nusage: %s\n", usage_message);
-      exit(MB_ERROR_NO_ERROR);
+      return MB_ERROR_NO_ERROR;
     }
   }
 
@@ -395,7 +398,7 @@ int main(int argc, char **argv) {
     if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
       fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      exit(MB_ERROR_OPEN_FAIL);
+      return MB_ERROR_OPEN_FAIL;
     }
     read_data = mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight, &error) == MB_SUCCESS;
   } else {
@@ -484,7 +487,7 @@ int main(int argc, char **argv) {
       mb_error(verbose, error, &message);
       fprintf(stderr, "\nMBIO Error returned from function <mb_format_source>:\n%s\n", message);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      exit(error);
+      return error;
     }
 
     /* if svp source record type has been specified, override the default svp_source for this format */
@@ -500,7 +503,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
       fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", file);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      exit(error);
+      return error;
     }
 
     /* allocate memory for data arrays */
@@ -543,7 +546,7 @@ int main(int argc, char **argv) {
       mb_error(verbose, error, &message);
       fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      exit(error);
+      return error;
     }
 
     /* output info */
@@ -666,7 +669,7 @@ int main(int argc, char **argv) {
             if (status != MB_SUCCESS) {
               fprintf(stderr, "\nUnable to allocate SVP save array\n");
               fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-              exit(MB_ERROR_MEMORY_FAIL);
+              return MB_ERROR_MEMORY_FAIL;
             }
           }
 
@@ -858,6 +861,6 @@ int main(int argc, char **argv) {
     fprintf(stderr, "dbg2       status:  %d\n", status);
   }
 
-  exit(error);
+  return error;
 }
 /*--------------------------------------------------------------------*/

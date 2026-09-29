@@ -53,12 +53,21 @@
 #include <ctime>
 #include <getopt.h>
 #include <limits>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_aux.h"
 #include "mb_define.h"
+
+/* POSIX popen/pclose — MSVC has _popen/_pclose with the same signatures. */
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
+#endif
+
 #include "mb_format.h"
-#include "mb_info.h"
 #include "mb_io.h"
 #include "mb_status.h"
 
@@ -343,7 +352,7 @@ int write_oldgrd(int verbose, char *outfile, float *grid, int nx, int ny, double
   int status = MB_SUCCESS;
 
   /* open the file */
-  FILE *fp = fopen(outfile, "w");
+  FILE *fp = fopen(outfile, "wb");
   if (fp == nullptr) {
     *error = MB_ERROR_OPEN_FAIL;
     status = MB_FAILURE;

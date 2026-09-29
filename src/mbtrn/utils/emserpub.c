@@ -4,7 +4,11 @@
 #include <stdint.h>
 #include <termios.h>
 #include <string.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>

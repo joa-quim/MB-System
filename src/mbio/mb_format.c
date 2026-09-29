@@ -35,9 +35,19 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 
 #include "mb_define.h"
+
+/* POSIX strtok_r — MSVC has strtok_s with the same signature. */
+#ifdef _WIN32
+#define strtok_r(str, delim, saveptr) strtok_s((str), (delim), (saveptr))
+#endif
+
 #include "mb_format.h"
 #include "mb_io.h"
 #include "mb_process.h"
@@ -64,7 +74,7 @@ const int format_alias_table[] = {
 
 /* local prototypes not found in mb_define.h */
 #ifdef WIN32
-void cvt_to_nix_path(char *path);
+void mb_cvt_to_nix_path(char *path);
 #endif  /* WIN32 */
 
 /*--------------------------------------------------------------------*/
@@ -1769,7 +1779,7 @@ int mb_get_format(int verbose, char *filename, char *fileroot, int *format, int 
       if (suffix_len == 8) {
         /* examine the first datagram to determine
         whether data is old or new Simrad format */
-        if ((checkfp = fopen(filename, "r")) != NULL) {
+        if ((checkfp = fopen(filename, "rb")) != NULL) {
           if (fread(buffer, 1, 8, checkfp) == 8) {
             shortptr = (short *)&buffer[0];
             type1 = *shortptr;
@@ -1842,7 +1852,7 @@ int mb_get_format(int verbose, char *filename, char *fileroot, int *format, int 
       if (suffix_len == 4) {
         /* examine the first datagram to determine
         whether data is old or new Simrad format */
-        if ((checkfp = fopen(filename, "r")) != NULL) {
+        if ((checkfp = fopen(filename, "rb")) != NULL) {
           if (fread(buffer, 1, 8, checkfp) == 8) {
             shortptr = (short *)&buffer[0];
             type1 = *shortptr;
@@ -2525,7 +2535,7 @@ int mb_get_format(int verbose, char *filename, char *fileroot, int *format, int 
           low frequency (*format = MBF_EDGJSTAR = 132)
           - if both low and high frequency are present treat format
               as low frequency */
-      if ((checkfp = fopen(filename, "r")) != NULL) {
+      if ((checkfp = fopen(filename, "rb")) != NULL) {
         /* loop over reading data until four full sidescan sonar records are read */
         bool done = false;
         nsonar = 0;
@@ -2882,7 +2892,7 @@ int mb_get_format(int verbose, char *filename, char *fileroot, int *format, int 
         if (suffix_len == 4) {
             /* examine the first datagram to determine
             whether data is old or new 3D at Depth RAA format */
-            if ((checkfp = fopen(filename, "r")) != NULL) {
+            if ((checkfp = fopen(filename, "rb")) != NULL) {
                 if (fread(buffer, 1, 4, checkfp) == 4) {
                     if (buffer[2] == 0x07 && buffer[3] == 0x3D) {
                         *format = MBF_3DDEPTHP;
@@ -4051,7 +4061,7 @@ int mb_imagelist_read(int verbose, void *imagelist_ptr,
                   all work as well. */
               if (strncmp(buffer, "$SINGLE", 7) == 0
                   || strncmp(buffer, "#SINGLE", 7) == 0) {
-                  imagelist->leftrightstereo = MB_IMAGESTATUS_LEFT;
+                  imagelist->leftrightstereo = MB_IMAGESTATUS_SINGLE;
               }
               else if (strncmp(buffer, "$LEFT", 5) == 0
                   || strncmp(buffer, "#LEFT", 5) == 0) {
@@ -4412,7 +4422,7 @@ int mb_imagelist_close(int verbose, void **imagelist_ptr, int *error) {
 
 /*--------------------------------------------------------------------*/
 #ifdef WIN32
-void cvt_to_nix_path(char *path) {
+void mb_cvt_to_nix_path(char *path) {
   /* Replace back slashes by slashes and trim first two chars in paths like "C:/path" */
   const size_t len = strlen(path);
 
@@ -4452,8 +4462,8 @@ int mb_get_relative_path(int verbose, char *path, char *ipwd, int *error) {
      because we trim the first 2 chars in strings like C:\blabla and don't put it back. But
      test have shown that it was maybe not necessary.
   */
-  cvt_to_nix_path(path);
-  cvt_to_nix_path(ipwd);
+  mb_cvt_to_nix_path(path);
+  mb_cvt_to_nix_path(ipwd);
 #endif
 
   int status = MB_SUCCESS;
@@ -4466,8 +4476,8 @@ int mb_get_relative_path(int verbose, char *path, char *ipwd, int *error) {
     bufptr = getcwd(path, MB_PATH_MAXLINE);
     assert(strlen(path) > 0);
 #ifdef WIN32
-    cvt_to_nix_path(path);
-    cvt_to_nix_path(bufptr);
+    mb_cvt_to_nix_path(path);
+    mb_cvt_to_nix_path(bufptr);
 #endif
     if (bufptr == NULL || strlen(path) + pathlen + 1 >= MB_PATH_MAXLINE) {
       strcpy(path, relativepath);
@@ -4491,8 +4501,8 @@ int mb_get_relative_path(int verbose, char *path, char *ipwd, int *error) {
     bufptr = getcwd(pwd, MB_PATH_MAXLINE);
     assert(strlen(pwd) > 0);
 #ifdef WIN32
-    cvt_to_nix_path(pwd);
-    cvt_to_nix_path(bufptr);
+    mb_cvt_to_nix_path(pwd);
+    mb_cvt_to_nix_path(bufptr);
 #endif
     if (bufptr == NULL || strlen(pwd) + pwdlen + 1 >= MB_PATH_MAXLINE) {
       strncpy(pwd, ipwd, MB_PATH_MAXLINE);
@@ -4598,8 +4608,8 @@ int mb_get_absolute_path(int verbose, char *path, char *ipwd, int *error) {
      because we trim the first 2 chars in strings like C:\blabla and don't put it back. But
      test have shown that it was maybe not necessary.
   */
-  cvt_to_nix_path(path);
-  cvt_to_nix_path(ipwd);
+  mb_cvt_to_nix_path(path);
+  mb_cvt_to_nix_path(ipwd);
 #endif
 
   int status = MB_SUCCESS;

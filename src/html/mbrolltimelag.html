@@ -11,7 +11,7 @@
 <CENTER><H3><U>MB-System Unix Manual Page</U></H3></CENTER>
 <PRE>
 <H1>mbrolltimelag</H1>
-Section:  MB-System 5.0  (1)<BR>Updated:  12 August 2024 <BR><A HREF="#index">Index</A>
+Section:  MB-System 5.0  (1)<BR>Updated:  7 September 2026 <BR><A HREF="#index">Index</A>
 <HR>
 
 <A NAME="lbAB">&nbsp;</A>
@@ -29,9 +29,35 @@ Version 5.0
 <A NAME="lbAD">&nbsp;</A>
 <H2>SYNOPSIS</H2>
 
-<B>mbrolltimelag</B> <B>-I</B><I>swathdata</I> [<B>-F</B><I>format</I>
-<B>-K</B><I>rollsource</I> <B>-N</B><I>nping</I> <B>-O</B><I>outroot</I> <B>-S</B><I>navchannel</I>
-<B>-T</B><I>nlag/lagmin/lagmax</I> <B>-V -H</B> ]
+<B>mbrolltimelag</B> --input=swathdata {-Iswathdata}
+<BR>
+
+[--correlation-threshold=value {-Cvalue}
+<BR>
+
+--format=format_id {-Fformat_id}
+<BR>
+
+--roll-source=rollsource {-Krollsource}
+<BR>
+
+--npings=nping {-Nnping}
+<BR>
+
+--output=outputname {-Ooutputname}
+<BR>
+
+--nav-channel=navchannel {-Snavchannel}
+<BR>
+
+--lag-range=nlag/lagmin/lagmax {-Tnlag/lagmin/lagmax}
+<BR>
+
+--verbose {-V}
+<BR>
+
+--help {-H}]
+<P>
 <A NAME="lbAE">&nbsp;</A>
 <H2>DESCRIPTION</H2>
 
@@ -101,10 +127,9 @@ Christian do Santos Ferreira
 <H2>OPTIONS</H2>
 
 <DL COMPACT>
-<DT><B>-C</B>
+<DT><B>--correlation-threshold=value -Cvalue</B>
 
 <DD>
-<I>rthreshold</I>
 <BR>
 
 Sets the correlation coefficient threshold used to decide whether the peak
@@ -112,10 +137,9 @@ cross correlation value found for a given set of pings represents a valid
 time lag estimate. Only peak correlation values exceeding <I>rthreshold</I>
 are included in the output time lag histogram and estimate files.
 Default: <I>rthreshold</I> = 0.9.
-<DT><B>-F</B>
+<DT><B>--format=format_id -Fformat_id</B>
 
 <DD>
-<I>format</I>
 <BR>
 
 Sets the <B>MBIO</B> integer format identifier
@@ -123,15 +147,14 @@ for the input file specified with the
 <B>-I</B> option. By default, <B>mbrolltimelag</B>
 infers the format from the &quot;*.mbXX&quot; <B>MB-System</B> suffix
 convention.
-<DT><B>-H</B>
+<DT><B>--help -H</B>
 
 <DD>
 This &quot;help&quot; flag cause the program to print out a description
 of its operation and then exit immediately.
-<DT><B>-I</B>
+<DT><B>--input=swathdata -Iswathdata</B>
 
 <DD>
-<I>filename</I>
 <BR>
 
 Sets the input filename. If <I>format</I> &gt; 0 (set with the
@@ -151,10 +174,9 @@ This program uses the <B>MBIO</B> library and will read any swath sonar
 format supported by <B>MBIO</B>. A list of the swath sonar data formats
 currently supported by <B>MBIO</B> and their identifier values
 is given in the <B>MBIO</B> manual page. Default: <I>infile</I> = &quot;datalist.mb-1&quot;.
-<DT><B>-K</B>
+<DT><B>--roll-source=rollsource -Krollsource</B>
 
 <DD>
-<I>Krollsource</I>
 <BR>
 
 This option sets the type of data record from which the roll values
@@ -193,28 +215,25 @@ here:
 
 A typical value is <I>Krollsource</I>=18, which specifies extraction of roll from asynchronous attitude
 data records. This option supercedes the <B>-S</B> option.
-<DT><B>-N</B>
+<DT><B>--npings=nping -Nnping</B>
 
 <DD>
-<I>nping</I>
 <BR>
 
 Sets the number of pings to be read for each cross correlation calculation.
 Default: <I>nping</I> = 100.
-<DT><B>-O</B>
+<DT><B>--output=outputname -Ooutputname</B>
 
 <DD>
-<I>outroot</I>
 <BR>
 
 Sets the root of the output filenames.
 Default: output root is is the input filename minus any <B>MB-System</B>
 filename suffixe (e.g. the root derived from &quot;datalistp.mb-1&quot; will be
 &quot;datalist&quot;).
-<DT><B>-S</B>
+<DT><B>--nav-channel=navchannel -Snavchannel</B>
 
 <DD>
-<I>navchannel</I>
 <BR>
 
 Sets <B>MBrolltimelag</B> to read the roll data from navigation records rather
@@ -239,17 +258,16 @@ determine if a datafile contains asynchronous navigation and/or auxiliary
 navigation, run <B>mbinfo</B> using its <B>-N</B> option to get counts
 of all data record types in the file.
 Default: <I>navchannel</I> = 1.
-<DT><B>-T</B>
+<DT><B>--lag-range=nlag/lagmin/lagmax -Tnlag/lagmin/lagmax</B>
 
 <DD>
-<I>nlag/lagmin/lagmax</I>
 <BR>
 
 Sets the time lag values used for the cross correlation calculations. A total
 of <I>nlag</I> cross correlation values will be calculated evenly spaced from
 <I>lagmin</I> seconds to <I>lagmax</I> seconds.
 Default: <I>nlag</I> = 41, <I>lagmin</I> = -2.0 seconds, <I>lagmax</I> = 2.0 seconds.
-<DT><B>-V</B>
+<DT><B>--verbose -V</B>
 
 <DD>
 The <B>-V</B> option causes the program to be verbose.
@@ -295,7 +313,7 @@ Da.
 </PRE>
 
 <CENTER><P><BR>
-Last Updated: 12 August 2024</P></CENTER>
+Last Updated: 7 September 2026</P></CENTER>
 
 <HR>
 <center>

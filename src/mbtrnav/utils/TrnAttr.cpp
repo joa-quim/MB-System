@@ -9,8 +9,16 @@
 /// see LICENSE file for terms of use and license information.
 
 #include <sys/stat.h>
+#ifdef _WIN32
+#include "dirent_w.h"
+#else
 #include <dirent.h>
+#endif
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 
 #include "TrnAttr.h"
 #include "structDefs.h"

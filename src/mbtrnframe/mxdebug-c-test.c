@@ -63,7 +63,11 @@
 
 #include <stdbool.h>
 #include <pthread.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include "mxdebug.h"
 
 /*

@@ -1,4 +1,4 @@
-.TH mbpreprocess 1 "28 January 2025" "MB-System 5.0" "MB-System 5.0"
+.TH mbpreprocess 1 "7 September 2026" "MB-System 5.0" "MB-System 5.0"
 .SH NAME
 \fBmbpreprocess\fP \- performs preprocessing of swath sonar data as part of setting
 up an MB-System processing structure for a dataset.
@@ -699,6 +699,9 @@ description associated with the navigation data being used, whether that
 derives from asynchronous records in the data stream or from an external
 navigation file.
 .br
+.TP
+.B --attitude-zero-heave
+Sets all heave values in the attitude time series to zero.
 .TP
 .B --soundspeed-file=\fIFILE\fP
 Specifies an external time series file from which to merge sound speed data,

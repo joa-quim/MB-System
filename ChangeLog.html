@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta charset="utf-8" />
-  <meta name="generator" content="pandoc 3.10.1" />
+  <meta name="generator" content="pandoc 3.11" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
   <title>ChangeLog</title>
   <style>
@@ -23,7 +23,6 @@ width: 0.8em;
 margin: 0 0.8em 0.2em -1.6em;
 vertical-align: middle;
 }
-.display.math{display: block; text-align: center; margin: 0.5rem auto;}
 </style>
   <style type="text/css">body {
 font-family: Helvetica, arial, sans-serif;
@@ -333,6 +332,12 @@ accessible as tarballs through the Github interface.</p>
 Version 5.8 Releases and Release Notes:</h3>
 <hr />
 <ul>
+<li>Version 5.8.3beta22 September 19, 2026</li>
+<li>Version 5.8.3beta21 September 13, 2026</li>
+<li>Version 5.8.3beta20 September 10, 2026</li>
+<li>Version 5.8.3beta19 September 10, 2026</li>
+<li>Version 5.8.3beta18 September 9, 2026</li>
+<li>Version 5.8.3beta17 September 8, 2026</li>
 <li>Version 5.8.3beta16 July 26, 2026</li>
 <li>Version 5.8.3beta15 July 26, 2026</li>
 <li>Version 5.8.3beta14 July 6, 2026</li>
@@ -384,6 +389,1534 @@ Version 5.8 Releases and Release Notes:</h3>
 <li><strong>Version 5.8.0 January 22, 2024</strong></li>
 </ul>
 <hr />
+<h4 id="583beta22-september-19-2026">5.8.3beta22 (September 19,
+2026)</h4>
+<p>Program mbeditviz: added a new &quot;Color by Soundings&quot; option to the
+View menu of the 3D Soundings window, alongside the existing &quot;Color by
+Flag State,&quot; &quot;Color by Topography,&quot; and &quot;Color by Amplitude&quot; toggles.
+The pre-existing &quot;Color by Topography&quot; option (unchanged) colors
+soundings by depth using the same color table and the same minimum and
+maximum topography values as the associated MBeditviz Survey Viewer, so
+its color stretch is fixed to the whole gridded bathymetry&#39;s range and
+does not change as different soundings are picked. The new &quot;Color by
+Soundings&quot; option instead colors soundings by depth with the color
+stretch scaled to the minimum and maximum depth values found only among
+the soundings currently displayed in the 3D Soundings window: when &quot;Show
+Flagged Soundings&quot; is on, the minimum and maximum are calculated over
+all of the displayed soundings regardless of beamflag state, and when it
+is off, only the unflagged (valid) soundings are used, so the full color
+range is always available to differentiate whatever subset of soundings
+is currently being examined. The new mode is implemented in
+mb3dsoundings_plot() (src/mbview/mb3dsoundings_callbacks.c), recomputing
+the local depth range and sounding colors on every redraw rather than
+baking colors in at selection time as &quot;Color by Topography&quot; does. The
+mbeditviz manual page was updated to document all four View-menu
+coloring modes.</p>
+<p>This feature was added with the assistance of the AI coding assistant
+Claude Sonnet 5 (Anthropic, model claude-sonnet-5), operating as Claude
+Code under developer supervision and review; the mbview and mbeditviz
+libraries/programs were rebuilt and the new option was verified to
+compile cleanly alongside the pre-existing coloring modes.</p>
+<p>Program mbeditviz: fixed a bus-fault crash while gridding survey data
+whose navigation contains a bad fix far outside the actual survey area.
+The bogus fix inflated the computed grid bounds enormously, so the
+grid&#39;s column-count times row-count cell total overflowed the 32-bit int
+used to size the grid arrays; the resulting malloc() calls silently
+&quot;succeeded&quot; with a wrapped, far-too-small buffer size while the true
+(huge) column/row counts were still used to index into it, producing
+out-of-bounds writes and a crash. mbeditviz_setup_grid() and
+mbeditviz_make_grid_simple() (src/mbeditviz/mbeditviz_prog.c) now
+compute the requested cell count in a size_t and refuse to allocate a
+grid larger than a sane cap (MBEV_GRID_MAX_CELLS, defined in
+mbeditviz.h), reporting the likely cause (bad navigation or too small a
+grid cell size) and aborting the grid cleanly instead of crashing;
+mbeditviz_make_grid() was also changed to check that the grid arrays
+were actually allocated before using them, and all of the grid cell
+index computations (in mbeditviz_make_grid, mbeditviz_grid_beam, and
+mbeditviz_make_grid_simple) were widened from int to size_t as a further
+guard against index overflow on large grids.</p>
+<p>This fix was made with the assistance of the AI coding assistant
+Claude Sonnet 5 (Anthropic, model claude-sonnet-5), operating as Claude
+Code under developer supervision and review, which used lldb output
+identifying the faulting instruction and out-of-range array index to
+trace the crash to the grid-size integer overflow described above;
+mbeditviz was rebuilt and verified to compile cleanly with the fix in
+place.</p>
+<p>Macro mbm_grd3dplot: fixed a malformed GMT <code>-B</code> (basemap
+axes) option in the generated plotting shellscript that caused 3D
+perspective plots to fail. The macro builds the axes annotation string
+(tick intervals, visible-face selection, and title) into a Perl
+variable, <code>$axes</code>, that already includes its own leading
+<code>-B</code> flags (e.g. <code>-Bxy1m -Bz13.62 -BSEZ+t&quot;...&quot;</code>),
+but the <code>psbasemap</code> call in the generated <code>.cmd</code>
+script prepended yet another <code>-B</code> to that variable, producing
+a doubled option such as <code>-B-Bxy1m -Bz13.62 -BSEZ+t&quot;...&quot;</code>
+that GMT&#39;s <code>psbasemap</code> could not parse (&quot;Bad interval in -B
+option... gave interval = 0&quot;). Because <code>psbasemap</code> then
+failed, the PostScript file was left unfinalized, causing a second,
+downstream <code>psconvert</code> failure (&quot;file is not finalized&quot;) that
+obscured the real problem. The extraneous <code>-B</code> was removed
+from the <code>psbasemap</code> command construction in
+src/macros/mbm_grd3dplot so the axes string is emitted as built.</p>
+<p>This fix was made with the assistance of the AI coding assistant
+Claude Sonnet 5 (Anthropic, model claude-sonnet-5), operating as Claude
+Code under developer supervision and review, which traced both reported
+errors to the single duplicated <code>-B</code> option and verified the
+fix by regenerating and running the plotting shellscript against a
+user-supplied grid, confirming that <code>psbasemap</code> and the
+subsequent <code>psconvert</code> rendering step both completed
+successfully.</p>
+<h4 id="583beta21-september-13-2026">5.8.3beta21 (September 13,
+2026)</h4>
+<p>Programs mbedit, mbnavedit, and mbvelocitytool: fixed a misleading
+error dialog reported in Github issue #1577, where any failure to open
+the input swath file (a missing file, a permissions problem, an overly
+long path, or anything else) produced the exact same hardcoded message
+asserting a single, often wrong, cause (&quot;File may not exist or you may
+not have read permission in this directory!&quot;). The underlying
+mb_read_init() failure does not preserve the original errno from the
+failed fopen() through to the GUI&#39;s error-dialog code, so the three
+programs previously had no way to tell these cases apart. A new shared
+helper function, mb_file_open_error_message() (src/mbaux/mb_xmutil.c/.h,
+part of the libmbxmutil library introduced in 5.8.3beta20),
+independently re-diagnoses the failure with stat()/access() at the point
+the dialog is raised and reports one of &quot;File does not exist,&quot; &quot;Path is
+too long (N characters),&quot; &quot;Permission denied,&quot; or &quot;File exists but could
+not be read (wrong format?)&quot; as appropriate, replacing the single fixed
+message at the corresponding call site in each of the three programs. No
+bug causing swath file paths of any particular length to actually fail
+to open was found during this investigation - MB_PATH_MAXLINE (1024
+bytes) is used consistently for the swath file path in all three
+programs, from the Motif file-selection dialog through mb_read_init()
+and mb_format.c - so the long path reported in the original issue is
+understood to have hit an operating-system path-length limit rather than
+an MB-System bug; the fix is to the error reporting itself. All three
+affected programs were rebuilt and the new helper&#39;s diagnosis was
+verified standalone against a nonexistent file, a path of about 2000
+characters, and an existing file of the wrong format.</p>
+<p>Man pages: fixed ten manual pages that existed as files in
+src/man/man1/ but were never installed because they were missing from
+the file lists in src/man/man1/CMakeLists.txt, so
+<code>cmake --install</code> never copied them regardless of build
+configuration. This included mbphotomosaic (reported missing from
+/usr/local/share/man/man1) along with mbgetphotocorrection,
+mbimagecorrect, mbm_makeimagelist, and mbphotogrammetry (all built only
+when buildOpenCV is enabled, in src/photo), mbgrd2octree and
+mbgrdtilemaker (built only when buildTRN is enabled, in src/mbtrnutils),
+and mbm_phins2fnv, mbm_rollerror, and mbm_trnplot (in src/macros, built
+unconditionally). The fix adds all ten page names to
+src/man/man1/CMakeLists.txt: the three macros pages join the main
+unconditional list, the two TRN pages join the existing buildTRN-gated
+set alongside mbtrnpp.1, and the five photo pages form a new
+buildOpenCV-gated set, matching the conditions under which their
+corresponding executables are actually built. The eleven man pages gated
+by buildDeprecated (mb7k2ss, mb7kpreprocess, mbauvnavusbl, mbhsdump,
+mbhysweeppreprocess, mbkongsbergpreprocess, mbneptune2esf, mbotpsold,
+mbrollbias, mbstripnan, and mbswplspreprocess) were confirmed to already
+be correctly excluded, since their corresponding programs are likewise
+not built or installed when buildDeprecated is off. Verified by
+reconfiguring and reinstalling the man1 directory and confirming
+<code>man mbphotomosaic</code> and the other nine previously missing
+pages now resolve correctly.</p>
+<p>Program mbimagelist: added three new command line options extending
+the program&#39;s output modes and time filtering. The new --imagelist
+option reproduces the full eight-column row format used by imagelist
+files themselves (left and right image paths, left and right timestamps,
+left and right gains, and left and right exposures), printing &quot;NULL&quot; in
+place of a missing left or right path (and 0.0 for its associated time,
+gain, and exposure) for single-camera or one-sided stereo entries; this
+is an alternative to the pre-existing --files (the default) and
+--settings output modes. New --start=yyyy/mm/dd/hh/mm/ss.ssssss and
+--end=yyyy/mm/dd/hh/mm/ss.ssssss options (fractional seconds supported)
+restrict the image listings that are output to those falling within a
+given time period, applied uniformly across all three output modes; by
+default all image listings encountered are still output. Also fixed
+--parameters, which prints imagelist #PARAMETER entries (the camera
+calibration, platform, navigation, tide, image-quality, and
+image-correction files that an imagelist can reference for use by
+mbphotomosaic and related programs): a parameter whose value is one of
+these file paths is now output resolved relative to the current working
+directory rather than as the bare filename originally written in the
+imagelist, matching the equivalent path resolution mbphotomosaic.cc
+already performs when it reads these same entries, while a path that is
+already absolute is left unmodified; this resolution is applied in all
+three of mbimagelist&#39;s output modes (--files, --settings, and
+--imagelist), not only when --imagelist is in use. The mbimagelist
+manual page was updated to document all of the above, and its EXAMPLES
+section - previously describing an unrelated swath-datalist workflow
+copied from a different program&#39;s man page - was replaced with examples
+that actually exercise mbimagelist&#39;s imagelist parsing and the new
+options.</p>
+<p>Man page audit: starting from a user-reported case where the
+mbphotomosaic manual page candidly documented that its
+--section-length-max option had no effect (the argument-parsing code
+re-tested for the --section option name instead of
+--section-length-max), all manual pages under src/man/man1 were searched
+for similar language admitting that an option was non-functional, dead,
+or otherwise not doing what it claimed. This turned up ten further cases
+across eight programs, each independently confirmed against the actual
+source before being fixed; three of these had a documented option
+removed outright (at the user&#39;s direction, rather than implemented), and
+the rest had the underlying bug fixed so the documented option actually
+works, with each affected manual page corrected to match.</p>
+<p>Program mbphotomosaic: fixed --section-length-max, which sets the
+maximum allowed length (in output grid cells) of the longest diagonal of
+an image section&#39;s projected quadrilateral; the option-parsing code
+tested the long-option name &quot;section&quot; a second time instead of
+&quot;section-length-max&quot;, so the value was never read and the compiled-in
+default of 0.5 was always used regardless of what was passed on the
+command line.</p>
+<p>Program mbphotogrammetry: removed --good-fraction-threshold, which
+was accepted on the command line but declared and never read anywhere in
+the program&#39;s option-processing logic, so it had no effect under any
+value.</p>
+<p>Program mbm_makeimagelist: fixed -f/--imformat=image_format, which
+was supposed to set the image file suffix (e.g. &quot;tif&quot;, &quot;jpg&quot;) searched
+for in the PROSILICA_L and PROSILICA_R subdirectories, but instead wrote
+its value into the image-directory variable (--imdir) by mistake,
+leaving the search suffix stuck at the compiled-in default &quot;tif&quot; no
+matter what format was requested.</p>
+<p>Program mbhysweeppreprocess: removed -O/--output, which was intended
+to set the output data file path but had no effect - the program always
+constructs the output filename automatically from the input filename
+regardless of this option. Separately, and unrelated to the option
+audit, all five calls to mb_platform_set_sensor_offset() in this program
+passed 13 arguments against the function&#39;s 11-parameter declaration
+(each call had a stray extra boolean spliced in where position_offset_x
+belongs, and the sonar-sensor calls additionally duplicated that same
+variable a second time where the attitude offsets belong); this does not
+build at all with -DbuildDeprecated=ON, and, more importantly, was
+silently dropping the sonar&#39;s own heading/roll/pitch mounting-angle
+offsets even where the call happened to match by argument count. All
+five calls now pass exactly the arguments the function declares.</p>
+<p>Program mbauvnavusbl: removed navformat and usblformat (the
+-F/--navformat and -M/--usblformat equivalents in this getopt-based
+program), both accepted but unused - the input navigation and USBL files
+are always parsed as whitespace-delimited ASCII text regardless of
+either value.</p>
+<p>Program mbgetphotocorrection: removed
+--altitude-sensor=altitude_sensor_id, whose value was parsed and stored
+but never applied to the platform model, unlike the otherwise-identical
+--attitude-sensor, --heading-sensor, --nav-sensor, and --camera-sensor
+options, which do work.</p>
+<p>Program mbgrdtilemaker: removed --mode/-M, whose value was parsed and
+stored but never referenced anywhere else in the program (the
+long-option form was in fact doubly dead, since the option-parsing chain
+tested for the string &quot;tile-mode&quot; rather than the registered long-option
+name &quot;mode&quot;, so even the stale --tile-mode=mode text in the program&#39;s
+own usage message could never have matched). Also fixed --verbose, which
+previously had no effect on the volume of output: a full dump of
+input-grid and output-tileset parameters, plus a line per tile and a
+line per mbgrd2octree invocation, was always printed to stdout
+regardless of this setting. Now a single run without --verbose reports
+the input grid path and a final tile count only; --verbose restores the
+full parameter dumps and per-tile/per-invocation detail, routed through
+the program&#39;s existing verbose-controlled output stream rather than
+hardcoded to stdout.</p>
+<p>Program mbimagelist: fixed --left, --right, and --single, which
+accepted their arguments but never filtered anything - every image
+listing was output regardless of which of these was given. --left and
+--right now restrict the listing to left-camera and right-camera images
+respectively (the non-selected side of a stereo pair is omitted, or
+written as NULL in --imagelist output), and --single restricts it to
+single-camera (non-stereo) images; the end-of-run
+left/right/single/total image counts and any file copying requested with
+--copy now likewise reflect only what was actually selected. This
+required a root-cause fix in shared code: MB_IMAGESTATUS_SINGLE and
+MB_IMAGESTATUS_LEFT (src/mbio/mb_status.h) were defined to the identical
+value, so a genuinely single-camera image and the left half of a stereo
+pair were indistinguishable to every piece of code that inspected an
+image&#39;s status. This had already made three &quot;else if (... ==
+MB_IMAGESTATUS_SINGLE)&quot; branches unreachable dead code, one each in
+mb_format.c, mbgetphotocorrection.cc, and mbphotomosaic.cc, and had
+caused a real miscount in mbimagelist&#39;s own left/single image tallies.
+MB_IMAGESTATUS_SINGLE was given its own distinct value, and a related
+bug in mb_format.c&#39;s handling of the &quot;$SINGLE&quot;/&quot;#SINGLE&quot; imagelist tag -
+which was setting the internal mode to MB_IMAGESTATUS_LEFT instead of
+MB_IMAGESTATUS_SINGLE, presumably the original source of the aliasing -
+was corrected. The previously-dead SINGLE branches in
+mbgetphotocorrection.cc and mbphotomosaic.cc were reviewed and confirmed
+to behave sensibly now that they actually execute; no changes were
+needed to their logic.</p>
+<p>Macro mbm_phins2fnv: implemented actual translation of processed
+iXblue Phins INS navigation data into MB-System&#39;s fnv navigation format,
+replacing a version that only parsed and echoed the input table to the
+shell without ever writing the output file named by -o/--output. Also
+implemented --verbose, which previously had no effect: it now reports
+the input/output filenames, warns about and skips any input line that
+cannot be parsed instead of aborting the whole conversion, and prints a
+final count of lines read, written, and skipped; without --verbose the
+macro now runs silently on success rather than always dumping the parsed
+input table.</p>
+<p>Test suite: fixed an intermittent-failure race condition in
+test/xvfb_helper.py, the shared helper that starts a private Xvfb X
+server for the mbedit, mbnavedit, mbeditviz, mbvelocitytool, and
+mbnavadjust GUI smoke tests (these Motif programs open an X display
+before parsing arguments, so even &quot;-h&quot; needs one). The helper previously
+just slept a fixed 1.5 seconds after starting Xvfb and hoped that was
+long enough for it to bind the display; under load - for example,
+running the test suite immediately after a full rebuild - this was not
+always long enough, and all five tests would fail together with the GUI
+program unable to connect. The fixed sleep was replaced with active
+polling for the X11 lock file that signals Xvfb has actually bound its
+display (with a generous timeout and a clear error if Xvfb exits early
+instead), and display-number selection now skips any number already
+locked by another X server instead of trusting random selection alone to
+avoid collisions. Verified by running the full test suite repeatedly,
+both serially and under <code>ctest -j8</code>, with all 73 tests
+passing consistently.</p>
+<p>The changes described above were found, diagnosed, and made with the
+assistance of the AI coding assistant Claude Sonnet 5 (Anthropic, model
+claude-sonnet-5), operating as Claude Code under developer supervision
+and review; the affected programs and man pages were rebuilt (including
+a scratch build configured with -DbuildDeprecated=ON to cover
+mbhysweeppreprocess and mbauvnavusbl, which are not part of the default
+build) and reinstalled where applicable, and the fixes were verified
+after the changes were applied, including a full test suite run.</p>
+<p>Macro mbm_grdinfo: fixed a bug that broke mbm_grdplot&#39;s -G6 and -G7
+image-plotting modes whenever a -R region was given. mbm_grdinfo cuts a
+temporary subregion via mbm_grdcut before reporting bounds, naming the
+cut file by appending &quot;_grdcut_<pid>&quot; to the end of the whole input
+filename; for an image input such as foo.png this produced
+foo.png_grdcut_12345, which no longer ends in a recognized image
+extension, so GMT&#39;s grdcut could not tell what format to write and
+mbm_grdplot aborted with &quot;The program grdinfo does not appear to have
+worked properly.&quot; Grid files were unaffected, since GMT does not require
+a recognized extension to write a grid. The fix inserts the
+&quot;_grdcut_<pid>&quot; suffix before a recognized image extension
+(png/tif/tiff/jpg/jpeg/gif/bmp) instead of after it, so the temporary
+file keeps a name GMT recognizes.</p>
+<p>Macro mbm_grdplot: fixed color_mode 6 (&quot;Image plot using embedded
+georeferencing&quot;) so it no longer emits an explicit -D option to gmt
+grdimage. GMT (as of 6.7.0) zeroes an image&#39;s read padding as soon as -D
+or -Dr is passed explicitly, before it has determined whether the plot&#39;s
+projection will actually need to resample the image; for any
+non-Cartesian projection (e.g. -Jm) that does need resampling, this left
+grdimage aborting with &quot;gmt_img_project: Input image does not have
+sufficient (2) padding&quot; for any image large enough to take that code
+path, regardless of the image having valid embedded georeferencing (e.g.
+a PNG with an accompanying .pgw world file). grdimage already
+auto-detects an image&#39;s embedded georeferencing on its own when -D/-Dr
+is omitted, via a code path that keeps the normal padding, so dropping
+the explicit -D for mode 6 avoids the crash entirely; color_mode 7
+(&quot;Image plot using bounds specified with -R&quot;) still requires -Dr, since
+without it GMT has no way to assign real-world coordinates to a
+genuinely non-georeferenced image, and so remains subject to the same
+underlying GMT limitation if such an image needs resampling under a
+non-Cartesian projection. Verified by regenerating and running a user&#39;s
+mbm_grdplot -G6 command against a large (6471x5068) georeferenced LASS
+photomosaic PNG under a Mercator projection, confirming the
+previously-empty output plot now contains the actual projected
+image.</p>
+<p>These two fixes were found and made with the assistance of the AI
+coding assistant Claude Sonnet 5 (Anthropic, model claude-sonnet-5),
+operating as Claude Code under developer supervision and review, in
+response to a user&#39;s report that mbm_grdplot was failing to plot a LASS
+photomosaic; both fixes were verified against the user&#39;s actual data
+files.</p>
+<p>Macro mbm_grdplot: fixed four bugs in the color-palette (CPT)
+generation logic, found while building an independent Python
+re-implementation of mbm_grdplot&#39;s page-layout, projection, and
+color-generation logic and cross-checking every code path bit-for-bit
+against the Perl macro&#39;s own output on synthetic test grids.</p>
+<p>The ratio-based azimuthal projections (-Ja, -Je, -Jg, -Js) computed
+the wrong map scale whenever mbm_grdplot was left to auto-fit the plot
+to the page rather than being given an explicit scale: the auto-fit
+scale is expressed as a &quot;1:NNNN&quot; ratio string, but the code assembling
+the final -J argument ran that string through a sprintf(&quot;%g&quot;, ...) call,
+and Perl&#39;s numeric coercion of a string stops at the first non-numeric
+character, silently truncating a scale such as &quot;1:436897&quot; down to &quot;1&quot; -
+a wildly wrong 1:1 map scale on any auto-scaled plot using one of these
+four projections. Fixed by appending the ratio string directly instead
+of formatting it as a number.</p>
+<p>The continuous-style (default) histogram-equalized color stretch (-S)
+always dropped the true (padded) maximum data value from the generated
+color palette: the code asked GMT&#39;s grdhisteq for ncolors bins (ncolors
++ 1 boundary values) but only ever consumed ncolors of them, always
+discarding the last one, so the final color segment fell short of the
+actual data range by however much the discarded bin spanned. Fixed by
+folding that last boundary into the final consumed slot instead of
+discarding it, merging what would have been the last two equalized bins
+into one final segment rather than truncating the color range.</p>
+<p>Discrete-style (-W2) color palettes - both the regular
+single-built-in-palette case and the &quot;Sealevel&quot; dual-colormap case
+(color palette 8, and the related unnamed palette 9) - always rendered
+one extreme color segment solid black. Discrete style has one more color
+segment than continuous style, but the palette-interpolation loop that
+builds the underlying color samples was still sized for the
+continuous-style count in both cases, so the extra discrete segment read
+one entry past the end of the interpolated-color array; Perl&#39;s silent
+out-of-bounds array read returns undef, which a numeric printf renders
+as 0, so the darkest or lightest extreme of the palette came out solid
+black instead of showing an actual color. Fixed by sizing both
+interpolation loops off the same ncolors_use variable already used
+elsewhere in the macro to distinguish continuous- and discrete-style
+color counts.</p>
+<p>A fifth, related oddity was noticed but not changed: the Sealevel
+dual-colormap code&#39;s guard against a negative sea-level-crossing index
+checks a variable (iszero, with an extra &quot;s&quot;) that is never otherwise
+assigned or read, so the guard is dead code and the intended clamp to
+zero never actually happens. No real-world case triggering a negative
+index was found during this investigation, so this was left as a
+flagged, unconfirmed issue rather than fixed speculatively.</p>
+<p>All four fixes were verified by generating synthetic test grids -
+including one deliberately straddling sea level, to exercise the
+Sealevel dual-colormap path - and comparing mbm_grdplot&#39;s own generated
+color-palette-table content, before and after each fix, directly against
+the from-scratch Python re-implementation built for this
+investigation.</p>
+<p>The changes described above were found and made with the assistance
+of the AI coding assistant Claude Sonnet 5 (Anthropic, model
+claude-sonnet-5), operating as Claude Code under developer supervision
+and review, while independently porting mbm_grdplot&#39;s layout and
+color-generation logic to Python; all four fixes were verified against
+real mbm_grdplot output on synthetic test grids before and after each
+change.</p>
+<p>Macros mbpy_grdplot, mbpy_grd3dplot, mbpy_histplot, and mbpy_xyplot:
+added four new Python/PyGMT-era macros that generate GMT modern mode
+shellscripts (<code>gmt begin</code>/ <code>gmt end</code>), replacing
+the classic-GMT-mode Perl macros mbm_grdplot, mbm_grd3dplot,
+mbm_histplot, and mbm_xyplot respectively while reproducing each one&#39;s
+own page-layout, projection-fitting, and (where applicable)
+color-palette conventions closely enough to produce visually equivalent
+plots. The four tools share three support modules (mbpy_layout.py:
+page-size/projection/tick-interval math and grid metadata parsing;
+mbpy_color.py: color-palette/CPT generation; mbpy_misc.py:
+coastline/contour/navigation/xy-overlay option modeling), plus one
+script-generator module each (mbpy_grdplot_script.py,
+mbpy_grd3dplot_script.py, mbpy_histplot_script.py,
+mbpy_xyplot_script.py); mbpy_xyplot_script.py in turn reuses page-size
+and tick-interval helpers from mbpy_histplot_script.py and the baseline
+GMT-defaults helper from mbpy_grdplot_script.py, since mbm_xyplot&#39;s own
+page-size and tick-interval subs were confirmed, by direct comparison of
+the Perl sources, to be identical to mbm_histplot&#39;s (not mbm_grdplot&#39;s,
+despite superficial similarity). Unlike the Perl macros&#39; packed
+single-letter &quot;-M&lt;sub&gt;:&lt;sub&gt;:...&quot; option grammars, each
+Python macro exposes coastline, contour, navigation, xy-overlay,
+text-label, and length-scale-bar tuning as its own descriptive long
+option.</p>
+<p>A number of real bugs - in both the original Perl macros and in early
+versions of this Python port - were found and fixed while cross-checking
+the new macros&#39; output against the classic macros&#39; own, on both
+synthetic test grids and real survey data:</p>
+<p>mbpy_grdplot/mbpy_grd3dplot: fixed a missing fallback for grids whose
+metadata does not literally identify them as a UTM/projected coordinate
+system (e.g. MB-System&#39;s own &quot;LTM&quot; grids) but whose coordinate values
+are clearly not geographic (lon/lat) - mbm_grdplot/mbm_grd3dplot both
+fall back to treating such a grid as projected based on its actual
+coordinate bounds, a check the initial Python port omitted, causing
+<code>gmt mapproject</code> to fail outright on a real projected grid.
+Also fixed a case where a user-supplied -R region string overrode the
+plotted region but not the xmin/xmax/ymin/ymax values driving the
+page-fit/scale computation, producing a wildly wrong plot aspect ratio
+for any sub-region request; and a case where the corrected
+projected/geographic determination above was not propagated to the
+shading commands that separately consult it, so
+<code>grdgradient</code>&#39;s -fg flag could disagree with the layout
+calculation that had just been corrected. Separately, run_grdinfo()
+(both macros&#39; shared <code>gmt grdinfo</code> output parser) crashed
+with a UnicodeDecodeError on a real grid whose embedded NetCDF metadata
+contained a non-UTF-8 byte; it now decodes that output with
+errors=&quot;replace&quot;.</p>
+<p>mbpy_histplot: fixed three compounding bugs in the default (no
+explicit -J) page- fit scale computation, found by comparing a generated
+plot against real mbm_histplot output for the same data. mbm_histplot
+has its own GetPageSize subroutine, distinct from mbm_grdplot&#39;s (no
+color-scale-bar-placement branching, and, unlike mbm_grdplot&#39;s version,
+no clamping of margins to an absolute maximum); the initial port wrongly
+reused mbm_grdplot&#39;s version. mbm_histplot also computes two independent
+x and y scales that each separately fill the page (appropriate since a
+histogram&#39;s value and frequency-percent axes have unrelated units and
+ranges) and always defaults to landscape orientation, rather than
+mbm_grdplot&#39;s single aspect-ratio-preserving scale; the initial port
+wrongly reused that logic too, which visibly squashed a real histogram
+plot down to a fraction of an inch wide. A third, smaller bug remained
+after both fixes: the no-map-scale default scale value was incorrectly
+run through logic meant only for a partially-parsed user-supplied -J
+flag, producing a garbled probe value used to test the plot&#39;s apparent
+size. All three fixes were confirmed by matching the macro&#39;s computed
+plot scale to the real mbm_histplot output to 8+ significant figures.
+Separately, classic pshistogram&#39;s outline-pen option, -L<pen>, is not
+accepted by the current <code>gmt histogram</code> module (which uses
+-W<pen> like nearly every other GMT plotting module); mbpy_histplot
+emits the current -W syntax.</p>
+<p>mbpy_xyplot: a new macro with no classic-mode-only options list.
+Beyond page-layout parity with mbm_xyplot (confirmed identical to
+mbm_histplot&#39;s own algorithm, as above), this macro&#39;s main design goal
+was eliminating mbm_xyplot&#39;s persistent-temporary-file behavior:
+mbm_xyplot preprocesses every -I input file (delimiter-splitting, and
+evaluating any user-supplied per-file column-selection/ math expression)
+into a file named &quot;&lt;input&gt;&lt;n&gt;.&lt;pid&gt;&quot; left behind in
+the working directory after every run, whether or not the generated plot
+script is ever executed. mbpy_xyplot instead performs the equivalent
+column-selection/math once in memory, in Python, to determine the
+auto-fit plot bounds, and pipes each input file through a small
+<code>awk</code> program straight into <code>gmt plot</code>&#39;s standard
+input at plot time - a live, ephemeral pipe, with nothing written to
+disk. While validating this against real data, two further issues
+surfaced: mbm_xyplot&#39;s own per-line numeric-result validation is an
+unintentional no-op (its regex is satisfied by the empty string), so an
+ordinary text header line at the top of a data file passes through
+unfiltered - and because <code>gmt plot</code> infers each column&#39;s data
+type from the first record it reads, that single non-numeric first line
+silently discarded every subsequent, valid row instead of just itself;
+mbpy_xyplot validates each computed x/y pair with a real numeric check
+instead. And a data column that is exactly constant across an entire
+file (e.g. a real &quot;heave&quot; trace logged as 0.0 for a whole survey)
+collapses to a zero-width plot axis that neither classic nor modern GMT
+can project at all; mbpy_xyplot now pads such a degenerate axis by a
+small margin so it still renders as a visible flat line rather than
+aborting. (A genuine, separate bug was also found in mbm_xyplot&#39;s own
+-MGT text-label option - the extraction regex tests for &quot;GP&quot; where the
+surrounding check tests for &quot;GT&quot;, almost certainly a copy/paste slip, so
+no -MGT label has ever actually been added to a plot - but mbpy_xyplot
+has nothing to port this into, since it exposes text labels as a plain
+--text long option rather than reproducing the
+&quot;-M&lt;sub&gt;:&lt;sub&gt;:...&quot; grammar at all.)</p>
+<p>Manual pages were written for all four new macros (mbpy_grdplot.1,
+mbpy_grd3dplot.1, mbpy_histplot.1, mbpy_xyplot.1), and mbsystem.1 and
+src/html/mbsystem_man_list.html were updated to list all four alongside
+their classic-macro counterparts.</p>
+<p>The four new macros and their manual pages were found, built, and
+documented with the assistance of the AI coding assistant Claude Sonnet
+5 (Anthropic, model claude-sonnet-5), operating as Claude Code under
+developer supervision and review; each macro was verified against real
+survey data (including, for mbpy_xyplot, generating eight time-series
+plots of navigation and attitude data from a real AUV mission) as well
+as the regression test suite covering the shared
+mbpy_layout/mbpy_color/mbpy_misc modules, and the man pages were
+verified to render cleanly and to accurately match each tool&#39;s current
+command-line options.</p>
+<hr />
+<h4 id="583beta20-september-10-2026">5.8.3beta20 (September 10,
+2026)</h4>
+<p>Programs mbedit, mbnavedit, mbvelocitytool, mbgrdviz, mbeditviz, and
+mbnavadjust (all of the interactive Motif-based bathymetry/navigation
+editors and 3-D viewers, plus the mbnavadjustmerge command-line tool
+that shares mbnavadjust&#39;s project file I/O code): a follow-on
+memory-management and array-bounds audit, extending the
+mbedit/mbnavedit/ mbvelocitytool review from 5.8.3beta19&#39;s release notes
+to the three remaining interactive programs that had not yet been
+covered. Many real, independently confirmed bugs were found and fixed;
+the most significant are summarized below by program. As with the
+earlier audit, each finding was verified against the actual code before
+being fixed rather than assumed from a pattern match, and every affected
+program was rebuilt and smoke-tested afterward.</p>
+<p>A new shared helper function, mb_get_text_string()
+(src/mbaux/mb_xmutil.c/.h, built as the new library libmbxmutil),
+replaces five independent implementations of the same &quot;read a Motif text
+widget&#39;s contents into a fixed-size buffer&quot; helper that had accumulated
+across mbedit, mbnavedit, mbvelocitytool, mbeditviz, and mbnavadjust as
+each program&#39;s GUI code evolved separately over the years. All five were
+doing an unbounded strcpy() of the widget&#39;s text (none of the underlying
+text widgets set XmNmaxLength) into destination buffers as small as 40
+bytes, an easy stack overflow for anyone able to type or paste into the
+affected dialog field. mbedit, mbnavedit, and mbvelocitytool had already
+had this specific bug fixed in place as part of the 5.8.3beta19 audit,
+but each program&#39;s copy remained a separate piece of code; this release
+consolidates all five onto the one bounded, NULL-safe shared
+implementation and deletes the local copies (mbgrdviz did not have a
+named helper of its own but had the identical unguarded pattern at one
+call site, which was converted to use the new shared function as
+well).</p>
+<p>Program mbgrdviz: fixed a NULL-pointer-check written in the wrong
+order in do_mbgrdviz_openfile() -
+<code>strlen(file\_ptr) &lt;= 0 &amp;&amp; file\_ptr != NULL</code>
+evaluates strlen() on file_ptr before confirming it is non-NULL, so a
+NULL return from XmStringUnparse() would crash before the guard intended
+to catch it ever ran; fixed by testing file_ptr for NULL first. Fixed an
+unbounded strcpy() from the Area/Route name text field into a static
+1024-byte buffer, reachable on every keystroke while typing a
+survey/route name (now uses the new shared mb_get_text_string() helper).
+Fixed four unbounded sscanf(optarg, &quot;%s&quot;, ...) command-line option
+parsers (both the --grid-file/--overlay-file long-option handlers and
+their -I/-J short-option equivalents) that could overflow the
+destination path buffers given an implausibly long argument; all four
+now use a field-width-limited &quot;%1023s&quot; instead. Fixed a size_t underflow
+parsing a route file whose &quot;## ROUTENAME&quot; header line has no name after
+it - <code>routename[strlen(routename) - 1]</code> wrapped to SIZE_MAX
+when the string was empty, producing an out-of-bounds access; now
+guarded against the zero-length case. Fixed a strcpy()/strcat() pair
+building a status message that could overflow its destination buffer by
+roughly 20 bytes given a near-maximum-length swath file path, by
+replacing it with a single bounds-checked snprintf(). Fixed a missing
+<code>if (status == MB\_SUCCESS)</code> guard in the interactive
+survey-line generator that would write through a NULL pointer following
+a failed memory allocation, and a related sequence of chained
+reallocations reading navigation data that could similarly write through
+a NULL array pointer after a failed reallocation partway through the
+chain. Added missing NULL checks after malloc()/strdup() calls building
+the argument list used to launch mbedit, mbnavedit, mbvelocitytool, and
+mbeditviz as background subprocesses from mbgrdviz&#39;s swath-file and
+navigation-file context menus - all four of these near-identical &quot;launch
+a companion tool&quot; functions now report an error and decline to launch
+rather than crashing if memory could not be allocated for the
+subprocess&#39;s argument vector. Fixed a version-string-detection
+comparison in the site file reader that compared only the first two
+characters of the file&#39;s header line (&quot;##&quot;) rather than the full
+21-character label, which made the branch match any comment line rather
+than specifically the version header.</p>
+<p>Program mbeditviz: fixed a heap buffer overflow copying a
+GUI-selected swath file&#39;s path into a fixed 1024-byte struct field with
+an unbounded strcpy(), reachable simply by selecting or typing a
+sufficiently long path in the Open Swath Data file-selection dialog; and
+a matching stack overflow in the --input/-I command-line option parser
+using the same unbounded sscanf() pattern noted above for mbgrdviz -
+both replaced with bounds-checked copies. Fixed three unchecked
+realloc() calls, all in the interactive 3-D point-cloud selection code
+(selecting soundings by region, by area, and by navigation point), where
+a failed reallocation both leaked the previous, still-valid buffer and
+was then written through as if it had succeeded; all three now realloc
+into a temporary pointer, verify it before committing, and cleanly
+abandon the append on failure instead. Fixed five unchecked mb_mallocd()
+calls in the interactive sensor-bias optimization routine (used by the
+&quot;Optimize&quot; button in the 3-D soundings editor&#39;s bias-parameter dialog),
+where a single failed allocation partway through the chain could be
+masked by a later successful one and ultimately memset() through a NULL
+pointer; the chain is now correctly short-circuited on the first
+failure. Fixed eight sites building per-file auxiliary-sensor-data
+filenames via strcpy()+strcat() with no headroom for the appended
+suffix, all replaced with a single bounds-checked snprintf() each. Fixed
+a copy-paste variable-name error in the sensordepth-data fallback
+loader, which checked whether heading data was missing
+(file-&gt;n_async_heading) instead of whether sensordepth data was
+missing (file-&gt;n_async_sensordepth) before attempting to load
+sensordepth from an alternate file format - this both skipped the
+fallback when it was actually needed and, when it ran under the wrong
+trigger condition, could overwrite a previously loaded sensordepth array
+without freeing it first, leaking memory; both the wrong condition and
+the missing free were fixed. Also fixed an unchecked malloc() building
+the file-list display&#39;s array of Motif string objects.</p>
+<p>Programs mbnavadjust and mbnavadjustmerge: this was the most
+extensive part of the audit, reflecting mbnavadjust&#39;s status as the
+largest and most complex of the programs reviewed. In mbnavadjust_io.c
+(the project file reader/writer shared by both programs): fixed a
+missing upper-bound check on the reference-grid count
+(NUMREFERENCEGRIDS) read directly from a project (.nvh) file header,
+which was later used unchecked as a loop bound writing into fixed
+25-element arrays - a corrupted or hand-edited project file naming more
+than 25 reference grids would overrun those arrays on load; the count is
+now clamped to the array capacity, with a warning, immediately after
+being read. Fixed a navigation-tie snav index (snav_1/snav_2) read from
+a project file that was checked only against its upper bound, not for
+being negative, so a negative value in a malformed file would be used
+directly as a negative array index into several fixed per-section
+arrays; the same &quot;fixup&quot; already applied to out-of-range-high values is
+now also applied to negative values, and the fixup&#39;s own internal
+division was additionally guarded against a zero divisor. Fixed three
+separate sites where a crossing or section array was grown with
+realloc() and then used or reported as successful without checking
+whether the reallocation itself had failed (in
+mbnavadjust_findcrossingsfile(), mbnavadjust_addcrossing(), and -
+originally left as a flagged follow-up during the main audit pass and
+completed immediately afterward in a dedicated follow-up review -
+mbnavadjust_import_file()&#39;s per-section array, whose fix required
+tracing roughly 700 lines of ping-by-ping import logic to identify a
+safe place to abort the import cleanly on allocation failure); all
+three, plus a fourth occurrence found independently during the audit&#39;s
+own verification pass in mbnavadjust_remove_short_sections(), now
+realloc into a temporary pointer, verify it, and only commit the new
+pointer and proceed to use the array once success is confirmed, matching
+the safe pattern already used correctly elsewhere in the same file.
+Fixed a chain of mb_mallocd()/mb_reallocd() calls loading section ping
+data that reused a single status variable in a way that let a later
+successful call mask an earlier failure, then proceeded to copy data
+into the resulting (possibly still-NULL) buffers. Fixed an inconsistency
+where a global tie could be marked as set (a non-&quot;none&quot; status) while
+its associated navigation-point index was left at the &quot;unset&quot; sentinel
+value of -1, which would then be used as a negative array index in three
+separate places; the inconsistency is now resolved once, at load time.
+Fixed a use of project-&gt;logfp (the project&#39;s open log-file handle)
+that was not guarded against being NULL if a previous attempt to reopen
+the log file for the current session had failed; both the root cause
+(the project being left marked &quot;open&quot; despite the failed log reopen) and
+the unguarded use were fixed. Fixed a negative array index reached when
+merging a too-short section into a preceding section that itself has
+zero navigation points. Fixed two functions that built
+project.path/project.home/project.datadir from an externally supplied
+path via unbounded strcpy()/strcat() chains with no check that the
+result would fit the 1024-byte destination fields.</p>
+<p>In mbnavadjust_prog.c: fixed the same unbounded sscanf(optarg, &quot;%s&quot;,
+...) pattern noted above for the -I/--input option. Fixed three
+chained-mb_mallocd() sites in the navigation-inversion setup code with
+the same status-masking hazard described above for mbnavadjust_io.c.
+Fixed a concrete, easily reachable array-corruption bug in the
+--reset-crossings/-R option&#39;s handling: a loop meant to zero each
+navigation point&#39;s offset arrays used its own loop variable to compute
+values but never actually used that variable as the array index, instead
+repeatedly writing to a single fixed index (the section&#39;s total
+navigation-point count) every iteration - for any section with a full
+set of navigation points (the ordinary case), this silently corrupted
+adjacent struct fields on every project processed with
+--reset-crossings; the loop now correctly indexes by its own loop
+variable. Fixed an incomplete field copy when deleting a navigation tie
+from the middle of a crossing&#39;s tie list, which copied only a handful of
+the tie structure&#39;s roughly two dozen fields during the compacting
+shift, leaving sigma, inversion-result, and block-association fields
+stale after any non-last tie was deleted; the partial field-by-field
+copy was replaced with a single whole-structure assignment that is
+guaranteed to copy every field. Fixed nine model-plot mouse-pick handler
+functions that read uninitialized local variables when no navigation
+point happened to be visible in the plot at the time of the click; all
+nine locals are now initialized to the project&#39;s own &quot;nothing selected&quot;
+sentinel value at declaration. Fixed a realloc() of the contour-plotting
+vector buffer that lost the previous, still-valid buffer on failure, and
+a related double-counted size increment in the same buffer&#39;s growth
+logic. Fixed a stale project.path left over from a previous project when
+creating a new project by a bare filename with no directory component,
+by adding the same current-working-directory fallback already used
+correctly in the sibling project-opening function.</p>
+<p>In mbnavadjust_callbacks.c: replaced this file&#39;s own independent,
+unbounded copy of the get_text_string() helper described above with the
+new shared implementation, fixing the same stack-overflow-prone pattern
+at its three call sites (the worst being a 40-byte destination buffer
+reachable from the Import Data dialog&#39;s format field). Fixed three GUI
+menu actions (&quot;Show Selected File,&quot; &quot;Show With Selected File,&quot; &quot;Show
+With Selected Section&quot;) that changed the project&#39;s view mode
+unconditionally, without checking that a file or section had actually
+been selected first, which could lead a later status-display routine to
+read project.files[-1]; all three now check for a valid selection first.
+Fixed two sites using the C library&#39;s free() instead of Motif&#39;s XtFree()
+to release memory returned by XmListGetSelectedPos(), an allocator
+mismatch that is usually harmless on this codebase&#39;s current Linux/macOS
+Xt implementations but is a real portability hazard for the ongoing
+Windows port effort. Fixed two strncpy() calls that did not reserve room
+for an explicit null terminator, unlike the already-correct pattern used
+a few lines earlier in the same file. Fixed four sites checking only the
+lower bound of a reference-grid index before using it, adding the
+missing upper-bound check against the project&#39;s actual reference-grid
+count. Added missing NULL checks after all twenty-three malloc() calls
+building the Motif string-list arrays used to populate mbnavadjust&#39;s
+various list-view displays.</p>
+<p>In mbnavadjust_invertnav.c (the navigation-inversion/least-squares
+solver): fixed a copy-paste bug in the z-only global-tie handling that
+read from the parallel xy-tie index arrays instead of the z-tie index
+arrays, both mis-indexing a smaller array (an out-of-bounds read) and
+computing the wrong file/section for a diagnostic warning message - and,
+while tracing this bug, found and fixed the same file/section index
+confusion in the analogous xy-tie warning code as well. Fixed the sparse
+inversion matrix&#39;s per-row storage stride, which had been sized from the
+total number of navigation-point unknowns across the whole project
+rather than the true maximum per-row width actually used by the
+matrix-filling code (the number of survey blocks); for a realistic
+project with many navigation points and comparatively few survey blocks
+this could allocate a dramatically larger matrix than necessary. Fixed a
+smoothing-constraint row-count formula that undercounted relative to the
+loop that actually generates those rows, silently dropping smoothing
+rows from the per-survey inversion pass in a way that degraded but did
+not crash the solution. Fixed an unbounded strcpy()/strcat() chain
+building a tie-solution output filename, and a copy-paste sizeof()
+argument that measured the wrong (but coincidentally smaller and
+therefore non-overflowing) buffer in an snprintf() call.</p>
+<p>In mbnavadjust_autopick.c (automatic crossing/tie detection): fixed a
+misfit-grid realloc() chain whose individual reallocations were each
+checked, but whose subsequent binning and misfit-calculation loops did
+not confirm that the whole chain had succeeded before using the
+resulting buffers, and whose failure-cleanup path freed buffers without
+clearing the now-dangling pointers, risking a double-free on a
+subsequent call.</p>
+<p>In mbnavadjustmerge.c (the command-line project-merging tool): fixed
+a non-positive-value check missing from the --zoffsetwidth option, whose
+value is used as a divisor in the automatic-tie misfit calculation - a
+value of zero produced a division by zero and a wild array index; the
+option is now validated at parse time. Fixed three CLI actions
+(--set-tie, --triangulate-section, --remove-file) that used file/section
+indices taken directly from the command line to index the project&#39;s file
+and section arrays with no bounds check, unlike the already-hardened
+--add-crossing action in the same file; all three now use the same
+bounds-checking pattern. Fixed unbounded %s conversions parsing a
+--import-tie-list file&#39;s TIE and GLOBALTIE lines into fixed-size path
+buffers, and six sites dereferencing the result of strrchr(path, &#39;/&#39;) +
+1 without checking for NULL, which would crash given a bare filename
+with no directory separator. Fixed the same incomplete-tie-field-copy
+pattern described above for mbnavadjust_prog.c, here occurring during
+tie deduplication while importing a tie list. Fixed a file-section
+cross-reference (file_id) that was not being remapped to the merged
+project&#39;s own file numbering when files were copied in during a project
+merge.</p>
+<p>In mbnavadjust_fine.cc and mbnavadjust_icp.cc (the optional PCL-based
+fine ICP registration tool, mbnavadjustfine, built only when PCL is
+available): fixed an unbounded strcpy() for the --input option&#39;s project
+path. Fixed a --threads option whose value was clamped to an upper bound
+of 8 but not to a lower bound of 1, so --threads=0 produced a division
+by zero. Fixed two call sites that used a crossing&#39;s loaded swath data
+without checking whether the load had actually succeeded. Fixed a
+--try-all code path that read a crossing&#39;s first tie unconditionally
+even when the crossing had zero ties, using uninitialized offset values
+as the registration&#39;s initial alignment guess; a zero-offset default is
+now used in that case instead. Fixed a debug/PLY-export color-scaling
+divide-by-zero when every point correspondence happens to have the same
+distance, and added a missing check for the &quot;no correspondence found&quot;
+sentinel index before using it to index a point cloud, mirroring an
+equivalent guard that already existed in the corresponding header-only
+function.</p>
+<p>The
+mbedit/mbnavedit/mbvelocitytool/mbgrdviz/mbeditviz/mbnavadjust/mbnavadjustmerge
+changes described above were found, diagnosed, and made with the
+assistance of the AI coding assistant Claude Sonnet 5 (Anthropic, model
+claude-sonnet-5), operating as Claude Code under developer supervision
+and review; all affected programs were rebuilt from source and
+smoke-tested after the changes were applied. The two
+mbnavadjustfine/mbnavadjust_icp.cc source files could not be compiled in
+the development environment used for this pass, since the optional PCL
+(Point Cloud Library) dependency they require was not installed there;
+those two files&#39; changes were reviewed by hand (including a targeted
+check for the specific comment-syntax error described immediately below)
+but should be verified with a real PCL-enabled build before this release
+is finalized.</p>
+<p>One of the fixes described above (in mbnavadjustmerge.c) was
+initially written with a C-style block comment whose text happened to
+contain the two-character sequence &quot;*/&quot;, which closed the comment early
+and broke compilation; this was caught during a final full-project
+rebuild performed specifically to verify every change in this release,
+and is noted here as a reminder that even a change confirmed correct by
+an independent read-through and a brace-balance check still needs to
+actually compile.</p>
+<hr />
+<h4 id="583beta19-september-10-2026">5.8.3beta19 (September 10,
+2026)</h4>
+<p>Library mbview (affecting programs mbgrdviz, mbnavadjust, and
+mbeditviz, which share this 3-D visualization library): Fixed a
+segmentation fault reported by a user running mbgrdviz on macOS
+(Homebrew private tap dwcaress/mbsystem, formula mbsystem-beta): after
+loading a bathymetry grid and a large set of navigation files, the very
+first attempt to interactively pick navigation in the 3-D/2-D view
+crashed the program. A debug session using lldb pinned the crash to a
+heap out-of-bounds read inside mbview_findpointrez(), called from
+mbview_findpoint(), called from mbview_pick_nav_select() - i.e., in the
+generic terrain-point-picking routine used by every pick mode (site,
+route, navigation, vector), not something specific to navigation; the
+user&#39;s report happened to be the first pick attempted in that session.
+The root cause was an off-by-one error in mbview_findpoint()
+(src/mbview/mbview_plot.c): the initial pick search bounds were set to
+<code>{0, primary\_n\_columns, 0, primary\_n\_rows}</code>, but every
+other use of these bounds inside mbview_findpointrez() (including its
+own narrowing of the search window between successive
+low/high/full-resolution passes) treats the upper bounds as an inclusive
+last valid grid index, i.e. <code>primary\_n\_columns - 1</code> and
+<code>primary\_n\_rows - 1</code>. With the too-large initial bounds,
+the triangle-rasterization loop used to render the OpenGL selection
+buffer could, once the scan reached the rightmost column or bottom row
+of the grid, compute a vertex index of the form
+<code>(i + stride) * primary\_n\_rows + j</code> equal to
+<code>primary\_n\_columns * primary\_n\_rows + j</code> - one full
+row-block past the end of the primary_data/primary_x/
+primary_y/primary_z arrays (each allocated with exactly
+primary_n_columns * primary_n_rows elements,
+src/mbview/mbview_primary.c) - and read that heap memory directly,
+crashing whenever the grid&#39;s column or row count divided evenly by the
+resolution&#39;s pick stride. Fixed by initializing ijbounds in
+mbview_findpoint() as
+<code>{0, primary\_n\_columns - 1, 0, primary\_n\_rows - 1}</code>,
+matching the inclusive-index convention used throughout the rest of the
+picking code.</p>
+<p>Library mbview: While investigating the crash above, a broader review
+of the navigation-picking code in src/mbview/mbview_nav.c and
+src/mbview/mbview_plot.c turned up two further latent bugs, neither of
+which caused the reported crash but both of which could cause a similar
+segmentation fault under other circumstances. First, in
+mbview_pick_nav_select(), all four places that search for the nearest
+active navigation point to a pick location (first-point and
+second-point/move handling, in both ordinary MBV_NAV_VIEW mode and
+mbnavadjust&#39;s MBV_NAV_MBNAVADJUST mode) recorded the winning navigation
+file/point indices into shared.shareddata.nav_selected[]/
+nav_point_selected[], initialized to the sentinel MBV_SELECT_NONE (-1),
+but then unconditionally used those indices to dereference
+shared.shareddata.navs[...] .navpts[...] afterward - if every loaded
+navigation file happened to be deactivated (deactivating a nav via the
+Nav List dialog is normal usage) or an active file had zero points, the
+search loop never assigned a valid index and the code dereferenced
+navs[-1], an out-of-bounds/undefined access. Fixed by restructuring each
+of the four call sites so the pick-location/pick-marker code only runs
+once a valid navigation point has actually been found, otherwise falling
+through to the existing &quot;unselect nav pick&quot; handling. Second, in
+mbview_drapesegmentw_grid() (used to drape navigation pick-marker
+geometry onto the terrain), the row-index bounds jstart/jend were being
+clamped against data-&gt;primary_n_columns instead of
+data-&gt;primary_n_rows; for any non-square grid (the normal case for
+real bathymetry data), a computed row index that exceeded primary_n_rows
+but not primary_n_columns escaped clamping entirely. Fixed both
+comparisons to clamp against primary_n_rows.</p>
+<p>The mbview changes described above were found, diagnosed, and made
+with the assistance of the AI coding assistant Claude Sonnet 5
+(Anthropic, model claude-sonnet-5), operating as Claude Code under
+developer supervision and review.</p>
+<p>Library mbio: Fixed a latent memory-corruption bug in
+mb_update_arrayptr() (src/mbio/mb_mem.c). This function is called by
+mb_read(), mb_get(), and mb_get_all() to rebind a caller&#39;s local
+array-pointer variables (beamflag, bath, bathacrosstrack,
+bathalongtrack, amp, ss, ssacrosstrack, ssalongtrack) whenever the
+preceding mb_read_ping() call has grown MBIO&#39;s internal arrays and moved
+them to a new allocation. It identified which caller pointer to rebind
+by comparing its <em>value</em> against a list of pre-reallocation
+(&quot;old&quot;) array addresses recorded by mb_update_arrays(), but never
+cleared an old-address entry once it had been consumed. A stale entry
+could therefore persist indefinitely, and if the heap allocator later
+handed that same address to an unrelated allocation - a foreseeable
+occurrence given that mb_update_arrays() reallocates several same-sized
+arrays back to back - the next call to mb_update_arrayptr() could
+silently repoint an unrelated pointer at the wrong array, corrupting it.
+Fixed by having mb_update_arrays() clear all recorded old-address
+entries at the start of every call and having mb_update_arrayptr() clear
+an entry as soon as it is consumed, and by adding a more robust primary
+match against the registered pointer variable&#39;s own stable address
+before falling back to the value-based comparison. A new regression test
+(test/mbio/mb_mem_test.cc) reproducing the false-match scenario, which
+was confirmed to cause a heap double-free and crash under the prior
+code, was added along with the fix. Diagnosed and fixed by Danny Neville
+of Spatialnetics, with involvement by Vicki Ferrini and Lindsay Gee, and
+merged as pull request #1615; the fix and test were independently
+reviewed and verified, including reproducing the prior code&#39;s crash and
+confirming the fix resolves it, with the assistance of the AI coding
+assistant Claude Sonnet 5 (Anthropic, model claude-sonnet-5), operating
+as Claude Code under developer supervision and review.</p>
+<hr />
+<h4 id="583beta18-september-9-2026">5.8.3beta18 (September 9, 2026)</h4>
+<p>Programs mbedit, mbnavedit, mbnavadjust, mbvelocitytool, mbgrdviz,
+mbeditviz: Fixed these Motif GUI programs printing spurious
+locale-related warnings to stderr on macOS, of the form &quot;Warning: Locale
+not supported for XmbTextListToTextProperty&quot; and &quot;Warning: Cannot
+convert XmString to compound text&quot;, repeated once for every dialog or
+window created during a session. The root cause is that macOS&#39;s system
+Xlib ships locale data only for the &quot;C&quot; locale; when a program&#39;s
+environment requests a UTF-8 locale (the default in a normal macOS
+Terminal session), Xt&#39;s language procedure leaves libc and Xlib in a
+mismatched locale state, and Motif&#39;s XmString-to-compound-text
+conversion routines fail on every dialog as a result. Fixed by forcing
+the process environment (LC_ALL and LANG) to &quot;C&quot; before
+XtSetLanguageProc()/XtVaOpenApplication() read it, so Xt&#39;s own locale
+fallback completes in a consistent state instead. Three of the six
+programs (mbnavadjust, mbvelocitytool, mbgrdviz) already had a call to
+XtSetLanguageProc() present but commented out; the other three (mbedit,
+mbnavedit, mbeditviz) had no locale handling at all. This still left two
+harmless, one-time warnings at startup (&quot;locale not supported by Xlib,
+locale set to C&quot; and &quot;X locale modifiers not supported, using default&quot;),
+printed by Xt&#39;s own default language procedure via XtWarning(); these
+were eliminated as well by installing a temporary, silent
+XtWarningHandler for the duration of the XtVaOpenApplication() call in
+each program (the underlying XSupportsLocale()/XSetLocaleModifiers()
+calls still run normally, and the default warning handler is restored
+immediately afterward so any other, genuine Xt warning later in the
+program&#39;s life remains visible). All six programs were confirmed to
+launch a real GUI session, with dialogs, completely silent under both a
+UTF-8 locale and an unset one.</p>
+<p>Library mbview (affecting programs mbgrdviz, mbnavadjust, and
+mbeditviz, which share this 3-D visualization library): Changed the
+&quot;MBVIEW GEOMETRY&quot; diagnostic messages, which report the OpenGL drawing
+area&#39;s size as tracked internally versus what X11 and GLX/Mesa actually
+report (used to help localize a rendered-image/mouse-pick coordinate
+offset seen with some Mesa versions on macOS), to only print when
+running with verbose output enabled (-V or higher), rather than
+unconditionally. This affected an unconditional fprintf() in the OpenGL
+drawing area&#39;s resize callback (do_mbview_glwda_resize() in
+src/mbview/mbview_callbacks.c) and the several unconditional fprintf()
+calls inside the mbview_debug_glgeometry() diagnostic function in
+src/mbview/mbview_plot.c (currently invoked only from commented-out call
+sites, kept available for future debugging).</p>
+<p>Programs mbgrdviz and mbeditviz: Fixed a hang when using mbgrdviz&#39;s
+feature (available after loading navigation and selecting one or more
+files in an mbview 3-D display) to open the selected survey files in a
+new mbeditviz session: the new mbeditviz window would appear but never
+finish loading data and never become responsive. The immediate cause was
+a recent hardening change to how mbgrdviz creates the temporary datalist
+file it hands to mbeditviz: the old, predictable filename
+(&quot;tmp_datalist_<pid>.mb-1&quot;, fopen()&#39;ed for write in the current
+directory) was replaced with a securely created mkstemp() file in the
+process&#39;s temp directory, which incidentally carries no recognizable
+format-identifying suffix at all. mbgrdviz launches mbeditviz as a fully
+separate process (double-fork/exec) passing only &quot;-I<datalist file> -R&quot;,
+with no explicit format flag, relying on MB-System&#39;s &quot;.mb<format>&quot;
+filename-suffix convention for mbeditviz to identify the file as a
+datalist (format -1); with that suffix gone, mbeditviz&#39;s own format
+auto-detection silently left the format at 0. In turn,
+mbeditviz_open_data() in src/mbeditviz/mbeditviz_prog.c contained a loop
+whose only two branches, for a recognized positive format and for format
+-1 (datalist), each set a &quot;done&quot; flag before returning; an unrecognized
+format of 0 matched neither branch, so the loop spun forever inside
+main() before mbeditviz ever reached its own Xt event loop, which is
+what made the window appear yet stay permanently unresponsive. Fixed by
+having mbgrdviz pass an explicit &quot;-F-1&quot; datalist format flag alongside
+&quot;-I&quot; and &quot;-R&quot; (src/mbgrdviz/mbgrdviz_callbacks.c), so format
+identification no longer depends on the temporary file&#39;s name, and by
+hardening mbeditviz_open_data() itself (src/mbeditviz/mbeditviz_prog.c)
+to fall through to an error return instead of looping when given an
+unrecognized format or when it fails to open a datalist file. Verified
+by launching mbeditviz directly against a synthetic mkstemp()-style,
+suffix-less datalist file referencing real Kongsberg kmall/mb261 survey
+data, confirming it now reaches its main event loop and reports the
+&quot;Please Wait...&quot; loading dialog closed rather than spinning forever.</p>
+<p>Homebrew formula mb-mesa (private tap dwcaress/homebrew-mbsystem,
+used only for building and testing MB-System&#39;s macOS/Homebrew
+distribution): Homebrew&#39;s own &quot;mesa&quot; formula moved to Mesa 26.2.2, which
+introduced a regression affecting mbgrdviz, mbnavadjust, and mbeditviz
+on macOS: gridded surface data displayed in the 2-D map view appeared
+vertically shifted relative to its correct position. Added a private
+formula that builds Mesa 26.1.4 (the last version confirmed not to
+exhibit this regression) from source, resolving three problems specific
+to building an older Mesa release against Homebrew&#39;s current toolchain.
+First, Mesa 26.1.4&#39;s own meson.build looks for an OpenCL &quot;libclc&quot;
+pkg-config module by that literal name, but the &quot;mesa-libclc&quot; resource
+it must be paired with (a fork Mesa itself recommends, needed because
+upstream libclc built against LLVM 23+ no longer provides a required
+SPIR-V target) installs its pkg-config file as &quot;mesa-libclc.pc&quot;; later
+Mesa releases added a fallback that checks for &quot;mesa-libclc&quot; first, but
+26.1.4 predates that fix, so the built mesa-libclc.pc is now also
+installed under the name libclc.pc to satisfy the older lookup. Second,
+rather than force the whole build to configure against the &quot;llvm@22&quot;
+dependency (needed only to work around a separate rust-bindgen/LLVM-23
+incompatibility), the formula isolates llvm@22 to just that purpose -
+exposing it only via CLANG_PATH and stripping it back out of
+CMAKE_PREFIX_PATH/PKG_CONFIG_PATH/PATH before configuring Mesa itself -
+matching how Homebrew&#39;s own current mesa formula handles the same
+llvm@22 dependency; this avoids Meson picking llvm@22 as the LLVM to
+build against and then requiring an &quot;LLVMSPIRVLib&quot; version that only
+matches llvm@22, which the regular, already-installed
+spirv-llvm-translator package (built against the newer default &quot;llvm&quot;)
+cannot satisfy. Third, the formula is marked keg-only, since it installs
+the same file paths (e.g. bin/glsl_compiler, include/EGL/egl.h) as the
+standard mesa formula and must not be linked into the shared Homebrew
+prefix alongside it.</p>
+<p>Homebrew formula mb-mesa-glu (private tap
+dwcaress/homebrew-mbsystem): Added a companion formula building the Mesa
+GLU utility library against mb-mesa specifically, rather than the
+standard mesa formula that Homebrew&#39;s own mesa-glu package depends on.
+This is required, not merely preferable: mesa does not build GLU itself,
+and if a program links against mb-mesa&#39;s libGL while its GLU functions
+come from a libGLU built against the standard mesa, two independent
+libGL library images end up loaded in the same process, each with its
+own OpenGL context state. The GL context actually gets created and made
+current through whichever libGL the program itself links directly; GLU&#39;s
+internal calls (e.g. inside gluPerspective) are resolved against the
+other, contextless libGL image and are therefore silently no-ops per the
+OpenGL specification. This was the root cause of a separate bug
+introduced by switching mbview-based programs (mbgrdviz, mbnavadjust,
+mbeditviz) to the private mb-mesa build: the 3-D perspective view of a
+gridded surface stopped appearing at all (2-D map view, which uses
+glOrtho() rather than GLU, was unaffected), because gluPerspective()&#39;s
+no-op left the projection matrix as an untouched identity matrix,
+clipping the entire scene out of view; forcing Mesa&#39;s software
+(llvmpipe) or Vulkan-based (zink) rendering backend via the
+GALLIUM_DRIVER environment variable made no difference, confirming the
+bug was independent of which Gallium driver either Mesa build used.
+Confirmed via otool -L library-dependency inspection that mb-mesa-glu&#39;s
+libGLU links against mb-mesa&#39;s libGL, matching what mbview itself links
+against. Like mb-mesa, this formula is keg-only.</p>
+<p>Build system (CMakeLists.txt, build-utils/FindOpenGL.cmake): Added a
+macosUseMbMesa CMake option (default OFF) that, when enabled on macOS
+with Homebrew, points OpenGL/GLU discovery at the private
+mb-mesa/mb-mesa-glu kegs described above instead of the standard
+Homebrew mesa/mesa-glu formulas; FindOpenGL.cmake&#39;s Homebrew-detection
+branches were extended accordingly, while ordinary configurations
+(option left OFF) are unaffected. The mb-mesa/mb-mesa-glu install
+locations can be supplied directly via new
+MBMESA_PREFIX/MBMESAGLU_PREFIX cache variables (as the mbsystem-beta
+Homebrew formula below now does) or, if left unset, are resolved
+automatically by invoking <code>brew --prefix</code>, which is
+convenient for an interactive, manually invoked cmake configuration but
+was confirmed (with a throwaway diagnostic Homebrew formula) not to work
+from inside a real Homebrew build: the <code>brew</code> command itself
+is deliberately excluded from the PATH Homebrew constructs for a
+formula&#39;s own sandboxed build step.</p>
+<p>Homebrew formula mbsystem-beta (private tap
+dwcaress/homebrew-mbsystem): This formula, which builds and installs
+MB-System itself for beta distribution testing via Homebrew, now depends
+on mb-mesa and mb-mesa-glu and configures with -DmacosUseMbMesa=ON,
+passing MBMESA_PREFIX/MBMESAGLU_PREFIX directly (computed in Ruby via
+Formula[...].opt_prefix) rather than relying on cmake shelling out to
+<code>brew</code>, per the build-system change above. Its
+<code>brew test</code> block was extended to inspect the installed
+libmbview library with otool -L and confirm it is actually linked
+against the private mb-mesa/mb-mesa-glu kegs and not the standard
+mesa/mesa-glu formulas, so that a future accidental regression back to
+Homebrew&#39;s current, buggy Mesa version is caught by
+<code>brew test</code> rather than only discovered by a user seeing
+incorrect 2-D or 3-D rendering.</p>
+<p>The changes described above in this 5.8.3beta18 distribution were
+found, diagnosed, and/or made with the assistance of the AI coding
+assistant Claude Sonnet 5 (Anthropic, model claude-sonnet-5), operating
+as Claude Code under developer supervision and review.</p>
+<hr />
+<h4 id="583beta17-september-8-2026">5.8.3beta17 (September 8, 2026)</h4>
+<p>Program mbotps: Replaced this program&#39;s dependency on a separately
+installed and built copy of the OSU Tidal Prediction Software (OTPS)
+Fortran program predict_tide with a native C implementation of the same
+harmonic tidal prediction methods (new files src/otps/mb_otps_predict.c
+and mb_otps_predict.h): equilibrium tidal arguments and nodal
+corrections, inference of minor constituents from major ones, and
+bilinear interpolation of the tidal atlas grids, reading OTPS &quot;atlas&quot;
+format tide model binary files (e.g. TPXO9_atlas, TPXO10_atlas) directly
+via computed byte offsets rather than loading whole files into memory.
+mbotps no longer needs OTPS&#39;s Fortran source, its makefile, or a Fortran
+compiler installed at all; only the tidal model data files themselves
+are needed, at the location given by --otps-path, exactly as before. The
+new engine was validated against the actual OTPS Fortran predict_tide
+across more than 1500 randomized positions and times spanning both
+currently supported atlas models, matching to within 0.5 mm (consistent
+with single-precision rounding in the source data) with zero land/ocean
+classification mismatches; this process also caught and fixed a genuine
+off-by-one bug in the new code&#39;s own direct-access byte-offset
+arithmetic, and separately caught and fixed a bug in which a shared MBIO
+error-code variable was reused for the tidal prediction call inside the
+per-record navigation-mode loop, silently clearing the end-of-file
+condition that loop depends on and causing an effectively infinite loop
+that could fill disk with output before it was noticed. Also enhanced
+model discovery so that a model directory obtained from OSU (e.g.
+TPXO10_atlas_v2/, copied directly into DATA/) can be used as
+--otps-model with no accompanying &quot;Model_&quot;-prefixed control file
+required at all; mbotps scans the directory itself for the needed
+elevation (&quot;h_&quot;) atlas files. A &quot;Model_&quot; control file, if present, is
+still honored and takes precedence, for compatibility with an existing
+OTPS installation that already has one.</p>
+<p>Program mbotpsold: The previous, OTPS-Fortran-dependent
+implementation of mbotps is retained under this new name as a fallback
+and as a cross-check against the OTPS Fortran reference implementation,
+but is now deprecated: moved from src/otps to src/deprecated, built only
+when MB-System is configured with --enable-deprecated (autotools) or
+-DbuildDeprecated=ON (CMake), with its man page moved from the regular
+man page list to the existing deprecated-program man page list in both
+build systems. Its own man page and mbotps&#39;s man page were both updated
+to describe this relationship and to give full attribution to Oregon
+State University and to Gary Egbert, Lana Erofeeva, and Richard Ray for
+the tidal prediction methods both programs implement or (for mbotpsold)
+invoke.</p>
+<p>Program mbotpsold: Fixed a bug in which the optional tide-station
+correction (applying the difference between an observed tide station&#39;s
+data and the model&#39;s own prediction at that station&#39;s position and
+times, as a correction to tide predictions made elsewhere) used a stale
+epoch time left over from unrelated earlier code, rather than the epoch
+time of the specific output line the correction was being applied to.
+This affected both the single-position and swath-navigation modes
+whenever a tide-station correction was requested, and could apply the
+wrong point of the correction time series to a given prediction. Fixed
+by computing the correct epoch time from the freshly parsed output line,
+immediately before each correction lookup, in both modes.</p>
+<p>The changes described above were done with the assistance of the AI
+coding assistant Claude Sonnet 5 (Anthropic, model claude-sonnet-5),
+operating as Claude Code under developer supervision and review.</p>
+<p>Man pages: Fixed a bug in which the mb7k2jstar man page was listed
+among the deprecated man pages (in src/man/man1/CMakeLists.txt&#39;s
+<code>deprecated</code> list and src/man/man1/Makefile.am&#39;s
+<code>MAN\_DEPRECATED</code> variable, plus the corresponding generated
+Makefile.in) even though mb7k2jstar itself is a current, non-deprecated
+program, as already reflected in src/utilities/CMakeLists.txt and
+src/deprecated/CMakeLists.txt. As a result, a normal build installed no
+man page for mb7k2jstar at all, since deprecated man pages are only
+installed when deprecated programs are explicitly enabled. Moved the
+mb7k2jstar.1 entry into the current man page lists in both the CMake and
+autotools build files. Also audited every other man page in the
+deprecated lists against the current-vs-deprecated program lists in
+src/utilities/CMakeLists.txt and src/deprecated/CMakeLists.txt; no other
+man pages were misclassified. This bug was found and fixed with the
+assistance of the AI coding assistant Claude Sonnet 5 (Anthropic, model
+claude-sonnet-5), operating as Claude Code under developer supervision
+and review.</p>
+<p>Build system: Fixed the autotools build for the program mb7k2jstar,
+which had moved from src/deprecated to src/utilities to match its CMake
+configuration (already correct in src/utilities/CMakeLists.txt and
+src/deprecated/CMakeLists.txt) without a corresponding update to the
+autotools files. src/deprecated/Makefile.am still listed mb7k2jstar as a
+deprecated program even though its source file no longer exists there,
+so <code>./configure --enable-deprecated &amp;&amp; make</code> failed
+with a missing-source-file error, while src/utilities/Makefile.am never
+listed the program at all, so the autotools build never built it as a
+current program either. Removed the stale mb7k2jstar entries from
+src/deprecated/Makefile.am and added mb7k2jstar to
+src/utilities/Makefile.am, with no extra library dependencies beyond
+what libmbio.la already provides transitively, then regenerated both
+Makefile.in files and confirmed with automake, ./config.status, and an
+actual compile of mb7k2jstar.cc that the fix builds correctly. This bug
+was found and fixed with the assistance of the AI coding assistant
+Claude Sonnet 5 (Anthropic, model claude-sonnet-5), operating as Claude
+Code under developer supervision and review.</p>
+<p>Header mb_define.h: Reorganized so that function prototypes are
+grouped under comments naming the src/mbio/mb_*.c source file that
+defines each one, replacing the previous layout, which mixed functions
+from different source files together with no consistent order. While
+auditing the header against the actual mbio source, found and fixed
+several inconsistencies: added prototypes for twelve functions that had
+no declaration anywhere in the tree (mb_format.c&#39;s cvt_to_nix_path;
+mb_esf.c&#39;s mb_mergesort_setup and mb_mergesort_insertionsort; and nine
+internal mb_rt.c ray-tracing helpers - mb_rt_get_depth, mb_rt_quad1
+through mb_rt_quad4, mb_rt_plot_circular, mb_rt_circular, mb_rt_line,
+and mb_rt_vertical); removed seven stale prototypes for functions with
+no implementation anywhere in the source tree
+(mb_platform_set_sensor_flipsign_x/y/z, mb_buffer_info, and
+mb_geod_init/mb_geod_free/mb_geod_inverse); and removed a duplicated
+mb_swap_check() declaration. Functions already declared in another mbio
+header (mb_process.h, mb_segy.h, mb_info.h, mb_io.h) were left there
+rather than duplicated, with a comment in mb_define.h noting where each
+lives; the mb_process.h and mb_segy.h comments were checked to confirm
+they enumerate every function each of those headers actually declares,
+not just the ones originating from one particular source file.</p>
+<p>Removed src/mbio/mb_info.h, folding its contents into mb_define.h:
+the mb_info_struct structure, the MB_INFO_MASK_DIM macro, and the three
+mb_check_info.c function prototypes it declared (mb_info_init,
+mb_get_info, mb_get_info_datalist). All nine source files that
+referenced mb_info.h already included mb_define.h directly, so the
+#include &quot;mb_info.h&quot; lines were simply removed; the header was also
+dropped from src/mbio/CMakeLists.txt, Makefile.am, and Makefile.in.</p>
+<p>Moved the declarations of mb_mergesort(), mb_mergesort_setup(), and
+mb_mergesort_insertionsort() - all three defined in mb_esf.c - from
+mb_define.h to mb_process.h, alongside the other mb_esf.c functions
+already declared there, since mb_process.h is already included by
+mbnavadjust_io.c, the only caller of mb_mergesort() outside mb_esf.c
+itself. Also dropped mb_define.h&#39;s now-redundant hilbert()/hilbert2()
+declarations (both defined in mb_segy.c), which were already declared in
+mb_segy.h.</p>
+<p>The changes described above were done with the assistance of the AI
+coding assistant Claude Sonnet 5 (Anthropic, model claude-sonnet-5),
+operating as Claude Code under developer supervision and review.</p>
+<p>Program mbmakeplatform, library mbio: Added support for recording,
+per sensor, that the raw heading, roll, and/or pitch values reported by
+that sensor should have their sign flipped before use, correcting a raw
+sensor calibration or wiring polarity error that is independent of any
+sensor mounting offset. New platform file keywords
+SENSOR_FLIPSIGN_HEADING, SENSOR_FLIPSIGN_ROLL, and SENSOR_FLIPSIGN_PITCH
+record these per-sensor flags and are read, written, and applied by new
+functions in src/mbio/mb_platform.c
+(mb_platform_set_sensor_flipsign_heading/roll/pitch,
+mb_platform_apply_flipsign_heading,
+mb_platform_apply_flipsign_attitude), with the corresponding prototypes
+added to src/mbio/mb_define.h. The sign flip is applied to the
+platform&#39;s designated source_heading and source_rollpitch sensors during
+navigation/attitude interpolation in src/mbio/mb_navint.c, so it takes
+effect wherever a program reads heading, roll, or pitch through the
+standard MBIO interpolation path. In mbmakeplatform, the new
+command-line arguments --sensor-flipsign-heading,
+--sensor-flipsign-roll, and --sensor-flipsign-pitch set these flags for
+the sensor currently being defined, i.e. any sensor added between an
+--add-sensor-* argument and the matching --end-sensor argument; giving
+one of these arguments outside a sensor definition has no effect. Also
+documented the three new arguments in the mbmakeplatform man page.</p>
+<p>The changes described above were done with the assistance of the AI
+coding assistant Claude Sonnet 5 (Anthropic, model claude-sonnet-5),
+operating as Claude Code under developer supervision and review.</p>
+<p>Program mbtrnpp and Format 89 (MBF_RESON7K3): Fixed two bugs in the
+automatic, real-time bathymetry preprocessing that
+src/mbio/mbr_reson7k3.c applies inside its own low-level record-reading
+function (mbr_rt_reson7k3()) whenever a program reads reson7k3 survey
+data through mb_get_all() with a platform model loaded via
+mb_set_platform() - the code path used by mbtrnpp, which never calls the
+separate, explicit mb_preprocess() API that mbpreprocess uses. First,
+the target sensor used to compute the multibeam sonar&#39;s lever arm and
+attitude offsets was hardcoded to sensor index 0 (typically the
+platform&#39;s INS) rather than being taken from the platform&#39;s
+SOURCE_BATHYMETRY sensor, so none of the actual sonar&#39;s mounting
+position or attitude offsets were applied; fixed to use
+platform-&gt;source_bathymetry, mirroring the convention already used by
+mb_get_all.c&#39;s own generic preprocessing fallback. Second, the attitude
+system&#39;s roll, pitch, and heading were sign-flipped once in
+mbr_reson7k3.c according to the platform&#39;s
+SENSOR_FLIPSIGN_ROLL/PITCH/HEADING flags, then flipped a second time
+inside mb_attint_add()/mb_hedint_add() (src/mbio/mb_navint.c), which
+already apply this same platform-based correction centrally; the double
+negation silently canceled the flip. Fixed by removing the redundant
+manual flip in mbr_reson7k3.c so the correction is applied exactly once,
+as intended by mb_navint.c&#39;s design. Both bugs were found by comparing
+bathymetry computed by mbtrnpp in real time against bathymetry computed
+for the identical raw data by mbpreprocess run offline with the same
+platform file, for an MBARI Mapping AUV survey logged in reson7k3 (.s7k)
+format.</p>
+<p>Format 89 (MBF_RESON7K3): Fixed a bug in mbsys_reson7k3_preprocess()
+(src/mbio/mbsys_reson7k3.c) in which the interpolated attitude-system
+heave value was subtracted from sensordepth when computing each beam&#39;s
+depth (bathydata-&gt;depth = zz + sensordepth - heave), even when
+sensordepth was itself already sourced from a real pressure sensor and
+therefore already reflected the vehicle&#39;s actual instantaneous depth,
+double-counting the vertical motion and producing bathymetry that could
+be off by roughly a meter, with the error&#39;s magnitude and sign varying
+with heave. This is the same heave-versus-real-sensordepth convention
+already applied in mbsys_reson7k3_extract_nav(), which zeroes heave
+whenever draft/sensordepth data is available (mb_io_ptr-&gt;nsensordepth
+&gt; 0); mbsys_reson7k3_preprocess() now applies the same rule. Found
+and fixed using the same mbtrnpp-versus-mbpreprocess comparison
+described above; after both fixes, per-beam depths from mbtrnpp and
+mbpreprocess for the same pings agreed to within a few centimeters, down
+from roughly a meter.</p>
+<p>The changes described above were done with the assistance of the AI
+coding assistant Claude Sonnet 5 (Anthropic, model claude-sonnet-5),
+operating as Claude Code under developer supervision and review.</p>
+<p>Test suite (test/utilities): Fixed 7 of 46 <code>make test</code>
+(ctest/GoogleMock-style) test failures in
+test/utilities/mbdefaults_test.py, mbdumpesf_test.py,
+mbsegygrid_test.py, mbsegylist_test.py, mbsvpselect_test.py,
+mbareaclean_test.py, and mbauvloglist_test.py. None of these were
+regressions in the programs under test; each test asserted on a literal
+substring of <code>-H</code>/<code>--help</code> usage-string output
+that predated the getopt_long conversion (5.8.3beta15/16) and was never
+updated afterward, so the assertions checked for short-option-only
+placeholder names (e.g. <code>-Wproject</code>,
+<code>-Gdelimiter</code>, <code>-Fprintformat</code>) that the converted
+usage strings no longer emit verbatim (now e.g.
+<code>-Wmbproject</code>, <code>-Gcharacter</code>,
+<code>-Fformat</code>). Separately, mbdumpesf_test.py&#39;s testNoArgs still
+expected running mbdumpesf with no arguments to exit silently and
+successfully; this predated an earlier fix (mbdumpesf batch of the
+src/utilities memory-safety audit) that made the program correctly
+require --input and exit with an error instead of proceeding with an
+uninitialized filename. Updated all 7 test files&#39; assertions to match
+current, correct program behavior; <code>make test</code> now passes
+46/46. This work was done with the assistance of the AI coding assistant
+Claude Sonnet 5 (Anthropic, model claude-sonnet-5), operating as Claude
+Code under developer supervision and review.</p>
+<p>Program mbmakedatalist: Fixed a spurious
+<code>-Wunknown-warning-option</code> compiler warning under Clang: a
+<code>#pragma GCC diagnostic ignored &quot;-Wstringop-truncation&quot;</code>
+block (added to silence a real GCC-only warning around a bounded
+<code>strncpy</code>/<code>strncat</code> sequence building a Kongsberg
+output filename) named a warning group that only GCC defines, so Clang
+warned that it did not recognize the option at all. Guarded both the
+<code>#pragma GCC diagnostic push</code>/<code>ignored</code> and the
+matching <code>#pragma GCC diagnostic pop</code> with
+<code>#if defined(\_\_GNUC\_\_) &amp;&amp; !defined(\_\_clang\_\_)</code>,
+so the suppression is applied only on the compiler it is meant for, with
+no warning generated on Clang. This work was done with the assistance of
+the AI coding assistant Claude Sonnet 5 (Anthropic, model
+claude-sonnet-5), operating as Claude Code under developer supervision
+and review.</p>
+<p>Program mbgpstide: Fixed an inconsistency between the long and short
+forms of the --tideformat/-A option introduced by the getopt_long
+conversion (5.8.3beta15/16): the long-option handler unconditionally
+clamped any parsed value other than 2 down to 1, while the equivalent
+short-option handler simply stored whatever value was parsed. This meant
+<code>--tideformat=5</code> (the documented CARIS output format, also
+reachable as <code>-A5</code> and checked explicitly elsewhere in the
+program) was silently turned into tideformat=1 when given as a long
+option, while <code>-A5</code> worked correctly. Removed the clamp from
+the long-option branch so both option forms behave identically. This bug
+was found and fixed with the assistance of the AI coding assistant
+Claude Sonnet 5 (Anthropic, model claude-sonnet-5), operating as Claude
+Code under developer supervision and review.</p>
+<p>Program mbtiff2png: Fixed a getopt_long table bug in which the
+no-argument flags --transparency-white and --transparency-black were
+declared with required_argument instead of no_argument, meaning either
+flag would silently consume the next command-line token as an ignored
+argument instead of taking effect as a bare switch (the man page and the
+program&#39;s own usage text had always correctly described both as
+argument-free). This bug was found and fixed with the assistance of the
+AI coding assistant Claude Sonnet 5 (Anthropic, model claude-sonnet-5),
+operating as Claude Code under developer supervision and review.</p>
+<p>Man pages: Completed a full accuracy pass over every MB-System man
+page. Rewrote src/man/man3/mbio.3 to document roughly 185
+previously-undocumented mb_* library functions, remove one that no
+longer exists (mb_buffer_info, replaced by mb_buffer_get_kind), fix
+roughly 50 stale function signatures, add 3 missing entries to the
+SUPPORTED FORMATS table, and correct stale beam-flag bit meanings.
+Updated src/man/man1/mbsystem.1&#39;s program/macro/GMT-module inventory to
+match the actual current build (about 20 additions, several
+deprecated-list corrections, mbps removed as dead). Audited the
+OPTIONS/SYNOPSIS sections of all 97 other existing man pages against
+their current option-parsing code, fixing 59 of them: undocumented
+options, options no longer in the code, stale defaults, and swapped or
+otherwise wrong descriptions (notably mbimagelist.1, which had been
+largely copy-pasted from mbdatalist.1, and mbvelocitytool.1 and
+mbswath.1, which were missing or misdescribing several real options).
+Wrote 10 new man pages from scratch, with html/pdf renderings, for
+actively-built programs and macros that previously had no documentation
+at all (mbgetphotocorrection, mbimagecorrect, mbphotogrammetry,
+mbphotomosaic, mbm_makeimagelist, mbgrd2octree, mbgrdtilemaker,
+mbm_phins2fnv, mbm_rollerror, mbm_trnplot), each cross-checked against
+its actual getopt/argv-parsing code rather than assumed behavior. Also
+brought src/html/mbsystem_man_list.html up to date with links to every
+current man page, fixing a broken mbio pdf link, moving several
+deprecated programs (mbauvnavusbl, mbrollbias, mbstripnan, mbm_fmtvel)
+out of active-program sections into the deprecated list, and removing
+the dead mbps entry. This work was done with the assistance of the AI
+coding assistant Claude Sonnet 5 (Anthropic, model claude-sonnet-5),
+operating as Claude Code under developer supervision and review.</p>
+<p>Testing infrastructure: Upgraded the vendored GoogleTest/GoogleMock
+copy in third_party/googletest and third_party/googlemock from 1.13.0 to
+the current 1.18.0 release, scoping the newer version&#39;s C++17
+requirement to that subtree only (via
+<code>set(CMAKE\_CXX\_STANDARD 17)</code> inside
+third_party/CMakeLists.txt, which does not propagate back up to the rest
+of the build, which still targets C++11) and adding the same requirement
+to the test/mbio GoogleTest executables and to the src/mbmesh algorithm
+tests that already needed it. In the process, found and fixed a latent
+bug in which <code>INSTALL\_GTEST</code> defaulted to ON, meaning a
+normal <code>make install</code> also installed the bundled
+GoogleTest/GoogleMock headers and libraries system-wide under
+CMAKE_INSTALL_PREFIX (default /usr/local); on the development machine
+used for this work, a stale 1.13.0 install from an earlier build
+shadowed the newly vendored 1.18.0 headers at compile time via the
+compiler&#39;s implicit /usr/local/include search path, breaking the build
+until the stale files were removed by hand. <code>INSTALL\_GTEST</code>
+is now forced OFF, since MB-System only ever consumes this copy
+privately as a test dependency and has no reason to install it for other
+projects to find.</p>
+<p>Build system: Because upstream GoogleTest has not shipped Autotools
+build files since well before the vendored 1.13.0 snapshot, upgrading it
+in place would have required hand-writing new Automake glue with no
+upstream template to follow. Rather than take on that maintenance burden
+for a legacy build path, <code>./configure &amp;&amp; make check</code>
+no longer attempts to build the GoogleTest-based test suite at all
+(third_party/Makefile.am, third_party/googletest/Makefile.am,
+third_party/googlemock/Makefile.am, and test/mbio/Makefile.am were
+removed, along with the corresponding entries in configure.ac&#39;s
+AC_CONFIG_FILES and test/Makefile.am&#39;s SUBDIRS); CMake
+(<code>cmake --build . --target ... &amp;&amp; ctest</code>) is now the
+only way to build and run it. The plain Python
+<code>unittest</code>-based smoke tests in test/utilities and
+test/deprecated are unaffected and remain buildable and runnable under
+both Autotools and CMake as before.</p>
+<p>Testing: Wired two smoke tests, tests/test_marching_cubes.cpp and
+tests/test_normal_estimation.cpp, into src/mbmesh/CMakeLists.txt; both
+already existed in the source tree from the original mesh-generation
+work but were never added to the build, so <code>ctest</code> never ran
+them. Also added a smoke test for the mbmesh command line program
+itself, checking that -h prints usage and that running with no input
+datalist fails with a clear error rather than a crash.</p>
+<p>Testing: Added command line smoke tests (Python
+<code>unittest</code>, run through <code>ctest</code>, following the
+existing pattern in test/utilities) for the standard, non-deprecated
+programs across the source tree that previously had none: mbfnv2navlab,
+mbmakedatalist, mbmapscale, mbnavlab2fnv, mbswath2las, and mbusbl2fnv in
+src/utilities; mbphotomosaic, mbgetphotocorrection, mbphotogrammetry,
+mbimagecorrect, mbtiff2png, and mbimagelist in src/photo; dump_gsf in
+src/gsf; mbgrd2gltf; mbotps; and mbnavadjust/mbnavadjustmerge in
+src/mbnavadjust. Each test exercises the program&#39;s help/usage output
+(or, where a program does not special-case --help, its documented
+behavior when required arguments are missing), checking that the program
+starts, parses arguments, and exits cleanly rather than crashing. One of
+these, mbimagecorrect, currently crashes with an uncaught OpenCV
+exception under both --help and no arguments instead of printing usage;
+test/photo/mbimagecorrect_test.py documents the expected, non-crashing
+behavior via Python&#39;s <code>@unittest.expectedFailure</code>, so the
+underlying bug is tracked by the test suite without blocking it, pending
+a fix.</p>
+<p>Testing: The Motif-based interactive editors mbedit, mbnavedit,
+mbvelocitytool, mbeditviz, and the mbnavadjust GUI all call
+XtOpenDisplay() before parsing any arguments, so they need a working X
+display even to print -h usage; their new smoke tests run under a
+private Xvfb server started and torn down per test via a new shared
+helper, test/xvfb_helper.py, and are skipped (not failed) on a machine
+with no Xvfb binary installed. mbgrdviz, also Motif-based, needed no
+such helper, since it is the only one of the six that parses -h before
+opening a display, and so has an ordinary smoke test alongside the
+others above.</p>
+<p>Removed the top-level googletest/ directory, an untracked, gitignored
+full clone of the upstream GoogleTest repository left over from prior
+exploration; it was never referenced by any build file, CMake or
+Autotools.</p>
+<p>Further repository housekeeping: removed stale top-level cruft left
+over from earlier stages of the project&#39;s history. This included the old
+Travis CI configuration (.travis.yml and the ci/travis/ build scripts),
+superseded years ago by the GitHub Actions workflows under
+.github/workflows/; a leftover &quot;GitHub Actions Demo&quot; placeholder
+workflow (.github/workflows/github-actions-demo.yml) that was never more
+than the tutorial stub GitHub generates when Actions is first enabled;
+two empty, untracked top-level directories (config/ and maps/) with no
+evident purpose; and a stray configure~ backup file left behind by a
+local autoreconf run. No functional code changed.</p>
+<p>The changes described above were done with the assistance of the AI
+coding assistant Claude Sonnet 5 (Anthropic, model claude-sonnet-5),
+operating as Claude Code under developer supervision and review.</p>
+<p>Format 261 (MBF_KEMKMALL): Fixed three related bugs in
+mbsys_kmbes_preprocess() (src/mbio/mbsys_kmbes.c) that caused noticeably
+noisy bathymetry after SVP-based recalculation (mbprocess with SVPMODE
+1) for Kongsberg kmall data logged with multiple transmit sectors per
+ping, including dual-swath surveys. First, the transmit-side
+roll/pitch/heading fed to mb_beaudoin() for every sounding in a ping was
+interpolated once at the ping&#39;s own header time, ignoring each
+sounding&#39;s own transmit sector&#39;s sectorTransmitDelay_sec offset from
+that header time, so every sector after the first used attitude sampled
+slightly too early. Second, the receive-side roll/pitch/heading was
+interpolated at the ping header time plus the beam&#39;s own two-way travel
+time only, again omitting sectorTransmitDelay_sec, even though the
+correct formula (header time plus sectorTransmitDelay_sec plus travel
+time) was already used a few lines later, for a different purpose
+(interpolating sensordepth at the beam&#39;s true receive time). Third, that
+same later block&#39;s heave interpolation itself used only the ping header
+time rather than the beam&#39;s true receive time it had just computed, so
+the per-beam heave correction term was always exactly zero regardless of
+travel time. All three were found and fixed by comparing sonar-computed
+(&quot;raw&quot;) and mbprocess-recalculated bathymetry beam by beam and ping by
+ping for a Maria S. Merian EM124 test survey, which showed a systematic,
+sign-flipping port/starboard tilt of up to several meters per ping that
+tracked beam angle rather than ship position; after the fix, the same
+comparison&#39;s port/starboard mean bias dropped from as much as +/-15 m to
+roughly +/-1 m, and its standard deviation dropped by 5-15x, across the
+eleven pings checked in detail.</p>
+<p>Format 261 (MBF_KEMKMALL): Fixed a related bug, found while
+validating the fix above, in which the very first ping(s) of a kmall
+file - or, more generally, any ping whose timestamp precedes the first
+asynchronous navigation/heading/attitude datagram in the data (confirmed
+to occur, by 4.4 seconds, for the same Merian EM124 survey) - had their
+roll, pitch, heave, heading, and navigation left uninitialized rather
+than falling back to a defined value, because the ping-level
+interpolation calls were skipped outright rather than substituting a
+sensible default. mbsys_kmbes_preprocess() now initializes
+roll/pitch/heave from the ping&#39;s own embedded attitude sample (already
+extracted for the ping-level XMT record) before the file-wide
+interpolation is attempted, and initializes navigation and heading from
+the ping&#39;s own logged position and heading, so these values are always
+defined; if neither the file-wide table nor the ping&#39;s own embedded
+sample has any attitude data at all, roll/pitch/heave are explicitly set
+to 0.0 and a warning naming the affected ping&#39;s time is printed, rather
+than silently leaving them uninitialized. Confirmed, using both a
+synthetic split of the same test file and ten sequential production
+kmall files spanning 8.3 hours, that this uninitialized-data condition
+and its fix are confined to a survey&#39;s true first ping(s), if any, and
+are not retriggered at subsequent file boundaries within a multi-file
+datalist, because mbpreprocess accumulates its ancillary interpolation
+tables across the entire datalist before any ping is processed.</p>
+<p>Program mbpreprocess, Format 261 (MBF_KEMKMALL): Fixed a related
+warning message added by the previous fix that fired far more often than
+intended for multi-file datalists. src/mbio/mbr_kemkmall.c&#39;s own
+low-level record reader automatically invokes mbsys_kmbes_preprocess()
+the first time any not-yet-preprocessed ping is read, using a
+preprocess_pars struct embedded in the MBIO file handle
+(mb_io_ptr-&gt;preprocess_pars) and populated only from whatever
+asynchronous data that same read pass has buffered so far in the current
+file; because mbpreprocess opens and reads each raw file more than once
+internally, this automatic, non-authoritative call transiently saw no
+attitude data at the start of every file in a multi-file datalist, not
+just the survey&#39;s true first file, even though its result is
+unconditionally superseded before anything is written by mbpreprocess&#39;s
+own later, explicit call, which uses a separate table already spanning
+the entire datalist. The new warning is now printed only for that later,
+explicit call (identified by comparing the preprocess_pars pointer
+against &amp;mb_io_ptr-&gt;preprocess_pars), where a lack of attitude
+data is not superseded by any subsequent call and so is actually worth
+reporting. Confirmed against a ten-file, 8.3-hour production survey that
+the warning count dropped from 18 to 0 with no change to any written
+bathymetry, roll, pitch, or heave value.</p>
+<p>The changes described above were done with the assistance of the AI
+coding assistant Claude Sonnet 5 (Anthropic, model claude-sonnet-5),
+operating as Claude Code under developer supervision and review.</p>
+<p>Format 261 (MBF_KEMKMALL): Fixed two further defects identified in a
+bug report from Christian Ferreira reviewing the same kmall
+attitude/heave handling as the fixes above. First, in
+src/mbio/mbr_kemkmall.c, the code that feeds the generic MBIO
+nav/attitude buffer (mb_attint_add(), used by the low-level, automatic
+preprocessing that mbr_kemkmall_rd_data() applies to every
+not-yet-preprocessed ping, and consulted by any program - such as
+mbtrnpp - that reads kmall attitude via the standard
+mb_attint_interp()/mb_get_all() path rather than through mbpreprocess&#39;s
+own explicit extraction) negated the SKM datagram&#39;s heave_m field in
+both places it is populated (the MB_DATA_NAV1 and MB_DATA_NAV2 handling
+blocks), even though every other reader of this field elsewhere in
+mbsys_kmbes.c, and every other format&#39;s own call to mb_attint_add(),
+passes heave through unmodified, matching Kongsberg&#39;s own &quot;positive
+downwards&quot; convention for heave_m. Confirmed directly: reading the same
+ping&#39;s heave with mblist, once from the raw, never-preprocessed .kmall
+file and once from the same ping after mbpreprocess, gave an exact sign
+flip (+1.1527 m vs. -1.1527 m) before this fix and identical values
+after it; this did not affect bathymetry already produced through the
+mbpreprocess/mbprocess pipeline, which extracts attitude through a
+separate, correctly- signed path, but would have affected any program
+reading kmall attitude through the generic buffer directly, as for the
+reson7k3 bug described above. Second, in src/mbio/mbsys_kmbes.c&#39;s
+mbsys_kmbes_preprocess(), the per-beam sensordepth-at-receive- time
+fallback (taken when no separate sensordepth ancillary stream is
+available, the normal case for kmall) assigned its result to the
+ping-level sensordepth variable rather than to receive_sensordepth as
+intended; harmless in practice for standard kmall data, since the two
+already held the same value at that point, but corrected for clarity and
+to avoid the same mistake mattering under some future change to this
+code. This work was done with the assistance of the AI coding assistant
+Claude Sonnet 5 (Anthropic, model claude-sonnet-5), operating as Claude
+Code under developer supervision and review.</p>
 <h4 id="583beta16-july-26-2026">5.8.3beta16 (July 26, 2026)</h4>
 <p>Program mbusbl2fnv: New program that converts a USBL (ultra-short
 baseline) ROV tracking CSV file to an MB-System fast navigation (fnv)
@@ -892,6 +2425,11 @@ functions, replacing XmFileSelectionBoxGetChild() with XtNameToWidget()
 and replacing XmStringGetLtoR() with XmStringUnparse(). This appears to
 be necessary for the Motif code to work on MacOs Tahoe with
 prerequisites installed via MacPorts.</p>
+<p>Program mbnavadjust: Fixed a copy-paste bug in mbnavadjust_io.c in
+which the section depthmax tracking during data import checked the
+depthmin initialization sentinel instead of its own, so depthmax was
+never properly initialized from the first bathymetry value in a
+section.</p>
 <h4 id="583beta13-june-18-2026">5.8.3beta13 (June 18, 2026)</h4>
 <p>Format MBF_KEMKALL (261): Fixed support for platform files used for
 preprocessing.</p>
@@ -1182,7 +2720,7 @@ code will add one to the minutes value, and set the seconds value to
 <p>Libtrnav (src/mbtrnav/): Additional fixes by Kent Headley to enable
 building on Ubuntu 24.</p>
 <h4 id="582beta16-november-6-2024">5.8.2beta16 (November 6, 2024)</h4>
-<p>Mbm_route2mission: Change so that no edgetech behaviors are output to
+<p>mbm_route2mission: Change so that no edgetech behaviors are output to
 the mission script if no sidescan or subbottom is enabled.</p>
 <p>Format MBF_MBPRONAV (165): code changed so that if a file has records
 in which the date fields (yyyy mm dd hh mm ss.ssssss) are all zero, then
@@ -1283,17 +2821,17 @@ MB_PRINTF_BYTE_TO_BINARY_INT64(value)); These macros are taken from <a href="htt
 <p>Format 121 (MBF_GSFGENMB): Updated to use new version of libgsf
 (3.10) released by Leidos. The following change descriptions are from
 the libgsf 3.10 change summary:</p>
-<pre><code>Change request GSF_03-10_01
+<pre><code>Change request GSF\_03-10\_01
 Support for ME70 sonars
 11/8/2021 
 Sean Donovan, Leidos 
 Description:
-    Added GSF_SWATH_BATHY_SUBRECORD_ME70BO_SPECIFIC subrecord identifier. 
+    Added GSF\_SWATH\_BATHY\_SUBRECORD\_ME70BO\_SPECIFIC subrecord identifier. 
     Added support for sonar under EM4 cases. 
 Purpose:
     To add support in GSF for the ME70 multibeam systems
 
-Change request GSF_03-10_02
+Change request GSF\_03-10\_02
 STIG Remediation to address vulnerabilities
 3/12/2024
 Dwight Johnson, NAVO
@@ -1303,18 +2841,18 @@ Description:
 Purpose:
     Improved Robustness
 
-Change request GSF_03-10_03
+Change request GSF\_03-10\_03
 Updates to KMALL ping level metadata
 3/12/2024
 Jonathon Beaudoin, Hydro Octave
 Description:
-    Added new variables highVoltageLevelDB, sectorTrackingCorr_DB, and 
-    effectiveSignalLength_sec within the spare space of the gsfKMALLTxSector Struct. 
+    Added new variables highVoltageLevelDB, sectorTrackingCorr\_DB, and 
+    effectiveSignalLength\_sec within the spare space of the gsfKMALLTxSector Struct. 
     Added encoding and decoding logic for these values.
 Purpose:
     To support backscatter processing
 
-Change request GSF_03-10_04
+Change request GSF\_03-10\_04
 Resolved bug surrounding network transmission of range samples
 3/12/2024
 Jonathon Beaudoin, Hydro Octave
@@ -1323,12 +2861,12 @@ Description:
 Purpose:
     Bug Fix
 
-Change request GSF_03-10_05
+Change request GSF\_03-10\_05
 Added TVG DB to bathy ping structure
 3/12/2024
 Jonathon Beaudoin, Hydro Octave
 Description:
-    Added new array variable TVG_DB to multibeam ping struct. Added encoding and 
+    Added new array variable TVG\_DB to multibeam ping struct. Added encoding and 
     decoding logic for this value.
 Purpose:
     To support backscatter processing</code></pre>
@@ -1336,7 +2874,7 @@ Purpose:
 immediately before beginning to write a new file. Also fixed some
 inconsistencies in the UI.</p>
 <h4 id="582beta07-june-27-2024">5.8.2beta07 (June 27, 2024)</h4>
-<p>Mbm_trnplot: Added extraction of TRN localization estimates in
+<p>mbm_trnplot: Added extraction of TRN localization estimates in
 longitude and latitude.</p>
 <p>Mbtrnpp: Now includes longitude and latitude values of TRN
 localization estimates into the log file (in addition to the coordinate
@@ -1364,7 +2902,7 @@ program mbtrnpp to calculate projections using the Proj package rather
 than the GCTP package.</p>
 <p>MBtrnpp: Now works with reference topography models defined in a
 Local Transverse Mercator (LTM) projection.</p>
-<p>Mbm_trnplot: augmented to allow specifying the CRS of the reference
+<p>mbm_trnplot: augmented to allow specifying the CRS of the reference
 topoography so that a Local Transverse Mercator (LTM) projection can be
 used.</p>
 <h4 id="582beta05-may-19-2024">5.8.2beta05 (May 19, 2024)</h4>
@@ -1442,7 +2980,7 @@ existing esf files were ignored. Also fixed a non-initialized pointer
 bug that produced occasional crashes.</p>
 <p>Mbgrid: Improved output to shell so that it shows the min max values
 from each contributing input file whether verbose is specified or not.
-Mbm_grdplot: Added colortable 10, which runs from blue to red and can be
+mbm_grdplot: Added colortable 10, which runs from blue to red and can be
 used for plots of seismic reflection or subbottom profiler data when the
 trace signals are both positive or negative.</p>
 <p>Mbphotomosaic: Fixed priority-heading option that allows image
@@ -1494,7 +3032,7 @@ files.</p>
 from each contributing input file whether verbose is specified or
 not.</p>
 <h4 id="581beta08-march-10-2024">5.8.1beta08 (March 10, 2024)</h4>
-<p>Mbm_grdplot: Added colortable 10, which runs from blue to red and can
+<p>mbm_grdplot: Added colortable 10, which runs from blue to red and can
 be used for plots of seismic reflection or subbottom profiler data when
 the trace signals are both positive or negative.</p>
 <p>SEGY format data: Changed MB-System SEGY traceheader to include a
@@ -1739,7 +3277,7 @@ optional for both the CMake and Autoconf build systems.</p>
 installed with MB-System. Recast the postscript versions of the manual
 pages into Pdf files.</p>
 <p>Mbgrdviz: Generated a new version of the MB-System Route files.</p>
-<p>Mbm_route2mission: Now works with both old and new format route
+<p>mbm_route2mission: Now works with both old and new format route
 files.</p>
 <h4 id="579beta71-january-3-2024">5.7.9beta71 (January 3, 2024)</h4>
 <p>CMake build system: Fixed creating the levitus.h header file used by
@@ -1875,14 +3413,14 @@ of this tag sets the behavior for all datalist parsing down through a
 recursive datalist file structure. To use this functionality, a program
 must use a new function mb_datalist_read3() in place of
 mb_datalist_read() or mb_datalist_read2():</p>
-<pre><code>int mb_datalist_read(int verbose, void *datalist_ptr, char *path, char *dpath, 
+<pre><code>int mb\_datalist\_read(int verbose, void *datalist\_ptr, char *path, char *dpath, 
                         int *format, double *weight, int *error);
 
-int mb_datalist_read2(int verbose, void *datalist_ptr, int *pstatus, char *path, 
+int mb\_datalist\_read2(int verbose, void *datalist\_ptr, int *pstatus, char *path, 
                         char *ppath, char *dpath, int *format,
                         double *weight, int *error);
 
-int mb_datalist_read3(int verbose, void *datalist_ptr, int *pstatus, char *path, 
+int mb\_datalist\_read3(int verbose, void *datalist\_ptr, int *pstatus, char *path, 
                         char *ppath, int *astatus, char *apath, 
                         char *dpath, int *format, double *weight, int *error);</code></pre>
 <p>Here the new astatus is a boolean indicating that an alternative
@@ -1893,17 +3431,17 @@ place of the navigation embedded in processed swath files, the program
 must use another new function mb_read_init_altnav() to initialize
 reading (instead of mb_read_init()) - here the change is to pass in the
 astatus and apath values obtained from mb_datalist_read3().</p>
-<pre><code>int mb_read_init(int verbose, char *file, int format, int pings, int lonflip, 
-                        double bounds[4], int btime_i[7], int etime_i[7],
-                        double speedmin, double timegap, void **mbio_ptr, 
-                        double *btime_d, double *etime_d, int *beams_bath,
-                        int *beams_amp, int *pixels_ss, int *error);
+<pre><code>int mb\_read\_init(int verbose, char *file, int format, int pings, int lonflip, 
+                        double bounds[4], int btime\_i[7], int etime\_i[7],
+                        double speedmin, double timegap, void **mbio\_ptr, 
+                        double *btime\_d, double *etime\_d, int *beams\_bath,
+                        int *beams\_amp, int *pixels\_ss, int *error);
 
-int mb_read_init_altnav(int verbose, char *file, int format, int pings, 
-                  int lonflip, double bounds[4], int btime_i[7], int etime_i[7],
+int mb\_read\_init\_altnav(int verbose, char *file, int format, int pings, 
+                  int lonflip, double bounds[4], int btime\_i[7], int etime\_i[7],
                   double speedmin, double timegap, int astatus, char *apath, 
-                  void **mbio_ptr, double *btime_d, double *etime_d, 
-                  int *beams_bath, int *beams_amp, int *pixels_ss, int *error);</code></pre>
+                  void **mbio\_ptr, double *btime\_d, double *etime\_d, 
+                  int *beams\_bath, int *beams\_amp, int *pixels\_ss, int *error);</code></pre>
 <p>If mb_read_init_altnav() is used, astatus is true, and apath is a
 valid alternative navigation file, then calls to mb_get_all(), mb_get(),
 and mb_read() will return survey records with the alternative navigation
@@ -1928,7 +3466,7 @@ mbnavadjust project.</p>
 <p>Mbcontour: Fixed drawing of survey tracklines - restored to generate
 thin lines.</p>
 <h4 id="579beta58-august-30-2023">5.7.9beta58 (August 30, 2023)</h4>
-<p>Mbm_route2mission: Modifications to accomodate changes to Dorado AUV
+<p>mbm_route2mission: Modifications to accomodate changes to Dorado AUV
 vehicle software.</p>
 <p>Mbinfo: Added -Q option which causes mbinfo to read statistics from
 existing *.inf files rather than to read the actual swath files.
@@ -1955,7 +3493,7 @@ or doubling, respectively).</p>
 due to use of a fast file copy function replacing a shell call of the
 program cp.</p>
 <h4 id="579beta57-june-27-2023">5.7.9beta57 (June 27, 2023)</h4>
-<p>Mbm_route2mission: Added -T option to embed use of Terrain Relative
+<p>mbm_route2mission: Added -T option to embed use of Terrain Relative
 Navigation in MBARI Mapping AUV missions.</p>
 <p>Format 89 (MBF_RESON7K3): Fixed too small buffer size for broadcast
 Teledyne s7k data records, which caused mbtrnpp to crash by seg fault.
@@ -1974,7 +3512,7 @@ the -W argument</p>
 (too) as format 275.</p>
 <p>Format SOIROVN (276): Supports ROV SuBastian INS navigation data as
 format 276.</p>
-<p>Mbm_route2mission: Added a depth limit parameter to the -D
+<p>mbm_route2mission: Added a depth limit parameter to the -D
 argument.</p>
 <p>Mbgrdviz: Fixed display of vector data.</p>
 <p>General: Fixed automated handling of asynchronous nav and attitude
@@ -2006,7 +3544,7 @@ display in a variety of marine chart display software.</p>
 third_party/googlemock and third_party/googletest to eliminate benign
 but alarming error messages during make install and make clean
 commands.</p>
-<p>Mbm_route2mission: Added ability to insert a magnetometer calibration
+<p>mbm_route2mission: Added ability to insert a magnetometer calibration
 maneuver into an AUV mission spiral descent using the -Naltitude/mode
 command, where altitude is the spiral descent termination altitude and
 mode = 0 for no start survey behavior, 1 for start survey behavior
@@ -2031,7 +3569,7 @@ with angles in spherical coordinates that have not been corrected for
 roll and pitch, and to be consistent with the most recent Hypack users
 manual released February 2023.</p>
 <h4 id="579beta49-january-22-2023">5.7.9beta49 (January 22, 2023)</h4>
-<p>Mbm_grdplot, mbm_grd3dplot, mbm_histplot, mbm_plot, mbm_xyplot: Made
+<p>mbm_grdplot, mbm_grd3dplot, mbm_histplot, mbm_plot, mbm_xyplot: Made
 evince one of the default Postscript viewers because it is commonly
 installed on Ubuntu machines.</p>
 <p>General: Addressed compiler warnings due to uninitialized variables,
@@ -2064,7 +3602,7 @@ conventions for MBARI ROV navigation files.</p>
 <h4 id="579beta48-december-16-2022">5.7.9beta48 (December 16, 2022)</h4>
 <p>Mbmosaic: Fixed parsing of the -Ypriority_source option when
 priority_source is a filename.</p>
-<p>Mbm_grdplot: Fixed handling of image file min max when color_mode ==
+<p>mbm_grdplot: Fixed handling of image file min max when color_mode ==
 6.</p>
 <p>Mbnavadjust: Added controls allowing the mode of global ties to be
 changed interactively.</p>
@@ -2096,7 +3634,7 @@ the &#39;#&#39; character, but fnv files have always been created without any
 comment records. Many MB-System programs read fnv files directly without
 using the MBF_MBPRONAV i/o module. Now all format 166 files will be
 written with a first record documenting the contents of the file:</p>
-<pre><code>fprintf(mb_io_ptr-&gt;mbfp,  &quot;## &lt;yyyy mm dd hh mm ss.ssssss&gt; &lt;epoch seconds&gt; &quot;
+<pre><code>fprintf(mb\_io\_ptr-&gt;mbfp,  &quot;## &lt;yyyy mm dd hh mm ss.ssssss&gt; &lt;epoch seconds&gt; &quot;
               &quot;&lt;longitude (deg)&gt; &lt;latitude (deg)&gt; &lt;heading (deg)&gt; &lt;speed (km/hr)&gt; &quot;
               &quot;&lt;draft (m)&gt; &lt;roll (deg)&gt; &lt;pitch (deg)&gt; &lt;heave (m)&gt; &lt;portlon (deg)&gt; &quot;
               &quot;&lt;portlat (deg)&gt; &lt;stbdlon (deg)&gt; &lt;stbdlat (deg)&gt;\n&quot;);</code></pre>
@@ -2142,7 +3680,7 @@ picking of global ties relative to a reference bathymetry model.</p>
 mbnavadjust projects. Recast global ties to utilize a full 3D covariance
 model just like the crossing ties, in preparation for allowing graphical
 picking of global ties relative to a reference bathymetry model.</p>
-<p>Mbm_trnplot: Added mission names to mbtrnpp result plots.</p>
+<p>mbm_trnplot: Added mission names to mbtrnpp result plots.</p>
 <p>Cmake Build System: Incorporates an initial attempt at a cmake based
 build system that will provide an alternative to the existing AutoTools
 based build system. Updated documentation for both build systems is not
@@ -2155,7 +3693,7 @@ from null beams.</p>
 apply linear interpolation of global ties to create a starting model for
 the inversion. Fixed picking on tie offsets in the modelplot window.</p>
 <h4 id="579beta41-june-22-2022">5.7.9beta41 (June 22, 2022)</h4>
-<p>Mbm_makedatalist: Fixed to work with *.kmall files, and added -Bsize
+<p>mbm_makedatalist: Fixed to work with *.kmall files, and added -Bsize
 option to impose a size threshold for files included in the output
 datalist.</p>
 <p>TRN: Several fixes to the TRN (terrain relative navigation)
@@ -2175,7 +3713,7 @@ realtime or playback modes this option must now be specified.</p>
 <p>Mbgrdtilemaker: Fixed building of this new tool.</p>
 <h4 id="579beta36-june-15-2022">5.7.9beta36 (June 15, 2022)</h4>
 <p>Mbgrdviz: Fixed export of Risi survey scripts from routes.</p>
-<p>Mbm_trnplot: Fixed plotting macro to work when the users path does
+<p>mbm_trnplot: Fixed plotting macro to work when the users path does
 not include the current directory.</p>
 <p>Mbgrdtilemaker: Now copies the source background grid into the
 directory containing the octree tiles with the name source_grid.grd.</p>
@@ -2183,7 +3721,7 @@ directory containing the octree tiles with the name source_grid.grd.</p>
 <p>Mbtrnpp: Added options to set the TRN search area on the command line
 and in cfg files. Fixed wrapper script mbtrnpp.sh so that the number of
 cycles to be used is set correction.</p>
-<p>Mbm_trnplot: Fixed plotting macro to work with the current mbtrnpp
+<p>mbm_trnplot: Fixed plotting macro to work with the current mbtrnpp
 output.</p>
 <p>Mbgrd2octree: Recast program that translates a topography grid in a
 projected coordinate system (like UTM) into a TRN octree model. This
@@ -2217,7 +3755,7 @@ don&#39;t have it working yet.</p>
 full on Arm architecture Mac computers running the Monterey OS and
 fixing the build of the TRN tools on Linux.</p>
 <h4 id="579beta28-march-21-2022">5.7.9beta28 (March 21, 2022)</h4>
-<p>Mbm_trnplot: Added --display option that immediately displays the
+<p>mbm_trnplot: Added --display option that immediately displays the
 plots.</p>
 <p>General: Reduced the internal maximum file path name length from 4096
 to 1024 characters.</p>
@@ -2232,11 +3770,11 @@ grid.</p>
 from a session placed in the same directory named according to the start
 time. Also added automated plotting of the TRN results using a new plot
 macro mbm_trnplot.</p>
-<p>Mbm_trnplot: New plotting macro that generates two map views of the
+<p>mbm_trnplot: New plotting macro that generates two map views of the
 results from an mbtrnpp session.</p>
 <p>Mbeditviz: Supports selective editing or ignoring of multipick
 soundings.</p>
-<p>Mbm_route2mission: Added new battery behavior that turns off the
+<p>mbm_route2mission: Added new battery behavior that turns off the
 mapping sonars after data logging has been turned off at the end of the
 survey, before ascent to the surface.</p>
 <p>Mbvoxelclean: fixed memory management fault.</p>
@@ -2259,7 +3797,7 @@ imagelist files with --priority-weight and section-length-max. The
 in a photomosaic. The --section-length-max command allows one to exclude
 groups of pixels that are projected into too large of an extent when
 projected onto the seafloor topography model.</p>
-<p>Mbm_makeimagelist: Augmented to comment out the first five image
+<p>mbm_makeimagelist: Augmented to comment out the first five image
 pairs in each image survey directory, as the first three or four images
 are usually quite dark.</p>
 <h4 id="579beta25-december-29-2021">5.7.9beta25 (December 29, 2021)</h4>
@@ -2322,7 +3860,7 @@ get image gain and exposure correction to work correctly. Altered the
 imagelist file format to include camera gain and exposure settings.
 These can be extracted from the metadata embedded into images written by
 the MBARI Prosilica driver code (adapted from URI/WHOI/UM).</p>
-<p>Mbm_makeimagelist: Altered the imagelist file format to include
+<p>mbm_makeimagelist: Altered the imagelist file format to include
 camera gain and exposure settings. These can be extracted from the
 metadata embedded into images written by the MBARI Prosilica driver code
 (adapted from URI/WHOI/UM). Added --check-bayer option to allow checking
@@ -2372,7 +3910,7 @@ rather than zero.</p>
 the lateral positions of waypoints are relative east and north meters in
 UTM rather than local x,y calculated using mtodeglon and mtodeglat from
 a simple spheroid.</p>
-<p>Mbm_grdplot: Fixed so that it does not crash if the input grid has
+<p>mbm_grdplot: Fixed so that it does not crash if the input grid has
 either no valid values (all are NaN) or all valid values are the
 same.</p>
 <h4 id="579beta16-august-27-2021">5.7.9beta16 (August 27, 2021)</h4>
@@ -2383,7 +3921,7 @@ projects will be saved when users quit.</p>
 <p>Mbview (mbgrdviz, mbeditviz, mbnavadjust): Addressed a number of code
 style issues particularly using bool rather than int for true/false
 values.</p>
-<p>Mbm_route2mission: added acoustic modem status signal to MBARI AUV
+<p>mbm_route2mission: added acoustic modem status signal to MBARI AUV
 missions immediately at the end of the &quot;start survey&quot; behavior.</p>
 <h4 id="579beta14-july-25-2021">5.7.9beta14 (July 25, 2021)</h4>
 <p>Most programs: Fixed possible overflow associated with code that sets
@@ -2411,7 +3949,7 @@ destination pixels in each quadrilateral of interest and obtains the
 corresponding source image pixels. Therefore no gaps are left in the
 destination image due to a resolution and sampling mismatch between the
 source and destination images.</p>
-<p>Mbm_grdplot, mbm_grd3dplot, mbm_grdcut, mbm_grdinfo, mbm_grdtiff:
+<p>mbm_grdplot, mbm_grd3dplot, mbm_grdcut, mbm_grdinfo, mbm_grdtiff:
 Fixed thesemacros to work with the new gmt grdinfo output that changed
 for GMT 6.2.0.</p>
 <h4 id="579beta10-june-16-2021">5.7.9beta10 (June 16, 2021)</h4>
@@ -2420,22 +3958,22 @@ Fixed crash that happened when a navigation inversion was performed in
 the same session as swath data importation.</p>
 <p>Mbauvloglist: Fixed parsing of short values in MBARI Dorado AUV MVC
 log files.</p>
-<p>Mbm_grdplot: Fixed histogram equalization in cases where grdhisteq
+<p>mbm_grdplot: Fixed histogram equalization in cases where grdhisteq
 returns an incomplete or short equalized color table.</p>
 <h4 id="579beta09-june-8-2021">5.7.9beta09 (June 8, 2021)</h4>
 <p>Mb_rt raytracing functions: Added tracking of travel times in arrays
 returned by mb_rt() for plotting raypaths. This adds a parameter to the
 mb_rt() function call, which is used by utilities/mb_process.cc and
 mbvelocitytool/mbvelocity_prog.c.</p>
-<p>Mbm_grdplot: If \fB-MGL\fP\fIF\fP is given in conjunction with
+<p>mbm_grdplot: If \fB-MGL\fP\fIF\fP is given in conjunction with
 \fB-MGL\fP\fIscalebar\fP then the map scale will be surrounded by a
 white filled, black bounded box on top of the map.</p>
-<p>Mbm_grdplot: Chooses more reasonable easting/northing annotation
+<p>mbm_grdplot: Chooses more reasonable easting/northing annotation
 intervals when plotting maps in projected coordinate systems like
 UTM.</p>
-<p>Mbm_grd2arc: Fixed so that the call to gmt convert is actually
+<p>mbm_grd2arc: Fixed so that the call to gmt convert is actually
 made.</p>
-<p>Mbm_grdtiff: Fixed so that the temporary GMT defaults are actually
+<p>mbm_grdtiff: Fixed so that the temporary GMT defaults are actually
 applied to the output image. By default this enforces a white background
 on the output GeoTiff image, which enables the new tool mbtiff2png to
 set the white areas to transparent when it converts a GeoTiff image to a
@@ -2494,7 +4032,7 @@ src/mbio/mb_process.c, src/utilities/mbdatalist.cc, and
 src/mbvelocitytool/mbvelocity_prog.c.</p>
 <p>TRN: Updates to src/mbtrn, src/mbtrnav, src/mbtrnutils from Kent
 Headley.</p>
-<p>Mbm_grdplot, mbm_3dgrdplot, mbm_grdtiff, mbm_grdinfo: Changed &quot; -r &quot;
+<p>mbm_grdplot, mbm_3dgrdplot, mbm_grdtiff, mbm_grdinfo: Changed &quot; -r &quot;
 tests for file readability to &quot; -e &quot; tests for file existence. This is
 to accommodate filesystems that use ACL rather than old style unix file
 modes - the old stat based readability test in Perl fails on ACL
@@ -2577,7 +4115,7 @@ nulled, and so that modified backscatter is written to the output file
 by mbprocess.</p>
 <p>Mbeditviz: Modified 3D sounding view so that the depth buffering is
 actually used.</p>
-<p>Mbm_makedatalist: Now ignores the most recent file when the -L option
+<p>mbm_makedatalist: Now ignores the most recent file when the -L option
 is used.</p>
 <p>Mbprocess: Fixed raytracking library used by mbprocess so that it is
 thread safe. The relevant code is in mbsystem/src/mbaux/mb_rt.c</p>
@@ -2640,7 +4178,7 @@ are read. The only case at present where this is used is format 58
 causes the reading code to treat pings with bathymetry as complete
 whether snippet records exist or not, and to zero the snippet
 information for those pings.</p>
-<p>Mbm_makedatalist: Added -L option which will omit the last file found
+<p>mbm_makedatalist: Added -L option which will omit the last file found
 from the output datalist. The intent of this option is to exclude the
 most recent file in an actively data logging context, since the most
 recent file is still being logged. This presumes that filenames sort in
@@ -2695,7 +4233,7 @@ nulled, and so that modified backscatter is written to the output file
 by mbprocess.</p>
 <p>Mbeditviz: Modified 3D sounding view so that the depth buffering is
 actually used.</p>
-<p>Mbm_makedatalist: Now ignores the most recent file when the -L option
+<p>mbm_makedatalist: Now ignores the most recent file when the -L option
 is used.</p>
 <h4 id="577beta06-december-30-2020">5.7.7beta06 (December 30, 2020)</h4>
 <p>Mbprocess: Fixed raytracking library used by mbprocess so that it is
@@ -2762,7 +4300,7 @@ are read. The only case at present where this is used is format 58
 causes the reading code to treat pings with bathymetry as complete
 whether snippet records exist or not, and to zero the snippet
 information for those pings.</p>
-<p>Mbm_makedatalist: Added -L option which will omit the last file found
+<p>mbm_makedatalist: Added -L option which will omit the last file found
 from the output datalist. The intent of this option is to exclude the
 most recent file in an actively data logging context, since the most
 recent file is still being logged. This presumes that filenames sort in
@@ -2833,7 +4371,7 @@ these programs entirely from MB-System distributions at the time of the
 2020)</h4>
 <p>Mbnavlist: Fixed bug in parsing -O option that sometimes resulting in
 the output of undesired values.</p>
-<p>Mbm_makeimagelist: New macro that constructs imagelist files of
+<p>mbm_makeimagelist: New macro that constructs imagelist files of
 stereo photograph pairs as collected by MBARI&#39;s low altitude survey
 system. This is the first Python3 macro in MB-System.</p>
 <p>Format 88 (MBF_RESON7KR): Fixed calculation of speed when using the
@@ -3341,7 +4879,7 @@ GPL have been removed. The Markdown format versions (README.md,
 ChangeLog.md, GPL.md) remain and have been updated.</p>
 <p>Mbeditviz: Fixed a bug recently introduced (inadvertently) that
 caused a crash when bringing up the sounding 3D cloud.</p>
-<p>Mbm_grd2arc: Fixed failure with GMT 6. Basically, there is a GMT
+<p>mbm_grd2arc: Fixed failure with GMT 6. Basically, there is a GMT
 module grdconvert that accomplishes exactly the same task, so this macro
 is unnecessary. It has been recast to simply call gmt grdconvert. It
 will be listed as deprecated, but left in the distribution to maintain
@@ -3491,7 +5029,7 @@ the map&#39;s coloring (including selected colortabel and any histogram
 equalization).</p>
 <p>MBeditviz: Added GUI elements to support multiple modes of
 gridding.</p>
-<p>Mbm_route2mission: Modified to output waypoint_bottom behaviors with
+<p>mbm_route2mission: Modified to output waypoint_bottom behaviors with
 the current suite of options specified.</p>
 <p>Format 72 (MBF_MBARIMB1): Fixed handling of heading (degrees not
 radians).</p>
@@ -3643,7 +5181,7 @@ unconstrained sections of survey lines.</p>
 conform to best practices regarding header inclusion and reduced
 variable scope, particularly for loop indices.</p>
 <h4 id="576beta6-august-26-2019">5.7.6beta6 (August 26, 2019)</h4>
-<p>Mbm_route2mission: AUV spiral descent option now includes a behavior
+<p>mbm_route2mission: AUV spiral descent option now includes a behavior
 to disable DVL aiding of the INS during the descent.</p>
 <p>Formats MBF_3DWISSLR (232) and MBF_3DWISSLP (233): these i/o modules
 have been updated to handle both a new version (1.3) of the 3D at Depth
@@ -3771,25 +5309,25 @@ only be used if compiled with the preprocessor macro
 ACCEPT_USE_OF_DEPRECATED_PROJ_API_H set. This compiler flag has been
 added to the autoconf test for usability of this header file.</p>
 <h4 id="575beta5-march-22-2019">5.7.5beta5 (March 22, 2019)</h4>
-<p>Mbm_grdplot, mbm_grd3dplot, mbm_grdtiff, mbm_histplot, mbm_plot,
+<p>mbm_grdplot, mbm_grd3dplot, mbm_grdtiff, mbm_histplot, mbm_plot,
 mbm_xyplot: Set these plot macros to use &quot;open&quot; on Macs and on Linux to
 use &quot;gio open&quot; if available, &quot;xdg-open&quot; if &quot;gio&quot; is not available. Also
 got rid of another instance of orphan file creation by the plotting
 shellscripts (e.g. gmt.conf$$).</p>
 <h4 id="575beta4-march-21-2019">5.7.5beta4 (March 21, 2019)</h4>
-<p>Mbm_grid: Fixed problem in which execution of mbm_grid left behind an
+<p>mbm_grid: Fixed problem in which execution of mbm_grid left behind an
 orphaned datalist file. Also changed this macro to output a bash
 shellscript rather than a csh shellscript.</p>
-<p>Mbm_bpr: Added support for various variants of Sonardyne AMT pressure
+<p>mbm_bpr: Added support for various variants of Sonardyne AMT pressure
 data.</p>
-<p>Mbm_grdtiff: Changed this macro to output a bash shellscript rather
+<p>mbm_grdtiff: Changed this macro to output a bash shellscript rather
 than a csh shellscript.</p>
-<p>Mbm_route2mission: Fixed handling of the user specified time to first
+<p>mbm_route2mission: Fixed handling of the user specified time to first
 waypoint in the output MBARI AUV mission script.</p>
 <p>Mbextractsegy: Recast output section plot generation script to call
 mbm_grdplot using the arguments -MIE300 -MITg that cause that macro to
 render the output postscript files into 300 dpi png image files.</p>
-<p>Mbm_grdplot, mbm_grd3dplot, mbm_grdtiff, mbm_histplot, mbm_plot,
+<p>mbm_grdplot, mbm_grd3dplot, mbm_grdtiff, mbm_histplot, mbm_plot,
 mbm_xyplot: These plot macros now embed the user, computer, and time of
 creation associated with the output plot generation shellscript.</p>
 <h4 id="575beta3-march-14-2019">5.7.5beta3 (March 14, 2019)</h4>
@@ -3804,7 +5342,7 @@ memory management faults are fixed, but it isn&#39;t all working yet.</p>
 passed on to the output even if they generate nonfatal errors (e.g. out
 of time or location bounds).</p>
 <h4 id="575beta1-february-27-2019">5.7.5beta1 (February 27, 2019)</h4>
-<p>Mbm_bpr: Augmented to work with Sonardyne AMT pressure data using PRS
+<p>mbm_bpr: Augmented to work with Sonardyne AMT pressure data using PRS
 data records in addition to PR2 records.</p>
 <p>Mbotps: Fixed some issues with applying a tide station correction to
 time models.</p>
@@ -3845,14 +5383,14 @@ data newly processed from *.all files.</p>
 fixes provided by Povl Abrahamsen of the British Antarctic Survey in
 October 2017 (!)</p>
 <p>Mbclean: Fixed problem with heading-change-rate based flagging.</p>
-<p>Mbm_grdplot: supported generating plots of images (ie. Geotiffs) in
+<p>mbm_grdplot: supported generating plots of images (ie. Geotiffs) in
 addition to grids. Added two plot modes: -G6 will plot the image using
 the embedded georeferencing, and -G7 will plot the image using the
 bounds specified with the -R option as the bounds of the image.</p>
 <p>Format 56/57 (MBF_EM300RAW MBF_EM300MBA): Fixed crashing with some
 EM122 data by disabling attempted parsing of &quot;extraparameters&quot;
 datagrams, which appear to not conform to the format specification.</p>
-<p>Mbdefaults, Mbm_* plotting macros: Changed the definition of the
+<p>Mbdefaults, mbm_* plotting macros: Changed the definition of the
 programs used to view Postscript plots generated through the mbm_*
 plotting macros and for images (e.g. geotiffs generated using
 mbgrdtiff). Previously, the programs used by MB-System to view
@@ -4136,7 +5674,7 @@ files lacking the sonar type value.</p>
 fbt files written by mbcopy.</p>
 <p>Format MBF_LDEOIH (MBIO format id 71): I/O module modified to ensure
 the sonar type value is embedded in fbt files.</p>
-<p>Mbm_bpr: added generic data input format</p>
+<p>mbm_bpr: added generic data input format</p>
 <p>src/mbtrn: added directory under src named mbtrn that contains code
 to enable terrain relative navigation (TRN) on autonomous underwater
 vehicle (AUV) platforms. These programs and library, particularly
@@ -4157,14 +5695,14 @@ now appropriate for linear data instead of log-scaled data.</p>
 that returns the lon-lat bounds of a topography grid previously loaded
 using the mb_topogrid_init() function.</p>
 <h4 id="552335-may-6-2018">5.5.2335 (May 6, 2018)</h4>
-<p>Mbm_bpr: Added ability to parse pressure data from Sonardyne AMT
+<p>mbm_bpr: Added ability to parse pressure data from Sonardyne AMT
 beacons. Also added optional smoothing of the BPR depth data used to
 calculate tides.</p>
 <p>Mbotps: Made the options -Ctidestationformat, -Ntidestationfile, and
 -Utidestationlon/tidestationlat introduced last month actually work. One
 can now use nearby tide station data to correct tide models calculated
 for the location and time of survey data.</p>
-<p>Mbm_route2mission: Altered to reflect the increased mission duration
+<p>mbm_route2mission: Altered to reflect the increased mission duration
 possible for MBARI Mapping AUVs.</p>
 <p>Format 88 (MBF_RESON7KR): Fixed handling of beams when using the
 version 2 raw detection data records.</p>
@@ -4184,7 +5722,7 @@ ping times are close to but not exactly the same. This problem was
 recognized in XSE data from a SeaBeam 3020 multibeam, but could
 potentially have impacted data from other sensors.</p>
 <h4 id="552331-april-10-2018">5.5.2331 (April 10, 2018)</h4>
-<p>Mbm_makedatalist: Fixed problem with use of perl sort function when
+<p>mbm_makedatalist: Fixed problem with use of perl sort function when
 handling Kongsberg multibeam data. Also fixed problem with specifying a
 directory using the -I option.</p>
 <p>Mbotps: Added new options -Ctidestationformat, -Ntidestationfile, and
@@ -4228,7 +5766,7 @@ another ping or scan.</p>
 mbeditviz with use of new edit files called reverse edit save files
 (</em>.resf). The *.gef files were generated by mbpreprocess using
 mbgetesf. The *.resf files are generated by mbprocess.</p>
-<p>Mbm_route2mission: Fixed generation of Dorado AUV missions with
+<p>mbm_route2mission: Fixed generation of Dorado AUV missions with
 waypoint_bottom behaviours.</p>
 <h4 id="552328-january-31-2018">5.5.2328 (January 31, 2018)</h4>
 <p>Edit Save Files (*.esf): The edit save file format has been augmented
@@ -4261,7 +5799,7 @@ compiling on Ubuntu 17 succeeds (issue related to stdint.h includes)</p>
 <p>Formats MBF_3DWISSLR (232) and MBF_3DWISSLP (233): Added support for
 the 3D at Depth wide swath lidar (WiSSL) system delivered to MBARI in
 December 2017.</p>
-<p>MBm_route2mission: Fixed implementation of inserting surfacing events
+<p>mbm_route2mission: Fixed implementation of inserting surfacing events
 into missions at line start and end waypoints.</p>
 <p>Many source files: Changes to variable names in GMT grid header and
 CPT structures for GMT 6.</p>
@@ -4354,7 +5892,7 @@ function in the i/o module so that altitude values read in by
 mbpreprocess are actually applied in the output file.</p>
 <p>Format 160 (MBF_SEGYSEGY): Added recognition of this format by file
 suffixes *.SEG and *.seg (in addition to *.SEGY and *.segy).</p>
-<p>MBm_makedatalist and Formats 56, 57, 58 59 (MBF_EM300RAW,
+<p>mbm_makedatalist and Formats 56, 57, 58 59 (MBF_EM300RAW,
 MBF_EM300MBA, MBF_EM710RAW, MBF_EM710MBA): The mbm_makedatalist macro
 will now attempt to sort Kongsberg data into time order based on
 filenames when the file suffixes follow the MB-System convention
@@ -4460,7 +5998,7 @@ preprocessing function to the i/o module. Users should now use
 mbpreprocess for preprocessing old Kongsberg multibeam data so that
 navigation is properly interpolated and beam flagging works
 correctly.</p>
-<p>Mbm_plot, mbm_grdplot, mbm_xyplot: The plotting macros now handle
+<p>mbm_plot, mbm_grdplot, mbm_xyplot: The plotting macros now handle
 negative scaled (reverse) axes properly (e.g. sound speed plots with
 depth increasing downwards).</p>
 <p>Mbdatalist: Now supports long command line options (old short options
@@ -4474,7 +6012,7 @@ leak.</p>
 <p>Formats 59 (MBF_EM710MBA): Fixed calculation of interpolated heave
 when recalculating bathymetry by raytracing.</p>
 <p>Format 88 (MBF_RESON7KR): Fixed memory leaks.</p>
-<p>Mbm_arc2grd: Rewritten to use GMT modules grdconvert and grdedit.</p>
+<p>mbm_arc2grd: Rewritten to use GMT modules grdconvert and grdedit.</p>
 <h4 id="552299-april-10-2017">5.5.2299 (April 10, 2017)</h4>
 <p>Formats 58 and 59 (MBF_EM710RAW and MBF_EM710MBA): Fixed handling of
 sensordepth and heave data during preprocessing. Program
@@ -4507,10 +6045,10 @@ valid soundings. Until now MB-System has treated these interpolated
 soundings as valid but flagged. MB-System now recognizes interpolated
 soundings as a different type, neither valid nor null. These soundings
 can no longer be seen or edited with MBedit or MBeditviz.</p>
-<p>Mbm_makedatalist: Added option to suppress processed files (e.g.
+<p>mbm_makedatalist: Added option to suppress processed files (e.g.
 *p.mb88) from inclusion in the output datalist.</p>
 <h4 id="552296-march-31-2017">5.5.2296 (March 31, 2017)</h4>
-<p>Mbm_makedatalist: Major capability augmentation for this tool,
+<p>mbm_makedatalist: Major capability augmentation for this tool,
 preparing for automated setup of the processing environment. This macro
 will now construct datalists from files matching a user specified
 filename suffix, and will attempt to sort raw Kongsberg multibeam data
@@ -4518,10 +6056,10 @@ files into time order.</p>
 <p>Formats 58 (MBF_EM710RAW) and 59 (MBF_EM710MBA): Fixed to handle
 EM712 data and other Kongsberg multibeams now generating more than 512
 beams.</p>
-<p>Mbm_grd2arc: Fix provided by Monica Schwehr for compatibility to
+<p>mbm_grd2arc: Fix provided by Monica Schwehr for compatibility to
 *.grd files generated with the current GMT.</p>
 <h4 id="552295-march-26-2017">5.5.2295 (March 26, 2017)</h4>
-<p>Mbm_plot, mbm_grdplot, mbm_xyplot, mbm_3dgrdplot: Changes to the
+<p>mbm_plot, mbm_grdplot, mbm_xyplot, mbm_3dgrdplot: Changes to the
 manual pages to reflect the new syntax for map scales (the -MGL option
 in the MB-System plot macros) in GMT 5.3.X</p>
 <p>Mbnavadjust: Fixed bug in calling scripts within the project
@@ -4556,7 +6094,7 @@ values in preprocessing.</p>
 system, to output positions of the sensor instead of soundings or
 pixels, or to output positions relative to the sensor in the world
 frame.</p>
-<p>Mbm_route2mission: Fixed handling of waypoint spacing for constant
+<p>mbm_route2mission: Fixed handling of waypoint spacing for constant
 depth segments of missions.</p>
 <p>Mbnavadjust: Now outputs the altered project less frequently (every
 tenth new tie instead of every tie).</p>
@@ -4593,7 +6131,7 @@ set this function so that for z offset changes less than a threshold
 <p>Mbnavadjustmerge: Fixed import and export of tie lists to allow
 moving ties between projects.</p>
 <h4 id="552287-november-29-2016">5.5.2287 (November 29, 2016)</h4>
-<p>Mbm_makesvp: added capability to extract sound speed values from
+<p>mbm_makesvp: added capability to extract sound speed values from
 survey data records as well as ctd data records, and to optionall
 produce sound speed models extending to the surface and the deep ocean
 even if the data are available only for a limited depth range.</p>
@@ -4668,14 +6206,14 @@ generated using mbeditviz on files with existing, old esf (edit save
 files) files. Yet another consequence of adapting to very short ping
 intervals... Existing edit save files can now be fixed using mbclean
 -T0.0011.</p>
-<p>Mbm_grdtiff: Added support for image display program feh.</p>
+<p>mbm_grdtiff: Added support for image display program feh.</p>
 <h4 id="552278-july-1-2016">5.5.2278 (July 1, 2016)</h4>
 <p>Mbkongsbergpreprocess (Formats 58 &amp; 59): Fixed modification of
 png_xducer_depth value to not include lever arms or heave, as SIS
 records sensor depth value in height datagrams that are already
 compensated for lever arms and heave.</p>
 <h4 id="552277-june-25-2016">5.5.2277 (June 25, 2016)</h4>
-<p>Mbm_xyplot, mbm_grdplot: fixed problem generating plots using linear
+<p>mbm_xyplot, mbm_grdplot: fixed problem generating plots using linear
 axes. Recent changes to GMT cause gmt mapproject to generate an error
 when passed non-map (e.g. non lon lat) values with a linear projection
 (after three decades of working just fine....). Created a workaround by
@@ -4751,7 +6289,7 @@ supported third generation Kongsberg multibeams.</p>
 <p>MBnavadjust: Now plots ties within missions (surveys) in dark blue
 and ties between mission in light blue in the bathymetry
 visualization.</p>
-<p>Mbm_route2mission: Calculates AUV ascent time with a 1.5 safety
+<p>mbm_route2mission: Calculates AUV ascent time with a 1.5 safety
 factor instead of a 1.2 safety factor to ensure the new Mapping AUV
 always makes it to the surface before timing out.</p>
 <h4 id="552269-march-23-2016">5.5.2269 (March 23, 2016)</h4>
@@ -4781,7 +6319,7 @@ include the bathymetry grid. The new GUI commands include <Update Grids>
 under the <Action> menu, and <Visualize Survey> under the <View> menu.
 The documentation, such as it is, does not yet cover these new
 features.</p>
-<p>Mbm_multicopy and mbm_multidatalist: Fixed bugs identified (along
+<p>mbm_multicopy and mbm_multidatalist: Fixed bugs identified (along
 with fixes) by Martin Ernst of HafenCity University in Hamburg,
 Germany.</p>
 <p>Mbswath, mbcontour, mbgrdtiff: added #ifdefs for compatibility with
@@ -4828,7 +6366,7 @@ mbpreprocess. Not done yet...</p>
 mbpreprocess. Not done yet...</p>
 <p>mbio/mb_access.c: Added explicitly setting the target sensor id to
 the mb_preprocess() function call.</p>
-<p>Mbm_grdtiff: Fixed bug in grdinfo call.</p>
+<p>mbm_grdtiff: Fixed bug in grdinfo call.</p>
 <p>GMT integration: Removed GMT header files from mbsystem/gmt because
 GMT 5.2.1 now installs full development headers. MB-System is now not
 compatible with any version of GMT prior to 5.2.1.</p>
@@ -5040,7 +6578,7 @@ libgmt.so.5 even though the code does not reference any GMT or GMT5
 function or header file. Presumably this change will go away when the
 mystery is solved.</p>
 <p>Mbsslayout: fixed automatically generated plottin script.</p>
-<p>Mbm_route2mission: Added multibeam maximum range value.</p>
+<p>mbm_route2mission: Added multibeam maximum range value.</p>
 <h4 id="552234-march-5-2015">5.5.2234 (March 5, 2015)</h4>
 <p>Plot macros (mbm_grdplot, mbm_grd3dplot, mbm_grdtiff, mbm_histplot,
 mbm_plot, mbm_xyplot): Now generate plotting scripts that will not
@@ -5060,12 +6598,12 @@ invoked with a &quot;-N&quot; command line argument.</p>
 make the output from use of mbm_multiprocess cleaner.</p>
 <h4 id="552233-february-23-2015">5.5.2233 (February 23, 2015)</h4>
 <p>Release 5.5.2233</p>
-<p>Mbm_grdplot, mbm_grdtiff: Generated plot scripts now set foregound
+<p>mbm_grdplot, mbm_grdtiff: Generated plot scripts now set foregound
 and background colors based on the -D option.</p>
 <p>Mbmroute2mission: Now allows the maximum planned climb rate of the
 AUV to be specified with the -U option</p>
 <h4 id="552232-february-21-2015">5.5.2232 (February 21, 2015)</h4>
-<p>Mbm_plot, mbm_grdplot, mbm_grd3dplot, mbhistplot: Changed handling of
+<p>mbm_plot, mbm_grdplot, mbm_grd3dplot, mbhistplot: Changed handling of
 gmt defaults so that any local gmt.conf file is deleted before any
 gmtset calls are made, and the resulting gmt.conf file is deleted before
 the plot script ends.</p>
@@ -5075,11 +6613,11 @@ requesting real footprint plotting.</p>
 <p>Mb7kpreprocess: Switched beam angle calculation to the mb_beaudoin()
 function already used by mbkongsbergpreprocess (contributed by Jonathan
 Beaudoin).</p>
-<p>Mbm_bpr: Made compatible with GMT5.</p>
+<p>mbm_bpr: Made compatible with GMT5.</p>
 <h4 id="552230-february-18-2015">5.5.2230 (February 18, 2015)</h4>
 <p>Mbgrdtiff: Fixed ordering of rows and columns in the output
 image.</p>
-<p>Mbm_route2mission: Added output of a mission alititude profile
+<p>mbm_route2mission: Added output of a mission alititude profile
 plot.</p>
 <p>Mbauvloglist: Added capability of binary output.</p>
 <p>Mb7kpreprocess: Fixed so that bathymetry calculation uses roll merged
@@ -5095,9 +6633,9 @@ initialize arrays of beamflags and alongtrack distance when those are
 not included in the input file.</p>
 <p>Mbfilter: removed failing check for existence of sidescan data.</p>
 <p>Mbsegygrid: flipped grid convention for compatibility with GMT5.</p>
-<p>Mbm_plot, mbm_grdplot, mbm_grd3dplot, mbm_histplot: further changes
+<p>mbm_plot, mbm_grdplot, mbm_grd3dplot, mbm_histplot: further changes
 for compatibility with GMT5.</p>
-<p>Mbm_route2mission: Compatibility with GMT5.</p>
+<p>mbm_route2mission: Compatibility with GMT5.</p>
 <p>Mbcontour, mbswath: More changes for compatibility with GMT5.</p>
 <h4 id="552228-february-6-2015">5.5.2228 (February 6, 2015)</h4>
 <p>Install_makefiles: the old install_makefiles build system no longer
@@ -5263,7 +6801,7 @@ beam number. Contributed by Bob Covill.</p>
 also read in and apply an associated *.esf (edit save file) if it
 exists. This prevents soundings that have been identified as bad from
 biasing the calculations. Contributed by Bob Covill.</p>
-<p>Mbm_grdcut: Fix to the manual page. Contributed by Jenny Paduan.</p>
+<p>mbm_grdcut: Fix to the manual page. Contributed by Jenny Paduan.</p>
 <h4 id="542209-november-4-2014">5.4.2209 (November 4, 2014)</h4>
 <p>MBnavadjustmerge: Completed the manual page for this new program that
 allows one to merge and manipulate MBnavadjust projects.</p>
@@ -5301,7 +6839,7 @@ set using mbdefaults.</p>
 the end of lines before parsing - this allows reading Hydrosweep DS data
 in the form held by NIO.</p>
 <h4 id="542201-august-20-2014">5.4.2201 (August 20, 2014)</h4>
-<p>Mbm_grdplot: Added two &quot;sealevel&quot; color palletes that use Haxby
+<p>mbm_grdplot: Added two &quot;sealevel&quot; color palletes that use Haxby
 colors for negative values (e.g. topography below sea level) and either
 greens or browns for positive values (e.g. topography above sea level).
 The Sealevel 2 palette was contributed by Jenny Paduan.</p>
@@ -5432,7 +6970,7 @@ attitude data.</p>
 series sidescan onto a 3D topography model. This will replace mb7k2ss
 and extend the functionality to conventional sidescan data in several
 data formats.</p>
-<p>Mbm_route2mission: Fixed output AUV mission script to have &quot;\r\n&quot;
+<p>mbm_route2mission: Fixed output AUV mission script to have &quot;\r\n&quot;
 line ends on all lines.</p>
 <p>Format 222 (MBF_SWPLSSXP): Revised implementation of SEA SwathPlus
 SXP data format (format id 222) contributed by David Finlayson.</p>
@@ -5480,7 +7018,7 @@ pressure depth data to be much more efficient.</p>
 implies use of an external file, the associated filename is also erased.
 For example mbset -PSVPMODE:0 will now also erase (null) the filename
 set by -PSVPFILE.</p>
-<p>Mbm_grd3dplot, mbm_grdplot, mbm_histplot, mbm_plot, mbm_xyplot: added
+<p>mbm_grd3dplot, mbm_grdplot, mbm_histplot, mbm_plot, mbm_xyplot: added
 support for the evince postscript viewer.</p>
 <p>Format 172 (MBF_HIR2RNAV) and format 173 (MBF_MGD77TXT): fixed
 segmentation faults while handling comment records.</p>
@@ -5605,7 +7143,7 @@ or entanglement with libgsf.</li>
 </ul></li>
 </ul>
 <h4 id="542157-october-14-2013">5.4.2157 (October 14, 2013)</h4>
-<p>Mbm_makesvp: New macro to extract sound speed and depth data from a
+<p>mbm_makesvp: New macro to extract sound speed and depth data from a
 datalist of swath files, and generate a sound velocity profile model
 from averages of the sound speed values in regular depth ranges. This
 macro uses mbctdlist to extract the sound speed values embedded in swath
@@ -5781,7 +7319,7 @@ again does the primary interpolation stage at full resolution.</p>
 Covill, Hamish Bowman, and Christian Ferreira. Moved key auto-generated
 header file from mbsystem/src/mbsystem_config.h to
 mbsystem/src/mbio/mb_config.h.</p>
-<p>Mbm_route2mission: added support for more than one type of survey
+<p>mbm_route2mission: added support for more than one type of survey
 behavior in an AUV mission as controlled by waypoint type in the route
 files exported from mbgrdviz.</p>
 <p>Moved program hsdump to mbhsdump.</p>
@@ -5882,7 +7420,7 @@ MBnavadjust and also remove the *.na0 files.</p>
 <p>Mbgrid, mbmosaic, mbm_grid: Fixed documentation descriptions of the
 options controlling the spline interpolation, particularly the
 tension.</p>
-<p>Mbm_grdtiff: Fixed the image display program called in the
+<p>mbm_grdtiff: Fixed the image display program called in the
 tiff-creating script created by mbm_grdtiff.</p>
 <p>Mbdatalist: Recast the output format for the -S option. One now gets
 a single line of output for each file unless the -V option is also
@@ -5901,17 +7439,17 @@ state if they are unflagged and then reflagged interactively.</p>
 crashes.</p>
 <p>Mbeditviz: Disabled &quot;goaway&quot; buttons in dialogs to minimize
 crashes.</p>
-<p>Mbm_grdplot: Updated macros to derive system defaults from
+<p>mbm_grdplot: Updated macros to derive system defaults from
 mbdefaults.</p>
-<p>Mbm_grdtiff: Updated macros to derive system defaults from
+<p>mbm_grdtiff: Updated macros to derive system defaults from
 mbdefaults.</p>
-<p>Mbm_histplot: Updated macros to derive system defaults from
+<p>mbm_histplot: Updated macros to derive system defaults from
 mbdefaults.</p>
-<p>Mbm_grd3dplot: Updated macros to derive system defaults from
+<p>mbm_grd3dplot: Updated macros to derive system defaults from
 mbdefaults.</p>
-<p>Mbm_vrefcheck: Updated macros to derive system defaults from
+<p>mbm_vrefcheck: Updated macros to derive system defaults from
 mbdefaults.</p>
-<p>Mbm_plot: Updated macros to derive system defaults from
+<p>mbm_plot: Updated macros to derive system defaults from
 mbdefaults.</p>
 <h4 id="532042-march-12-2013">5.3.2042 (March 12, 2013)</h4>
 <p>MBkongsbergpreprocess: Fixed calculation of transmit time for sector
@@ -5925,12 +7463,12 @@ parameters to beam flags.</p>
 file fails.</p>
 <h4 id="532016-march-2-2013">5.3.2016 (March 2, 2013)</h4>
 <p>Mb7k2ss: Fixed plotting correlation functions.</p>
-<p>Mbm_xyplot: Fixed handling of NaN values in input data - no longer
+<p>mbm_xyplot: Fixed handling of NaN values in input data - no longer
 includes NaN inputs in sorting to determine min max.</p>
 <h4 id="532015-march-1-2013">5.3.2015 (March 1, 2013)</h4>
 <p>Format 88 (mbf_reson7kr): Fixed some debugging print statements of
 hexadecimal values.</p>
-<p>Mbm_route2mission: Added command line control of multibeam sonar
+<p>mbm_route2mission: Added command line control of multibeam sonar
 settings.</p>
 <p>Mbprocess: Fixed handling of tide data with just one value.</p>
 <p>Mbeditviz: Fixed calculation of corrected attitude and position for
@@ -5989,7 +7527,7 @@ be output even if they are duplicates (equivalent to the -D option). The
 <p>Format 88 (mbf_reson7kr): MB-System now recognizes files with a *.7k
 suffix as Reson multibeam data in format 88. Usually Reson data are
 logged to files with a *.s7k suffix.</p>
-<p>Mbm_route2mission: Updated the calculation of the number of photos to
+<p>mbm_route2mission: Updated the calculation of the number of photos to
 be taken during a Dorado-class AUV bottom photography mission.</p>
 <p>Formats 58 (mbf_em710raw) and 59 (mbf_em710mba): Added support for
 for the &quot;Extraparameters&quot; datagram.</p>
@@ -6030,7 +7568,7 @@ a file that has no data records while the -P option is specified
 (gracefully means not seg faulting).</p>
 <p>Mbmosaic: fixed bug in the use of the azimuth weighting factor.</p>
 <h4 id="531999-november-13-2012">5.3.1999 (November 13, 2012)</h4>
-<p>Mbm_route2mission: Added multibeam pulse length as a command line
+<p>mbm_route2mission: Added multibeam pulse length as a command line
 argument.</p>
 <p>Mbnavadjust: Added capability to solve for a z-offset model in which
 each survey has a uniform or constant z-offset, and then reset all ties
@@ -6044,7 +7582,7 @@ and up looking mapping data can be handled properly.</p>
 <p>Mbmosaic: added checks for valid topography grid file.</p>
 <p>Mbprocess: Fixed rotation calculations so that side-looking and up
 looking mapping data can be handled properly.</p>
-<p>Mbm_route2mission: added handling of third specified altitude value
+<p>mbm_route2mission: added handling of third specified altitude value
 in AUV missions.</p>
 <p>Mbeditviz: Fixed rotation calculations so that side-looking and up
 looking mapping data can be handled properly.</p>
@@ -6087,7 +7625,7 @@ a multiplicitive factor. For instance, specifying factor = 1.1 means the
 grid is expanded 5% to the west, east, south and north for a total
 expansion of 0.1 or 10%.</p>
 <h4 id="531989-october-4-2012">5.3.1989 (October 4, 2012)</h4>
-<p>Mbm_grdplot &amp; mbm_grdtiff: Fixed application of strict color
+<p>mbm_grdplot &amp; mbm_grdtiff: Fixed application of strict color
 table bounds in mbm_grdplot and mbm_grdtiff.</p>
 <p>mb7k2ss: Added -Q option so that sidescan lines can be constructed
 based on the times starting and ending waypoints were reached.</p>

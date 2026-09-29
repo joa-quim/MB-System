@@ -1,4 +1,4 @@
-.TH mbmakeplatform 1 "30 September 2024" "MB-System 5.0" "MB-System 5.0"
+.TH mbmakeplatform 1 "7 September 2026" "MB-System 5.0" "MB-System 5.0"
 .SH NAME
 \fBmbmakeplatform\fP \- creates or modifies an MB-System platform file.
 
@@ -251,6 +251,12 @@ Version 5.0
 \fB--sensor-time-latency\fP=\fIvalue\fP
 .br
 \fB--sensor-time-latency-model\fP=\fIfile\fP
+.br
+\fB--sensor-flipsign-heading\fP
+.br
+\fB--sensor-flipsign-roll\fP
+.br
+\fB--sensor-flipsign-pitch\fP
 .br
 \fB--sensor-source-bathymetry\fP
 .br
@@ -1026,7 +1032,7 @@ y is positive forward, and z is positive up. Roll is positive starboard up, pitc
 positive forward up, and azimuth is positive clockwise from forward. Generally one sensor
 has zero offsets and thus serves as the platform origin. For sensors with two elements
 (e.g. bistatic multibeam sonars with separate transmit and receive arrays, or stereo
-camera rigs with two cameras), two \fB--sensor_offsets\fP calls are made. In the case
+camera rigs with two cameras), two \fB--sensor-offsets\fP calls are made. In the case
 of a multibeam the first set of offsets is for the transmit array, and in the case of a
 stereo camera rig the first offsets are for the left camera.
 .TP
@@ -1179,7 +1185,7 @@ y is positive forward, and z is positive up. Roll is positive starboard up, pitc
 positive forward up, and azimuth is positive clockwise from forward. Generally one sensor
 has zero offsets and thus serves as the platform origin. For sensors with two elements
 (e.g. bistatic multibeam sonars with separate transmit and receive arrays, or stereo
-camera rigs with two cameras), two \fB--sensor_offsets\fP calls are made. In the case
+camera rigs with two cameras), two \fB--sensor-offsets\fP calls are made. In the case
 of a multibeam the first set of offsets is for the transmit array, and in the case of a
 stereo camera rig the first offsets are for the left camera.
 .TP

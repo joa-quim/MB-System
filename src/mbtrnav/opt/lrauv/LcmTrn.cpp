@@ -64,7 +64,11 @@
 
 #include <lcm/lcm-cpp.hpp>
 #include <sys/time.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <cmath>
 
 #include "gitversion.h"

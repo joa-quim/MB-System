@@ -1558,8 +1558,8 @@ int mbsys_simrad2_dimensions(int verbose, void *mbio_ptr, void *store_ptr, int *
 		*namp = *nbath;
 		*nss = MBSYS_SIMRAD2_MAXPIXELS;
 
-		/* double it for the EM3002 */
-		if (store->sonar == MBSYS_SIMRAD2_EM3002) {
+		/* double it for the EM3002 (only when a second head ping exists) */
+		if (store->sonar == MBSYS_SIMRAD2_EM3002 && store->ping2 != NULL) {
 			ping = (struct mbsys_simrad2_ping_struct *)store->ping2;
 			*nbath += ping->png_nbeams_max;
 			*namp = *nbath;
@@ -2050,47 +2050,47 @@ int mbsys_simrad2_extract_platform(int verbose, void *mbio_ptr, void *store_ptr,
 			if (par_stc == 0) {
 				if (status == MB_SUCCESS)
 					status = mb_platform_set_sensor_offset(
-					    verbose, (void *)platform, sensor_multibeam, 0, MB_SENSOR_POSITION_OFFSET_STATIC, (double)store->par_s1y,
-					    (double)store->par_s1x, (double)-store->par_s1z, MB_SENSOR_ATTITUDE_OFFSET_STATIC, (double)store->par_s1h,
+					    verbose, (void *)platform, sensor_multibeam, 0, (double)store->par_s1y,
+					    (double)store->par_s1x, (double)-store->par_s1z, (double)store->par_s1h,
 					    (double)store->par_s1r, (double)store->par_s1p, error);
 				if (status == MB_SUCCESS)
 					status = mb_platform_set_sensor_offset(
-					    verbose, (void *)platform, sensor_multibeam, 1, MB_SENSOR_POSITION_OFFSET_STATIC, (double)store->par_s2y,
-					    (double)store->par_s2x, (double)-store->par_s2z, MB_SENSOR_ATTITUDE_OFFSET_STATIC, (double)store->par_s2h,
+					    verbose, (void *)platform, sensor_multibeam, 1, (double)store->par_s2y,
+					    (double)store->par_s2x, (double)-store->par_s2z, (double)store->par_s2h,
 					    (double)store->par_s2r, (double)store->par_s2p, error);
 			}
 			else if (par_stc == 1) {
 				if (status == MB_SUCCESS)
 					status = mb_platform_set_sensor_offset(
-					    verbose, (void *)platform, sensor_multibeam, 0, MB_SENSOR_POSITION_OFFSET_STATIC, (double)store->par_s1y,
-					    (double)store->par_s1x, (double)-store->par_s1z, MB_SENSOR_ATTITUDE_OFFSET_STATIC, (double)store->par_s1h,
+					    verbose, (void *)platform, sensor_multibeam, 0, (double)store->par_s1y,
+					    (double)store->par_s1x, (double)-store->par_s1z, (double)store->par_s1h,
 					    (double)store->par_s1r, (double)store->par_s1p, error);
 				if (status == MB_SUCCESS)
 					status = mb_platform_set_sensor_offset(
-					    verbose, (void *)platform, sensor_multibeam, 1, MB_SENSOR_POSITION_OFFSET_STATIC, (double)store->par_s1y,
-					    (double)store->par_s1x, (double)-store->par_s1z, MB_SENSOR_ATTITUDE_OFFSET_STATIC, (double)store->par_s1h,
+					    verbose, (void *)platform, sensor_multibeam, 1, (double)store->par_s1y,
+					    (double)store->par_s1x, (double)-store->par_s1z, (double)store->par_s1h,
 					    (double)store->par_s1r, (double)store->par_s1p, error);
 			}
 			else if (par_stc == 2) {
 				if (status == MB_SUCCESS)
 					status = mb_platform_set_sensor_offset(
-					    verbose, (void *)platform, sensor_multibeam, 0, MB_SENSOR_POSITION_OFFSET_STATIC, (double)store->par_s1y,
-					    (double)store->par_s1x, (double)-store->par_s1z, MB_SENSOR_ATTITUDE_OFFSET_STATIC, (double)store->par_s1h,
+					    verbose, (void *)platform, sensor_multibeam, 0, (double)store->par_s1y,
+					    (double)store->par_s1x, (double)-store->par_s1z, (double)store->par_s1h,
 					    (double)store->par_s1r, (double)store->par_s1p, error);
 				if (status == MB_SUCCESS)
 					status = mb_platform_set_sensor_offset(
-					    verbose, (void *)platform, sensor_multibeam, 1, MB_SENSOR_POSITION_OFFSET_STATIC, (double)store->par_s1y,
-					    (double)store->par_s1x, (double)-store->par_s1z, MB_SENSOR_ATTITUDE_OFFSET_STATIC, (double)store->par_s1h,
+					    verbose, (void *)platform, sensor_multibeam, 1, (double)store->par_s1y,
+					    (double)store->par_s1x, (double)-store->par_s1z, (double)store->par_s1h,
 					    (double)store->par_s1r, (double)store->par_s1p, error);
 				if (status == MB_SUCCESS)
 					status = mb_platform_set_sensor_offset(
-					    verbose, (void *)platform, sensor_multibeam, 2, MB_SENSOR_POSITION_OFFSET_STATIC, (double)store->par_s2y,
-					    (double)store->par_s2x, (double)-store->par_s2z, MB_SENSOR_ATTITUDE_OFFSET_STATIC, (double)store->par_s2h,
+					    verbose, (void *)platform, sensor_multibeam, 2, (double)store->par_s2y,
+					    (double)store->par_s2x, (double)-store->par_s2z, (double)store->par_s2h,
 					    (double)store->par_s2r, (double)store->par_s2p, error);
 				if (status == MB_SUCCESS)
 					status = mb_platform_set_sensor_offset(
-					    verbose, (void *)platform, sensor_multibeam, 3, MB_SENSOR_POSITION_OFFSET_STATIC, (double)store->par_s2y,
-					    (double)store->par_s2x, (double)-store->par_s2z, MB_SENSOR_ATTITUDE_OFFSET_STATIC, (double)store->par_s2h,
+					    verbose, (void *)platform, sensor_multibeam, 3, (double)store->par_s2y,
+					    (double)store->par_s2x, (double)-store->par_s2z, (double)store->par_s2h,
 					    (double)store->par_s2r, (double)store->par_s2p, error);
 			}
 		}
@@ -2116,11 +2116,9 @@ int mbsys_simrad2_extract_platform(int verbose, void *mbio_ptr, void *store_ptr,
 			}
 		}
 
-		int position_offset_mode;
 		double position_offset_x;
 		double position_offset_y;
 		double position_offset_z;
-		int attitude_offset_mode;
 		double attitude_offset_heading;
 		double attitude_offset_roll;
                 double attitude_offset_pitch;
@@ -2129,29 +2127,25 @@ int mbsys_simrad2_extract_platform(int verbose, void *mbio_ptr, void *store_ptr,
 		if (platform->source_position1 >= 0 && platform->sensors[platform->source_position1].num_offsets == 1) {
 			/* set offsets based on whether position data are already motion compensated */
 			if (store->par_p1m) {
-				position_offset_mode = MB_SENSOR_POSITION_OFFSET_STATIC;
 				position_offset_x = 0.0;
 				position_offset_y = 0.0;
 				position_offset_z = 0.0;
-				attitude_offset_mode = MB_SENSOR_ATTITUDE_OFFSET_NONE;
 				attitude_offset_heading = 0.0;
 				attitude_offset_roll = 0.0;
 				attitude_offset_pitch = 0.0;
 			}
 			else {
-				position_offset_mode = MB_SENSOR_POSITION_OFFSET_STATIC;
 				position_offset_x = store->par_p1y;
 				position_offset_y = store->par_p1x;
 				position_offset_z = -store->par_p1z;
-				attitude_offset_mode = MB_SENSOR_ATTITUDE_OFFSET_STATIC;
 				attitude_offset_heading = store->par_gcg;
 				attitude_offset_roll = 0.0;
 				attitude_offset_pitch = 0.0;
 			}
 
 			/* now set the offsets for position sensor 1 */
-			status = mb_platform_set_sensor_offset(verbose, (void *)platform, platform->source_position1, 0, position_offset_mode,
-			                                       position_offset_x, position_offset_y, position_offset_z, attitude_offset_mode,
+			status = mb_platform_set_sensor_offset(verbose, (void *)platform, platform->source_position1, 0,
+			                                       position_offset_x, position_offset_y, position_offset_z,
 			                                       attitude_offset_heading, attitude_offset_roll, attitude_offset_pitch, error);
 
 			/* set time latency for position sensor 1 */
@@ -2187,29 +2181,25 @@ int mbsys_simrad2_extract_platform(int verbose, void *mbio_ptr, void *store_ptr,
 		if (platform->source_position2 >= 0 && platform->sensors[platform->source_position2].num_offsets == 1) {
 			/* set offsets based on whether position data are already motion compensated */
 			if (store->par_p2m) {
-				position_offset_mode = MB_SENSOR_POSITION_OFFSET_STATIC;
 				position_offset_x = 0.0;
 				position_offset_y = 0.0;
 				position_offset_z = 0.0;
-				attitude_offset_mode = MB_SENSOR_ATTITUDE_OFFSET_NONE;
 				attitude_offset_heading = 0.0;
 				attitude_offset_roll = 0.0;
 				attitude_offset_pitch = 0.0;
 			}
 			else {
-				position_offset_mode = MB_SENSOR_POSITION_OFFSET_STATIC;
 				position_offset_x = store->par_p2y;
 				position_offset_y = store->par_p2x;
 				position_offset_z = -store->par_p2z;
-				attitude_offset_mode = MB_SENSOR_ATTITUDE_OFFSET_STATIC;
 				attitude_offset_heading = store->par_gcg;
 				attitude_offset_roll = 0.0;
 				attitude_offset_pitch = 0.0;
 			}
 
 			/* now set the offsets for position sensor 2 */
-			status = mb_platform_set_sensor_offset(verbose, (void *)platform, platform->source_position2, 0, position_offset_mode,
-			                                       position_offset_x, position_offset_y, position_offset_z, attitude_offset_mode,
+			status = mb_platform_set_sensor_offset(verbose, (void *)platform, platform->source_position2, 0,
+			                                       position_offset_x, position_offset_y, position_offset_z,
 			                                       attitude_offset_heading, attitude_offset_roll, attitude_offset_pitch, error);
 
 			/* set time latency for position sensor 2 */
@@ -2245,29 +2235,25 @@ int mbsys_simrad2_extract_platform(int verbose, void *mbio_ptr, void *store_ptr,
 		if (platform->source_position3 >= 0 && platform->sensors[platform->source_position3].num_offsets == 1) {
 			/* set offsets based on whether position data are already motion compensated */
 			if (store->par_p3m) {
-				position_offset_mode = MB_SENSOR_POSITION_OFFSET_STATIC;
 				position_offset_x = 0.0;
 				position_offset_y = 0.0;
 				position_offset_z = 0.0;
-				attitude_offset_mode = MB_SENSOR_ATTITUDE_OFFSET_NONE;
 				attitude_offset_heading = 0.0;
 				attitude_offset_roll = 0.0;
 				attitude_offset_pitch = 0.0;
 			}
 			else {
-				position_offset_mode = MB_SENSOR_POSITION_OFFSET_STATIC;
 				position_offset_x = store->par_p3y;
 				position_offset_y = store->par_p3x;
 				position_offset_z = -store->par_p3z;
-				attitude_offset_mode = MB_SENSOR_ATTITUDE_OFFSET_STATIC;
 				attitude_offset_heading = store->par_gcg;
 				attitude_offset_roll = 0.0;
 				attitude_offset_pitch = 0.0;
 			}
 
 			/* now set the offsets for position sensor 3 */
-			status = mb_platform_set_sensor_offset(verbose, (void *)platform, platform->source_position3, 0, position_offset_mode,
-			                                       position_offset_x, position_offset_y, position_offset_z, attitude_offset_mode,
+			status = mb_platform_set_sensor_offset(verbose, (void *)platform, platform->source_position3, 0,
+			                                       position_offset_x, position_offset_y, position_offset_z,
 			                                       attitude_offset_heading, attitude_offset_roll, attitude_offset_pitch, error);
 
 			/* set time latency for position sensor 3 */
@@ -2293,16 +2279,14 @@ int mbsys_simrad2_extract_platform(int verbose, void *mbio_ptr, void *store_ptr,
 			}
 		}
 		if (platform->source_depth1 >= 0 && platform->sensors[platform->source_depth1].num_offsets == 1) {
-			position_offset_mode = MB_SENSOR_POSITION_OFFSET_STATIC;
 			position_offset_x = 0.0;
 			position_offset_y = 0.0;
 			position_offset_z = 0.0;
-			attitude_offset_mode = MB_SENSOR_ATTITUDE_OFFSET_NONE;
 			attitude_offset_heading = 0.0;
 			attitude_offset_roll = 0.0;
 			attitude_offset_pitch = 0.0;
-			status = mb_platform_set_sensor_offset(verbose, (void *)platform, platform->source_depth1, 0, position_offset_mode,
-			                                       position_offset_x, position_offset_y, position_offset_z, attitude_offset_mode,
+			status = mb_platform_set_sensor_offset(verbose, (void *)platform, platform->source_depth1, 0,
+			                                       position_offset_x, position_offset_y, position_offset_z,
 			                                       attitude_offset_heading, attitude_offset_roll, attitude_offset_pitch, error);
 			if (status == MB_SUCCESS && store->par_dsd != 0.0) {
 				status = mb_platform_set_sensor_timelatency(verbose, (void *)platform, platform->source_depth1,
@@ -2330,17 +2314,15 @@ int mbsys_simrad2_extract_platform(int verbose, void *mbio_ptr, void *store_ptr,
 		/* set motion sensor 1 offsets */
 		if (platform->source_rollpitch1 >= 0 && platform->sensors[platform->source_rollpitch1].num_offsets == 1) {
 			/* set offsets */
-			position_offset_mode = MB_SENSOR_POSITION_OFFSET_STATIC;
 			position_offset_x = store->par_msy;
 			position_offset_y = store->par_msx;
 			position_offset_z = -store->par_msz;
-			attitude_offset_mode = MB_SENSOR_ATTITUDE_OFFSET_STATIC;
 			attitude_offset_heading = store->par_msg;
 			attitude_offset_roll = store->par_msr;
 			attitude_offset_pitch = store->par_msp;
 			status =
-			    mb_platform_set_sensor_offset(verbose, (void *)platform, platform->source_rollpitch1, 0, position_offset_mode,
-			                                  position_offset_x, position_offset_y, position_offset_z, attitude_offset_mode,
+			    mb_platform_set_sensor_offset(verbose, (void *)platform, platform->source_rollpitch1, 0,
+			                                  position_offset_x, position_offset_y, position_offset_z,
 			                                  attitude_offset_heading, attitude_offset_roll, attitude_offset_pitch, error);
 
 			/* set time latency */
@@ -2514,8 +2496,13 @@ int mbsys_simrad2_extract(int verbose, void *mbio_ptr, void *store_ptr, int *kin
 		double dacrscale = 0.01 * ping->png_distance_res;
 		double daloscale = dacrscale;  // 0.01 * ping->png_distance_res;
 		double reflscale = 0.5;
+		/* the beam arrays hold png_nbeams_max values - that is what
+		    mbsys_simrad2_dimensions() reports and what MBIO allocates
+		    (the format maximum is 254), so neither clearing nor filling
+		    may run to MBSYS_SIMRAD2_MAXBEAMS (256) */
+		const int nbeams_head1 = MIN(MAX(ping->png_nbeams_max, 0), MBSYS_SIMRAD2_MAXBEAMS);
 		*nbath = 0;
-		for (int j = 0; j < MBSYS_SIMRAD2_MAXBEAMS; j++) {
+		for (int j = 0; j < nbeams_head1; j++) {
 			bath[j] = 0.0;
 			beamflag[j] = MB_FLAG_NULL;
 			amp[j] = 0.0;
@@ -2524,13 +2511,15 @@ int mbsys_simrad2_extract(int verbose, void *mbio_ptr, void *store_ptr, int *kin
 		}
 		for (int i = 0; i < ping->png_nbeams; i++) {
 			const int j = ping->png_beam_num[i] - 1;
+			if (j < 0 || j >= nbeams_head1)
+				continue;
 			bath[j] = depthscale * ping->png_depth[i] + depthoffset;
 			beamflag[j] = ping->png_beamflag[i];
 			bathacrosstrack[j] = dacrscale * ping->png_acrosstrack[i];
 			bathalongtrack[j] = daloscale * ping->png_alongtrack[i];
 			amp[j] = reflscale * ping->png_amp[i];
 		}
-		*nbath = ping->png_nbeams_max;
+		*nbath = nbeams_head1;
 		*namp = *nbath;
 		*nss = MBSYS_SIMRAD2_MAXPIXELS;
 		double pixel_size = 0.01 * ping->png_pixel_size;
@@ -2560,7 +2549,9 @@ int mbsys_simrad2_extract(int verbose, void *mbio_ptr, void *store_ptr, int *kin
 			dacrscale = 0.01 * ping->png_distance_res;
 			daloscale = 0.01 * ping->png_distance_res;
 			reflscale = 0.5;
-			for (int j = *nbath; j < 2 * MBSYS_SIMRAD2_MAXBEAMS; j++) {
+			/* second head beams follow the first: bounded like head 1 */
+			const int nbeams_head2 = MIN(MAX(ping->png_nbeams_max, 0), MBSYS_SIMRAD2_MAXBEAMS);
+			for (int j = *nbath; j < *nbath + nbeams_head2; j++) {
 				bath[j] = 0.0;
 				beamflag[j] = MB_FLAG_NULL;
 				amp[j] = 0.0;
@@ -2569,13 +2560,15 @@ int mbsys_simrad2_extract(int verbose, void *mbio_ptr, void *store_ptr, int *kin
 			}
 			for (int i = 0; i < ping->png_nbeams; i++) {
 				const int j = *nbath + ping->png_beam_num[i] - 1;
+				if (j < *nbath || j >= *nbath + nbeams_head2)
+					continue;
 				bath[j] = depthscale * ping->png_depth[i] + depthoffset;
 				beamflag[j] = ping->png_beamflag[i];
 				bathacrosstrack[j] = dacrscale * ping->png_acrosstrack[i];
 				bathalongtrack[j] = daloscale * ping->png_alongtrack[i];
 				amp[j] = reflscale * ping->png_amp[i];
 			}
-			*nbath += ping->png_nbeams_max;
+			*nbath += nbeams_head2;
 			*namp = *nbath;
 			pixel_size = 0.01 * ping->png_pixel_size;
 			for (int i = 0; i < MBSYS_SIMRAD2_MAXPIXELS; i++) {

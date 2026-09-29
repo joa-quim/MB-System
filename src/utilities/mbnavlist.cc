@@ -37,8 +37,13 @@
 #include <cstring>
 #include <ctime>
 #include <getopt.h>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_define.h"
 #include "mb_format.h"
 #include "mb_status.h"
@@ -427,6 +432,12 @@ int main(int argc, char **argv) {
 			exit(MB_ERROR_NO_ERROR);
 		}
 	}
+#ifdef _WIN32
+	/* binary output must bypass the C runtime's CRLF translation */
+	if (!ascii)
+		_setmode(_fileno(stdout), _O_BINARY);
+#endif
+
 	int error = MB_ERROR_NO_ERROR;
 
 	/* get format if required */
@@ -493,16 +504,24 @@ int main(int argc, char **argv) {
 	double *ssacrosstrack = nullptr;
 	double *ssalongtrack = nullptr;
 	char comment[MB_COMMENT_MAXLINE];
-	int atime_i[7 * MB_ASYNCH_SAVE_MAX];
-	double atime_d[MB_ASYNCH_SAVE_MAX];
-	double anavlon[MB_ASYNCH_SAVE_MAX];
-	double anavlat[MB_ASYNCH_SAVE_MAX];
-	double aspeed[MB_ASYNCH_SAVE_MAX];
-	double aheading[MB_ASYNCH_SAVE_MAX];
-	double adraft[MB_ASYNCH_SAVE_MAX];
-	double aroll[MB_ASYNCH_SAVE_MAX];
-	double apitch[MB_ASYNCH_SAVE_MAX];
-	double aheave[MB_ASYNCH_SAVE_MAX];
+	/* The asynchronous nav/attitude buffers take about 1 MB, which is the
+	   whole default stack of a Windows thread: keep them on the heap. */
+	void *asynch_buffer = malloc(9 * MB_ASYNCH_SAVE_MAX * sizeof(double) + 7 * MB_ASYNCH_SAVE_MAX * sizeof(int));
+	if (asynch_buffer == nullptr) {
+		fprintf(stderr, "\nUnable to allocate the asynchronous data buffers\n");
+		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
+		exit(MB_ERROR_MEMORY_FAIL);
+	}
+	double *atime_d = static_cast<double *>(asynch_buffer);
+	double *anavlon = atime_d + MB_ASYNCH_SAVE_MAX;
+	double *anavlat = anavlon + MB_ASYNCH_SAVE_MAX;
+	double *aspeed = anavlat + MB_ASYNCH_SAVE_MAX;
+	double *aheading = aspeed + MB_ASYNCH_SAVE_MAX;
+	double *adraft = aheading + MB_ASYNCH_SAVE_MAX;
+	double *aroll = adraft + MB_ASYNCH_SAVE_MAX;
+	double *apitch = aroll + MB_ASYNCH_SAVE_MAX;
+	double *aheave = apitch + MB_ASYNCH_SAVE_MAX;
+	int *atime_i = reinterpret_cast<int *>(aheave + MB_ASYNCH_SAVE_MAX);
 
 	/* additional time variables */
 	bool first_m = true;
@@ -921,22 +940,22 @@ int main(int argc, char **argv) {
 								}
 								break;
 							case 'U': /* unix time in seconds since 1/1/70 00:00:00 */
-								time_u = (int)time_d;
+								time_u = (time_t)time_d;
 								if (ascii) {
-									printf("%ld", time_u);
+									printf("%lld", (long long)time_u);
 								} else {
 									double b = time_u;
 									fwrite(&b, sizeof(double), 1, stdout);
 								}
 								break;
 							case 'u': /* time in seconds since first record */
-								time_u = (int)time_d;
+								time_u = (time_t)time_d;
 								if (first_u) {
 									time_u_ref = time_u;
 									first_u = false;
 								}
 								if (ascii) {
-									printf("%ld", time_u - time_u_ref);
+									printf("%lld", (long long)(time_u - time_u_ref));
 								} else {
 									double b = time_u - time_u_ref;
 									fwrite(&b, sizeof(double), 1, stdout);
@@ -1068,6 +1087,8 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "dbg2  Ending status:\n");
 		fprintf(stderr, "dbg2       status:  %d\n", status);
 	}
+
+	free(asynch_buffer);
 
 	exit(error);
 }

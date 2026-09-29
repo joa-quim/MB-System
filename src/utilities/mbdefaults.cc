@@ -36,8 +36,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <getopt.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_define.h"
 #include "mb_status.h"
 
@@ -208,7 +211,7 @@ int main(int argc, char **argv) {
 					} else if (optarg[0] == 'I' || optarg[0] == 'i') {
 						/* default illumination parameters */
 						/* n = */ sscanf(&optarg[1], "%lf/%lf/%lf", &illuminate_magnitude, &illuminate_elevation, &illuminate_azimuth);
-					} else if (optarg[0] == 'S' || optarg[0] == 'S') {
+					} else if (optarg[0] == 'S' || optarg[0] == 's') {
 						/* default slope shading magnitude */
 						/* n = */ sscanf(&optarg[1], "%lf", &slope_magnitude);
 					}
@@ -299,7 +302,7 @@ int main(int argc, char **argv) {
 				} else if (optarg[0] == 'I' || optarg[0] == 'i') {
 					/* default illumination parameters */
 					/* n = */ sscanf(&optarg[1], "%lf/%lf/%lf", &illuminate_magnitude, &illuminate_elevation, &illuminate_azimuth);
-				} else if (optarg[0] == 'S' || optarg[0] == 'S') {
+				} else if (optarg[0] == 'S' || optarg[0] == 's') {
 					/* default slope shading magnitude */
 					/* n = */ sscanf(&optarg[1], "%lf", &slope_magnitude);
 				}
@@ -410,6 +413,12 @@ int main(int argc, char **argv) {
 	/* write out new ~/.mbio_defaults file if needed */
 	if (flag) {
 		const char *home = getenv("HOME");
+#ifdef _WIN32
+		/* Windows does not set HOME (only some shells do): mbio reads
+		   .mbio_defaults from USERPROFILE then, so write it there too */
+		if (home == nullptr || home[0] == '\0')
+			home = getenv("USERPROFILE");
+#endif
 		if (home == nullptr) {
 			fprintf(stderr, "Could not determine home directory (HOME environment variable not set)\n");
 			exit(MB_ERROR_OPEN_FAIL);

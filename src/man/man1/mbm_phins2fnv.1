@@ -1,0 +1,87 @@
+.TH mbm_phins2fnv 1 "7 September 2026" "MB-System 5.0" "MB-System 5.0"
+.SH NAME
+\fBmbm_phins2fnv\fP \- Macro to translate processed Phins INS navigation data
+to an fnv file for use in MB-System processing.
+
+.SH VERSION
+Version 5.0
+
+.SH SYNOPSIS
+\fBmbm_phins2fnv\fP \fB\-i\fP\fIinputfile\fP \fB\-o\fP\fIoutputfile\fP
+[\fB\-v\fP \fB\-h\fP]
+
+.SH DESCRIPTION
+\fBmbm_phins2fnv\fP is a macro intended to translate processed navigation
+data from an iXblue Phins inertial navigation system (INS) into an "fnv"
+format navigation file of the kind used elsewhere in \fBMB-System\fP
+processing (see, e.g., the \fB\-N\fP option of \fBmbnavlist\fP and the
+merge-navigation options of \fBmbprocess\fP).
+
+The input file (specified with \fB\-i\fP/\fB\-\-input\fP) is a processed Phins
+data file in which each line has the acquisition date and time as a single
+token (year/month/day followed by a tab and hour:minute:second.fraction),
+followed by space-separated longitude (degrees), latitude (degrees),
+heading (degrees), draft (meters), roll (degrees), and pitch (degrees).
+Lines containing a "#" character (comments) or the word "date" (the column
+header line) are skipped. Speed and heave are not present in the Phins
+data and are always written as 0 in the output.
+
+Each remaining line is translated into one line of the output fnv file
+(specified with \fB\-o\fP/\fB\-\-output\fP), giving the date and time, the same
+instant as decimal Unix epoch seconds, longitude, latitude, heading, speed
+(always 0), draft, roll, pitch, heave (always 0), and four further fields
+for the port/starboard swath edges (always 0, since the Phins data does
+not include swath coverage information). A line that cannot be parsed
+(too few fields, or an unparseable date/time) is skipped with a warning
+when \fB\-\-verbose\fP is given, and silently otherwise.
+
+Both an input and an output filename must be supplied on the command line;
+if either is missing the macro prints a diagnostic message and exits
+without processing.
+
+.SH MB-SYSTEM AUTHORSHIP
+David W. Caress
+.br
+  Monterey Bay Aquarium Research Institute
+.br
+Dale N. Chayes
+.br
+  Center for Coastal and Ocean Mapping
+.br
+  University of New Hampshire
+.br
+Christian do Santos Ferreira
+.br
+  MARUM - Center for Marine Environmental Sciences
+.br
+  University of Bremen
+
+.SH OPTIONS
+.TP
+.B \-h\fP, \fB\-\-help
+This "help" flag causes the macro to print out a description
+of its command line options and then exit immediately.
+.TP
+.B \-i\fP\fIinputfile\fP, \fB\-\-input=\fIinputfile\fP
+.br
+Sets the pathname of the input file containing processed Phins INS data.
+This is a required argument; if it is not supplied the macro prints a
+message and exits without doing anything further.
+.TP
+.B \-o\fP\fIoutputfile\fP, \fB\-\-output=\fIoutputfile\fP
+.br
+Sets the pathname of the output fnv navigation file. This is a required
+argument; if it is not supplied the macro prints a message and exits
+without doing anything further.
+.TP
+.B \-v\fP, \fB\-\-verbose
+Reports the input and output filenames, warns about (and skips) any
+input line that cannot be parsed, and prints a final count of lines
+read, written, and skipped. Without this flag the macro runs silently
+on success.
+
+.SH SEE ALSO
+\fBmbsystem\fP(1), \fBmbnavlist\fP(1), \fBmbprocess\fP(1)
+
+.SH BUGS
+Maybe. Maybe not.

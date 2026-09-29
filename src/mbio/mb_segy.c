@@ -86,7 +86,7 @@ int mb_segy_read_init(int verbose, char *segyfile, void **mbsegyio_ptr, struct m
 	if (status == MB_SUCCESS) {
 		/* open the segy file */
 		strcpy(mb_segyio_ptr->segyfile, segyfile);
-		if ((mb_segyio_ptr->fp = fopen(mb_segyio_ptr->segyfile, "r")) == NULL) {
+		if ((mb_segyio_ptr->fp = fopen(mb_segyio_ptr->segyfile, "rb")) == NULL) {
 			*error = MB_ERROR_OPEN_FAIL;
 			status = MB_FAILURE;
 			fprintf(stderr, "\nUnable to open segy file %s\n", mb_segyio_ptr->segyfile);
@@ -331,7 +331,7 @@ int mb_segy_write_init(int verbose, char *segyfile, struct mb_segyasciiheader_st
 	if (status == MB_SUCCESS) {
 		/* open the segy file */
 		strcpy(mb_segyio_ptr->segyfile, segyfile);
-		if ((mb_segyio_ptr->fp = fopen(mb_segyio_ptr->segyfile, "w")) == NULL) {
+		if ((mb_segyio_ptr->fp = fopen(mb_segyio_ptr->segyfile, "wb")) == NULL) {
 			*error = MB_ERROR_OPEN_FAIL;
 			status = MB_FAILURE;
 			fprintf(stderr, "\nUnable to open segy file %s\n", mb_segyio_ptr->segyfile);

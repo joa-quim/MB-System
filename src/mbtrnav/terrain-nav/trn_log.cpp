@@ -5,7 +5,11 @@
 
 #include <stdlib.h>           // For atoi()
 #include <stdio.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <time.h>
 
 #include "trn_log.h"

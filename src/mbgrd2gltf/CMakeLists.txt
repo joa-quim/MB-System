@@ -40,8 +40,10 @@ set(DRACO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/draco")
 # Initialize INCLUDE_DIRS
 set(INCLUDE_DIRS "")
 
-# Set the sources for the executable
-set(SOURCES bathymetry.cpp geometry.cpp logger.cpp main.cpp model.cpp options.cpp)
+# Pipeline sources shared by the mbgrd2gltf program and the GMT module. The C
+# bridge (mbgrd2gltf_capi.cpp) is built here, with the C++ it wraps, so that
+# src/gmt/mbgrd2gltf.c can stay plain C.
+set(SOURCES bathymetry.cpp geometry.cpp logger.cpp model.cpp options.cpp mbgrd2gltf_capi.cpp)
 
 # Manually set the include directories for Draco and other components
 include_directories(
@@ -82,8 +84,36 @@ else()
 	set(DRACO_LIBRARIES Draco::Draco)
 endif()
 
+# The pipeline as a library, so both the program and the GMT module can use
+# it. It deliberately does not link mbsystem: the supplement links this
+# library, so depending on it here would be a cycle.
+# tinygltf is header-only; instantiate it exactly once, in a library that both
+# this pipeline and mbmesh link, so the GMT supplement does not end up with
+# two copies of its symbols.
+add_library(tinygltf_impl STATIC tinygltf_impl.cpp)
+set_target_properties(tinygltf_impl PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(tinygltf_impl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tinygltf)
+
+add_library(mbgrd2gltf_pipeline STATIC ${SOURCES})
+set_target_properties(mbgrd2gltf_pipeline PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+target_include_directories(mbgrd2gltf_pipeline
+	PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+	PRIVATE ${NetCDF_INCLUDE_DIRS}
+	PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tinygltf
+	PRIVATE ${DRACO_DIR}
+	PRIVATE ${INCLUDE_DIRS}
+)
+
+target_link_libraries(mbgrd2gltf_pipeline
+	PUBLIC tinygltf_impl
+	PUBLIC ${NetCDF_LIBRARIES}
+	PUBLIC ${DRACO_LIBRARIES}
+	PUBLIC ${CMAKE_DL_LIBS}
+)
+
 # Specify sources for the executable
-add_executable(mbgrd2gltf ${SOURCES})
+add_executable(mbgrd2gltf main.cpp)
 
 # Set and link the include directories
 target_include_directories(mbgrd2gltf
@@ -95,6 +125,7 @@ target_include_directories(mbgrd2gltf
 )
 
 target_link_libraries(mbgrd2gltf
+	PRIVATE mbgrd2gltf_pipeline
 	PRIVATE mbsystem
 	PRIVATE ${NetCDF_LIBRARIES}
 	PRIVATE ${DRACO_LIBRARIES}

@@ -12,7 +12,11 @@
 // Includes
 #include <stdlib.h>
 #include <stdio.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <signal.h>
 #include <string.h>
 #include <errno.h>
@@ -64,12 +68,14 @@
 #define TRN_SERVER_PORT_DFL 27027
 #define IBUF_LEN_BYTES 4800
 
-#ifndef DTR
+/* mb_define.h is force-included by this build and defines DTR/RTD as plain
+ * constants, which would leave the "#ifndef" below skipped and turn every
+ * DTR(x) here into a call on a double. Undefine first: this file wants the
+ * function-like form. */
+#undef DTR
 #define DTR(x) ((x) * M_PI/180.)
-#endif
-#ifndef RTD
+#undef RTD
 #define RTD(x) ((x) * 180./M_PI)
-#endif
 
 // /////////////////
 // Types
@@ -1696,7 +1702,7 @@ public:
                 // pe points to char AFTER end of var name
                 if(pe>pb){
                     size_t var_len = pe-pb;
-                    char var_buf[var_len+1];
+                    char *var_buf = (char *)alloca(var_len+1);
                     memset(var_buf,0,var_len+1);
                     for(unsigned int i=1;i<var_len;i++){
                         var_buf[i-1] = pb[i];
@@ -1858,7 +1864,7 @@ int main(int argc, char **argv)
     trn_debug::get()->set_debug(cfg.debug());
     trn_debug::get()->set_verbose(cfg.verbose());
 
-    if(cfg.config_set() > 0){
+    if(cfg.config_set()){
         // parse config file
         cfg.parse_file(cfg.cfg());
     } else {

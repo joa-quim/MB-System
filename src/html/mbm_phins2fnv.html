@@ -1,0 +1,160 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<HTML VERSION="2.0">
+<HEAD>
+   <TITLE>MB-System Unix Manual Page: mbm_phins2fnv</TITLE>
+<!-- WEBMAGIC VERSION NUMBER="2.0.2" -->
+<!-- WEBMAGIC TRANSLATION NAME="ServerRoot" SRC="/var/www/htdocs/" DST="/" -->
+<!-- WEBMAGIC TRANSLATION NAME="ProjectRoot" SRC="./" DST="" -->
+</HEAD>
+<BODY TEXT="#000000" BGCOLOR="#FFFFFF" LINK="#336699" VLINK="#997040" ALINK="#CC9900">
+<BODY>
+<CENTER><H3><U>MB-System Unix Manual Page</U></H3></CENTER>
+<PRE>
+<H1>mbm_phins2fnv</H1>
+Section:  MB-System 5.0  (1)<BR>Updated:  7 September 2026 <BR><A HREF="#index">Index</A>
+<HR>
+
+<A NAME="lbAB">&nbsp;</A>
+<H2>NAME</H2>
+
+<B>mbm_phins2fnv</B> - Macro to translate processed Phins INS navigation data
+to an fnv file for use in MB-System processing.
+<P>
+<A NAME="lbAC">&nbsp;</A>
+<H2>VERSION</H2>
+
+Version 5.0
+<P>
+<A NAME="lbAD">&nbsp;</A>
+<H2>SYNOPSIS</H2>
+
+<B>mbm_phins2fnv</B> <B>-i</B><I>inputfile</I> <B>-o</B><I>outputfile</I>
+[<B>-v</B> <B>-h</B>]
+<P>
+<A NAME="lbAE">&nbsp;</A>
+<H2>DESCRIPTION</H2>
+
+<B>mbm_phins2fnv</B> is a macro intended to translate processed navigation
+data from an iXblue Phins inertial navigation system (INS) into an &quot;fnv&quot;
+format navigation file of the kind used elsewhere in <B>MB-System</B>
+processing (see, e.g., the <B>-N</B> option of <B>mbnavlist</B> and the
+merge-navigation options of <B>mbprocess</B>).
+<P>
+The input file (specified with <B>-i</B>/<B>--input</B>) is a processed Phins
+data file in which each line has the acquisition date and time as a single
+token (year/month/day followed by a tab and hour:minute:second.fraction),
+followed by space-separated longitude (degrees), latitude (degrees),
+heading (degrees), draft (meters), roll (degrees), and pitch (degrees).
+Lines containing a &quot;#&quot; character (comments) or the word &quot;date&quot; (the column
+header line) are skipped. Speed and heave are not present in the Phins
+data and are always written as 0 in the output.
+<P>
+Each remaining line is translated into one line of the output fnv file
+(specified with <B>-o</B>/<B>--output</B>), giving the date and time, the same
+instant as decimal Unix epoch seconds, longitude, latitude, heading, speed
+(always 0), draft, roll, pitch, heave (always 0), and four further fields
+for the port/starboard swath edges (always 0, since the Phins data does
+not include swath coverage information). A line that cannot be parsed
+(too few fields, or an unparseable date/time) is skipped with a warning
+when <B>--verbose</B> is given, and silently otherwise.
+<P>
+Both an input and an output filename must be supplied on the command line;
+if either is missing the macro prints a diagnostic message and exits
+without processing.
+<P>
+<A NAME="lbAF">&nbsp;</A>
+<H2>MB-SYSTEM AUTHORSHIP</H2>
+
+David W. Caress
+<BR>
+
+<BR>&nbsp;&nbsp;Monterey&nbsp;Bay&nbsp;Aquarium&nbsp;Research&nbsp;Institute
+<BR>
+
+Dale N. Chayes
+<BR>
+
+<BR>&nbsp;&nbsp;Center&nbsp;for&nbsp;Coastal&nbsp;and&nbsp;Ocean&nbsp;Mapping
+<BR>
+
+<BR>&nbsp;&nbsp;University&nbsp;of&nbsp;New&nbsp;Hampshire
+<BR>
+
+Christian do Santos Ferreira
+<BR>
+
+<BR>&nbsp;&nbsp;MARUM&nbsp;-&nbsp;Center&nbsp;for&nbsp;Marine&nbsp;Environmental&nbsp;Sciences
+<BR>
+
+<BR>&nbsp;&nbsp;University&nbsp;of&nbsp;Bremen
+<P>
+<A NAME="lbAG">&nbsp;</A>
+<H2>OPTIONS</H2>
+
+<DL COMPACT>
+<DT><B>-h</B>, <B>--help</B>
+
+<DD>
+This &quot;help&quot; flag causes the macro to print out a description
+of its command line options and then exit immediately.
+<DT><B>-i</B><I>inputfile</I>, <B>--input=</B><I>inputfile</I>
+
+<DD>
+<BR>
+
+Sets the pathname of the input file containing processed Phins INS data.
+This is a required argument; if it is not supplied the macro prints a
+message and exits without doing anything further.
+<DT><B>-o</B><I>outputfile</I>, <B>--output=</B><I>outputfile</I>
+
+<DD>
+<BR>
+
+Sets the pathname of the output fnv navigation file. This is a required
+argument; if it is not supplied the macro prints a message and exits
+without doing anything further.
+<DT><B>-v</B>, <B>--verbose</B>
+
+<DD>
+Reports the input and output filenames, warns about (and skips) any
+input line that cannot be parsed, and prints a final count of lines
+read, written, and skipped. Without this flag the macro runs silently
+on success.
+<P>
+</DL>
+<A NAME="lbAH">&nbsp;</A>
+<H2>SEE ALSO</H2>
+
+<B><A HREF="mbsystem.html">mbsystem</A></B>(1), <B><A HREF="mbnavlist.html">mbnavlist</A></B>(1), <B><A HREF="mbprocess.html">mbprocess</A></B>(1)
+<P>
+<A NAME="lbAI">&nbsp;</A>
+<H2>BUGS</H2>
+
+Maybe. Maybe not.
+<P>
+
+<HR>
+<A NAME="index">&nbsp;</A><H2>Index</H2>
+<DL>
+<DT><A HREF="#lbAB">NAME</A><DD>
+<DT><A HREF="#lbAC">VERSION</A><DD>
+<DT><A HREF="#lbAD">SYNOPSIS</A><DD>
+<DT><A HREF="#lbAE">DESCRIPTION</A><DD>
+<DT><A HREF="#lbAF">MB-SYSTEM AUTHORSHIP</A><DD>
+<DT><A HREF="#lbAG">OPTIONS</A><DD>
+<DT><A HREF="#lbAH">SEE ALSO</A><DD>
+<DT><A HREF="#lbAI">BUGS</A><DD>
+</DL>
+<HR>
+</PRE>
+
+<CENTER><P><BR>
+Last Updated: 7 September 2026</P></CENTER>
+
+<HR>
+<center>
+<p>
+<a href="https://www.mbari.org/products/research-software/mb-system/"><< MB-System website</a> | <a href="https://www.mbari.org/technology/mb-system/documentation/"> MB-System Documenation>></a> | <a href="mbsystem_man_list.html">MB-System Manual Page List</a></p>
+</center>
+</BODY>
+</HTML>

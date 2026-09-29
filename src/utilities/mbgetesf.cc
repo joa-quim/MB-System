@@ -39,8 +39,13 @@
 #include <cstring>
 #include <ctime>
 #include <getopt.h>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_define.h"
 #include "mb_format.h"
 #include "mb_process.h"
@@ -271,7 +276,7 @@ int main(int argc, char **argv) {
 		if (errflg) {
 			fprintf(stderr, "usage: %s\n", usage_message);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			exit(MB_ERROR_BAD_USAGE);
+			return MB_ERROR_BAD_USAGE;
 		}
 
 		if (verbose == 1 || help) {
@@ -316,7 +321,7 @@ int main(int argc, char **argv) {
 		if (help) {
 			fprintf(stderr, "\n%s\n", help_message);
 			fprintf(stderr, "\nusage: %s\n", usage_message);
-			exit(MB_ERROR_NO_ERROR);
+			return MB_ERROR_NO_ERROR;
 		}
 	}
 
@@ -339,7 +344,7 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 		fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", ifile);
 		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-		exit(error);
+		return error;
 	}
 
 	/* allocate memory for data arrays */
@@ -374,7 +379,7 @@ int main(int argc, char **argv) {
 		mb_error(verbose, error, &message);
 		fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-		exit(error);
+		return error;
 	}
 
 	/* save file control variables */
@@ -384,15 +389,18 @@ int main(int argc, char **argv) {
 	if (status == MB_SUCCESS) {
 		/* get edit save file */
 		if (!sofile_set) {
+#ifdef _WIN32
+			_setmode(_fileno(stdout), _O_BINARY);
+#endif
 			sofp = stdout;
 		}
-		else if ((sofp = fopen(sofile, "w")) == nullptr) {
+		else if ((sofp = fopen(sofile, "wb")) == nullptr) {
 			error = MB_ERROR_OPEN_FAIL;
 			char *message = nullptr;
 			mb_error(verbose, error, &message);
 			fprintf(stderr, "\nEdit Save File <%s> not initialized for writing\n", sofile);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			exit(error);
+			return error;
 		}
 	}
 
@@ -598,6 +606,6 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "\t\t%d beams flagged by sonar\n", beam_flag_sonar);
 	}
 
-	exit(error);
+	return error;
 }
 /*--------------------------------------------------------------------*/

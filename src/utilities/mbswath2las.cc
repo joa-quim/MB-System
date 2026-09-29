@@ -37,13 +37,15 @@
 #include <ctime>
 #include <getopt.h>
 #include <string>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include <proj.h>
 
 #include "mb_define.h"
 #include "mb_format.h"
-#include "mb_info.h"
 #include "mb_io.h"
 #include "mb_status.h"
 

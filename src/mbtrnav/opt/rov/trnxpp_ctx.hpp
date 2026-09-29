@@ -18,7 +18,11 @@
 #include <string>
 #include <map>
 
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 
 #include "pcf_utils.hpp"
 #include "lcm_interface.hpp"

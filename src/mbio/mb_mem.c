@@ -189,7 +189,9 @@ int mb_malloc(int verbose, size_t size, void **ptr, int *error) {
   *ptr = NULL;
   int status = MB_SUCCESS;
   if (size > 0) {
-    if ((*ptr = (char *)malloc(size)) == NULL) {
+    /* zero-filled: the format stores allocated here are only partly written
+       by the readers, and stale heap bytes otherwise leak into outputs */
+    if ((*ptr = (char *)calloc(1, size)) == NULL) {
       *error = MB_ERROR_MEMORY_FAIL;
       status = MB_FAILURE;
     }
@@ -261,7 +263,9 @@ int mb_mallocd(int verbose, const char *sourcefile, int sourceline, size_t size,
   *ptr = NULL;
   int status = MB_SUCCESS;
   if (size > 0) {
-    if ((*ptr = (char *)malloc(size)) == NULL) {
+    /* zero-filled: the format stores allocated here are only partly written
+       by the readers, and stale heap bytes otherwise leak into outputs */
+    if ((*ptr = (char *)calloc(1, size)) == NULL) {
       *error = MB_ERROR_MEMORY_FAIL;
       status = MB_FAILURE;
     }
@@ -931,6 +935,12 @@ int mb_update_arrays(int verbose, void *mbio_ptr, int nbath, int namp, int nss, 
   /* get mbio descriptor */
   struct mb_io_struct *mb_io_ptr = (struct mb_io_struct *)mbio_ptr;
 
+  /* Discard pointer values from earlier reallocation cycles so allocator
+     address reuse cannot cause a false match in mb_update_arrayptr(). */
+  for (int i = 0; i < mb_io_ptr->n_regarray; i++) {
+    mb_io_ptr->regarray_oldptr[i] = NULL;
+  }
+
   /* reallocate larger arrays if necessary */
   int status = MB_SUCCESS;
   if (nbath > mb_io_ptr->beams_bath_alloc) {
@@ -1170,12 +1180,28 @@ int mb_update_arrayptr(int verbose, void *mbio_ptr, void **handle, int *error) {
   /* get mbio descriptor */
   struct mb_io_struct *mb_io_ptr = (struct mb_io_struct *)mbio_ptr;
 
-  /* look for handle in registered arrays */
+  /* Prefer the registered pointer variable's address, which remains stable
+     when its allocation is resized. */
   bool found = false;
-  for (int i = 0; i < mb_io_ptr->n_regarray && !found; i++) {
-    if (*handle == mb_io_ptr->regarray_oldptr[i]) {
+  for (int i = 0; i < mb_io_ptr->n_regarray; i++) {
+    if ((void *)handle == mb_io_ptr->regarray_handle[i]) {
       *handle = mb_io_ptr->regarray_ptr[i];
+      mb_io_ptr->regarray_oldptr[i] = NULL;
       found = true;
+      break;
+    }
+  }
+
+  /* The read APIs call this function with addresses of local pointer copies,
+     which do not match regarray_handle[]. Fall back to the pointer value saved
+     by the current mb_update_arrays() call. */
+  if (!found) {
+    for (int i = 0; i < mb_io_ptr->n_regarray; i++) {
+      if (mb_io_ptr->regarray_oldptr[i] != NULL && *handle == mb_io_ptr->regarray_oldptr[i]) {
+        *handle = mb_io_ptr->regarray_ptr[i];
+        mb_io_ptr->regarray_oldptr[i] = NULL;
+        break;
+      }
     }
   }
 

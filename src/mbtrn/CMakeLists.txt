@@ -46,6 +46,30 @@
 #.   mb1-cli
 #
 message("In src/mbtrn")
+#
+#------------------------------------------------------------------------------
+# The TRN sources reach for POSIX headers that MSVC does not ship. On Windows
+# they include the substitutes unistd_w.h / dirent_w.h from src/mbio, and the
+# BSD-socket headers (sys/socket.h, arpa/inet.h, netinet/*, netdb.h) plus
+# libgen.h come from the Winsock-backed shims in src/mbtrnframe/win32.
+if(WIN32)
+  # Build the TRN libraries static on Windows. Several of them export data
+  # (mbtrnframe me_errno, newmat BaseException::what_error), and data crossing
+  # a DLL boundary needs explicit dllexport/dllimport annotations these
+  # sources do not carry. They are internal libraries, so linking them in
+  # directly is the simpler and safer answer.
+  set(BUILD_SHARED_LIBS OFF)
+  # tells the headers not to mark their exports dllimport/dllexport
+  add_compile_definitions(TRNW_STATIC)
+  include_directories(${CMAKE_SOURCE_DIR}/src/mbio
+                      ${CMAKE_SOURCE_DIR}/src/mbtrnframe/win32)
+  # Force-include the compat header, as the top-level build already does for
+  # mb_define.h. It supplies the POSIX names the sources use without including
+  # the declaring header, and guarantees winsock2.h precedes windows.h.
+  if(MSVC)
+    add_compile_options(/FI${CMAKE_SOURCE_DIR}/src/mbtrnframe/win32/mbtrn_w32_compat.h)
+  endif()
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
   find_package(TIRPC REQUIRED)
@@ -90,13 +114,13 @@ install(TARGETS r7kr mb1r DESTINATION ${CMAKE_INSTALL_LIBDIR})
 #
 add_executable(udps utils/udps.c)
 target_include_directories(udps PRIVATE ${CMAKE_SOURCE_DIR}/src/mbtrnframe)
-target_link_libraries(udps PRIVATE mbtrnframe m pthread)
+target_link_libraries(udps PRIVATE mbtrnframe ${MB_SYSLIBS})
 #
 #------------------------------------------------------------------------------
 #
 add_executable(udpc utils/udpc.c)
 target_include_directories(udpc PRIVATE ${CMAKE_SOURCE_DIR}/src/mbtrnframe)
-target_link_libraries(udpc PRIVATE mbtrnframe m pthread)
+target_link_libraries(udpc PRIVATE mbtrnframe ${MB_SYSLIBS})
 #
 #------------------------------------------------------------------------------
 #
@@ -105,7 +129,7 @@ target_include_directories(mbtnav_cli PRIVATE ${CMAKE_SOURCE_DIR}/src/mbtrnframe
 							${CMAKE_SOURCE_DIR}/src/mbtrnav/trnw 
 							${CMAKE_SOURCE_DIR}/src/mbtrnav/terrain-nav
 							${CMAKE_SOURCE_DIR}/src/mbtrnutils)
-target_link_libraries(mbtnav_cli PRIVATE mbtrnframe m pthread)
+target_link_libraries(mbtnav_cli PRIVATE mbtrnframe ${MB_SYSLIBS})
 #
 #------------------------------------------------------------------------------
 #
@@ -129,7 +153,7 @@ add_executable(emu7k utils/emu7k.c)
 target_include_directories(emu7k PRIVATE ${CMAKE_SOURCE_DIR}/src/mbtrnframe 
 							${CMAKE_SOURCE_DIR}/src/mbtrn/r7kr
 							${CMAKE_SOURCE_DIR}/src/mbtrnutils)
-target_link_libraries(emu7k PRIVATE mbtrnframe r7kr m pthread)
+target_link_libraries(emu7k PRIVATE mbtrnframe r7kr ${MB_SYSLIBS})
 #
 #------------------------------------------------------------------------------
 #
@@ -154,28 +178,28 @@ target_include_directories(tbinx PRIVATE ${CMAKE_SOURCE_DIR}/src/mbtrnframe
 							${CMAKE_SOURCE_DIR}/src/mbtrn/r7kr 
 							${CMAKE_SOURCE_DIR}/src/mbtrnav/trnw 
                             ${CMAKE_SOURCE_DIR}/src/mbtrnutils)
-target_link_libraries(tbinx PRIVATE mbtrnframe mb1r r7kr m pthread)
+target_link_libraries(tbinx PRIVATE mbtrnframe mb1r r7kr ${MB_SYSLIBS})
 #
 #------------------------------------------------------------------------------
 #
 add_executable(mb1conv utils/mb1conv.c)
 target_include_directories(mb1conv PRIVATE ${CMAKE_SOURCE_DIR}/src/mbtrnframe 
 							${CMAKE_SOURCE_DIR}/src/mbtrnav/trnw)
-target_link_libraries(mb1conv PRIVATE mbtrnframe mb1r mb1 m pthread)
+target_link_libraries(mb1conv PRIVATE mbtrnframe mb1r mb1 ${MB_SYSLIBS})
 #
 #------------------------------------------------------------------------------
 #
 add_executable(mb12csv utils/mb12csv.c)
 target_include_directories(mb12csv PRIVATE ${CMAKE_SOURCE_DIR}/src/mbtrnframe 
 							${CMAKE_SOURCE_DIR}/src/mbtrnav/trnw)
-target_link_libraries(mb12csv PRIVATE mbtrnframe mb1r mb1 m pthread)
+target_link_libraries(mb12csv PRIVATE mbtrnframe mb1r mb1 ${MB_SYSLIBS})
 #
 #------------------------------------------------------------------------------
 #
 add_executable(mb1r_test mb1r/mb1r-test.c)
 target_include_directories(mb1r_test PRIVATE ${CMAKE_SOURCE_DIR}/src/mbtrnframe
 							${CMAKE_SOURCE_DIR}/src/mbtrnav/trnw)
-target_link_libraries(mb1r_test PRIVATE mb1r m pthread)
+target_link_libraries(mb1r_test PRIVATE mb1r ${MB_SYSLIBS})
 #
 #------------------------------------------------------------------------------
 #
@@ -184,7 +208,7 @@ target_include_directories(mb1-cli PRIVATE ${CMAKE_SOURCE_DIR}/src/mbtrnframe
                             ${LibPROJ_INCLUDE_DIRS}
                             ${CMAKE_SOURCE_DIR}/src/mbtrnav/trnw
                             ${CMAKE_SOURCE_DIR}/src/mbtrnutils)
-target_link_libraries(mb1-cli PRIVATE mbtrnframe mb1r mb1 m pthread)
+target_link_libraries(mb1-cli PRIVATE mbtrnframe mb1r mb1 ${MB_SYSLIBS})
 #
 #------------------------------------------------------------------------------
 #
@@ -192,7 +216,7 @@ add_executable(emallpub utils/emallpub.c)
 target_include_directories(emallpub PRIVATE ${CMAKE_SOURCE_DIR}/src/mbtrnframe
                             ${CMAKE_SOURCE_DIR}/src/mbio
 							${CMAKE_SOURCE_DIR}/src/mbtrnutils)
-target_link_libraries(emallpub PRIVATE TIRPC::TIRPC mbtrnframe m pthread)
+target_link_libraries(emallpub PRIVATE TIRPC::TIRPC mbtrnframe ${MB_SYSLIBS})
 #
 #------------------------------------------------------------------------------
 #
@@ -200,7 +224,7 @@ add_executable(emserpub utils/emserpub.c)
 target_include_directories(emserpub PRIVATE ${CMAKE_SOURCE_DIR}/src/mbtrnframe
                             ${CMAKE_SOURCE_DIR}/src/mbio
 							${CMAKE_SOURCE_DIR}/src/mbtrnutils)
-target_link_libraries(emserpub PRIVATE TIRPC::TIRPC mbtrnframe m pthread)
+target_link_libraries(emserpub PRIVATE TIRPC::TIRPC mbtrnframe ${MB_SYSLIBS})
 #
 #------------------------------------------------------------------------------
 #

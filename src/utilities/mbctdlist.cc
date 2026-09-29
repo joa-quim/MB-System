@@ -43,8 +43,13 @@
 #include <cstring>
 #include <ctime>
 #include <getopt.h>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_aux.h"
 #include "mb_define.h"
 #include "mb_format.h"
@@ -186,7 +191,7 @@ int main(int argc, char **argv) {
 		bool errflg = false;
 		int c;
 		bool help = false;
-		while ((c = getopt_long(argc, argv, "AaDdF:f:G:g:I:i:L:l:O:o:Z:z:VvHh", options, &option_index)) != -1)
+		while ((c = getopt_long(argc, argv, "AaD:d:F:f:G:g:I:i:L:l:O:o:Z:z:VvHh", options, &option_index)) != -1)
 		{
 			switch (c) {
 			/* long options all return c=0 */
@@ -216,9 +221,9 @@ int main(int argc, char **argv) {
 					sscanf(optarg, "%d", &lonflip);
 				}
 				else if (strcmp("output-format", options[option_index].name) == 0) {
-					for (int j = 0, n_list = 0; j < (int)strlen(optarg); j++, n_list++)
-						if (n_list < MAX_OPTIONS)
-							list[n_list] = optarg[j];
+					n_list = 0;
+					for (int j = 0; j < (int)strlen(optarg) && n_list < MAX_OPTIONS; j++)
+						list[n_list++] = optarg[j];
 				}
 				else if (strcmp("segment", options[option_index].name) == 0) {
 					segment = true;
@@ -259,9 +264,9 @@ int main(int argc, char **argv) {
 				break;
 			case 'O':
 			case 'o':
-				for (int j = 0, n_list = 0; j < (int)strlen(optarg); j++, n_list++)
-					if (n_list < MAX_OPTIONS)
-						list[n_list] = optarg[j];
+				n_list = 0;
+				for (int j = 0; j < (int)strlen(optarg) && n_list < MAX_OPTIONS; j++)
+					list[n_list++] = optarg[j];
 				break;
 			case 'Z':
 			case 'z':
@@ -276,7 +281,7 @@ int main(int argc, char **argv) {
 		if (errflg) {
 			fprintf(stderr, "usage: %s\n", usage_message);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			exit(MB_ERROR_BAD_USAGE);
+			return MB_ERROR_BAD_USAGE;
 		}
 
 		if (verbose == 1 || help) {
@@ -326,9 +331,15 @@ int main(int argc, char **argv) {
 		if (help) {
 			fprintf(stderr, "\n%s\n", help_message);
 			fprintf(stderr, "\nusage: %s\n", usage_message);
-			exit(MB_ERROR_NO_ERROR);
+			return MB_ERROR_NO_ERROR;
 		}
 	}
+
+#ifdef _WIN32
+	/* Binary output must bypass the C runtime's CRLF translation. */
+	if (!ascii)
+		_setmode(_fileno(stdout), _O_BINARY);
+#endif
 
 	int error = MB_ERROR_NO_ERROR;
 
@@ -352,7 +363,7 @@ int main(int argc, char **argv) {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			exit(MB_ERROR_OPEN_FAIL);
+			return MB_ERROR_OPEN_FAIL;
 		}
 		read_data = mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight, &error) == MB_SUCCESS;
 	} else {
@@ -411,7 +422,7 @@ int main(int argc, char **argv) {
 			fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 			fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			exit(error);
+			return error;
 		}
 
 		/* allocate memory for data arrays */
@@ -440,7 +451,7 @@ int main(int argc, char **argv) {
 			mb_error(verbose, error, &message);
 			fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			exit(error);
+			return error;
 		}
 
 		/* output separator for GMT style segment file output */
@@ -488,7 +499,7 @@ int main(int argc, char **argv) {
 						mb_error(verbose, error, &message);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						exit(error);
+						return error;
 					}
 				}
 
@@ -542,7 +553,7 @@ int main(int argc, char **argv) {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			exit(MB_ERROR_OPEN_FAIL);
+			return MB_ERROR_OPEN_FAIL;
 		}
 		read_data = mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight, &error) == MB_SUCCESS;
 	} else {
@@ -611,7 +622,7 @@ int main(int argc, char **argv) {
 			fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 			fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			exit(error);
+			return error;
 		}
 
 		/* allocate memory for data arrays */
@@ -640,7 +651,7 @@ int main(int argc, char **argv) {
 			mb_error(verbose, error, &message);
 			fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			exit(error);
+			return error;
 		}
 
 		/* output info */
@@ -708,8 +719,7 @@ int main(int argc, char **argv) {
 							    mb_linear_interp(verbose, nav_time_d - 1, nav_speed - 1, nnav, time_d, &speed, &j, &error);
 
 						/* only output if interpolation of nav etc has worked */
-						// TODO(schwehr): true should be MB_SUCCESS?
-						if (interp_status == true) {
+						if (interp_status == MB_SUCCESS) {
 
 							/* calculate course made good and distance */
 							mb_coor_scale(verbose, navlat, &mtodeglon, &mtodeglat);
@@ -969,22 +979,22 @@ int main(int argc, char **argv) {
 										break;
 									}
 									case 'U': /* unix time in seconds since 1/1/70 00:00:00 */
-										time_u = (int)time_d;
+										time_u = (time_t)time_d;
 										if (ascii)
-											printf("%ld", time_u);
+											printf("%lld", (long long)time_u);
 										else {
 											const double b = time_u;
 											fwrite(&b, sizeof(double), 1, stdout);
 										}
 										break;
 									case 'u': /* time in seconds since first record */
-										time_u = (int)time_d;
+										time_u = (time_t)time_d;
 										if (first_u) {
 											time_u_ref = time_u;
 											first_u = false;
 										}
 										if (ascii)
-											printf("%ld", time_u - time_u_ref);
+											printf("%lld", (long long)(time_u - time_u_ref));
 										else {
 											const double b = time_u - time_u_ref;
 											fwrite(&b, sizeof(double), 1, stdout);
@@ -1127,6 +1137,6 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "dbg2       status:  %d\n", status);
 	}
 
-	exit(error);
+	return error;
 }
 /*--------------------------------------------------------------------*/

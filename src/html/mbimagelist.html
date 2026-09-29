@@ -11,7 +11,7 @@
 <CENTER><H3><U>MB-System Unix Manual Page</U></H3></CENTER>
 <PRE>
 <H1>mbimagelist</H1>
-Section:  MB-System 5.0  (1)<BR>Updated:  31 March 2025 <BR><A HREF="#index">Index</A>
+Section:  MB-System 5.0  (1)<BR>Updated:  11 September 2026 <BR><A HREF="#index">Index</A>
 <HR>
 
 <A NAME="lbAB">&nbsp;</A>
@@ -20,8 +20,9 @@ Section:  MB-System 5.0  (1)<BR>Updated:  31 March 2025 <BR><A HREF="#index">Ind
 <B>mbimagelist</B> - parses recursive imagelist structures, performing one or more
 tasks on the image files referenced in the imagelist(s). The default action is to
 print out out the complete list of image file paths; other
-possible tasks include also printing out associated timestamps and camera settings, and
-printing out processing parameter values embedded in the imagelist structure.
+possible tasks include also printing out associated timestamps and camera settings,
+printing out the full imagelist row format, and printing out processing parameter
+values embedded in the imagelist structure.
 <P>
 <A NAME="lbAC">&nbsp;</A>
 <H2>VERSION</H2>
@@ -37,7 +38,7 @@ Version 5.0
 [
 <BR>
 
-<B>--absolute</B>   {<B>-A</B>}
+<B>--absolutepaths</B>   {<B>-A</B>}
 <BR>
 
 <B>--copy</B>=<I>directory</I>   {<B>-C</B><I>directory</I>}
@@ -46,10 +47,16 @@ Version 5.0
 <B>--copyhere</B>
 <BR>
 
+<B>--end</B>=<I>yyyy/mm/dd/hh/mm/ss.ssssss</I>
+<BR>
+
 <B>--files</B>   {<B>-F</B>}
 <BR>
 
 <B>--help</B>   {<B>-H</B>}
+<BR>
+
+<B>--imagelist</B>
 <BR>
 
 <B>--input</B>=<I>file</I>   {<B>-I</B><I>file</I>}
@@ -61,13 +68,16 @@ Version 5.0
 <B>--parameters</B>   {<B>-P</B>}
 <BR>
 
-<B>--right</B>   {<B>-RfP}
+<B>--right</B>   {<B>-R</B>}
 <BR>
 
---settings</B>   {<B>-S</B>}
+<B>--settings</B>   {<B>-S</B>}
 <BR>
 
 <B>--single</B>
+<BR>
+
+<B>--start</B>=<I>yyyy/mm/dd/hh/mm/ss.ssssss</I>
 <BR>
 
 <B>--verbose</B>   {<B>-V</B>}
@@ -85,14 +95,25 @@ seafloor photography. These lists may contain references
 to other imagelists, making them recursive. 
 By default, the program <B>mbimagelist</B> outputs each
 image filename encountered as it parses through the input imagelist tree. The output
-paths can be relative to the current working directory or absolute. 
+paths can be relative to the current working directory or absolute. Instead of the
+plain file path listing, the <B>--settings</B> option can be used to also output the
+image timestamp, gain, and exposure, or the <B>--imagelist</B> option can be used to
+reproduce the full eight-column imagelist row format (left and right image paths,
+left and right timestamps, left and right gains, and left and right exposures) for
+each image or stereo pair. The <B>--start</B> and <B>--end</B> options can be used
+to restrict the image listings that are output to those falling within a specified
+time period; by default all image listings encountered are output.
 <P>
-Imagelist files can also contain processing parameters associated with the images, including 
+Imagelist files can also contain processing parameters associated with the images, including
 specifying a file containing the calibration parameters for the camera rig, specifying
 a file containing the trajectory (navigation and attitude) of the camera rig as images
 were collected, specifying a file with an image correction lookup table, and several other
-parameters. All of these parameters correspond to command line options for <B>mbphotomosaic</B> 
-that can also be specified.
+parameters. All of these parameters correspond to command line options for <B>mbphotomosaic</B>
+that can also be specified. When <B>--parameters</B> is used together with
+<B>--imagelist</B>, these processing parameter entries are printed in the same form
+in which they appear in an imagelist file (e.g.
+&quot;#PARAMETER --calibration-file=20250325_LASSCameraCalibration.yml&quot;); otherwise they
+are printed as a human-readable summary line.
 <P>
 This program
 can be used in shellscripts to read imagelists in the same fashion
@@ -131,340 +152,276 @@ Christian do Santos Ferreira
 <H2>OPTIONS</H2>
 
 <DL COMPACT>
-<DT><B>--copy=</B><I>directory</I>
+<DT><B>--absolutepaths   {-A</B>}
 
 <DD>
 <BR>
 
-Causes the image files referenced in the input imagelist structure to be
-copied to the specified directory and creates a imagelist
-(names &quot;imagelist.mb-1&quot;) in that same directory that references the copied image files.
+Causes the image file paths in the output to be converted to absolute
+paths (by prepending the current working directory to any relative
+path) rather than being output as they appear in the imagelist.
+Default: paths are output exactly as they appear in the imagelist.
+<DT><B>--copy=</B><I>directory</I>   {<B>-C</B><I>directory</I>}
+
+<DD>
+<BR>
+
+Causes each image file listed in the output to also be copied
+(using the shell <B>cp</B> command) into <I>directory</I>.
 <DT><B>--copyhere</B>
 
 <DD>
 <BR>
 
-Causes the image files referenced in the input imagelist structure to be
-copied to the current directory and creates a imagelist
-(names &quot;imagelist.mb-1&quot;) that references the copied image files.
-<DT><B>--report</B>
+Equivalent to <B>--copy</B>, except that the destination directory is
+the current working directory rather than one specified by the user.
+<DT><B>--end=</B><I>yyyy/mm/dd/hh/mm/ss.ssssss</I>
 
 <DD>
 <BR>
 
-Causes a listing to be printed of the unique imagelist files referenced through
-the recursive imagelist structure. Each line begins with the recursion level
-of that imagelist file within the overall structure followed by the full path of
-the imagelist file indented by a number of tabs equal to the recursion level.
-<DT><B>--format</B>
+Sets the end of the time period for which image listings are output.
+Any image (or, for a stereo pair, any record whose left image time is
+used) with a timestamp later than this time is skipped. The time is
+specified as year/month/day/hour/minute/second, with the seconds field
+allowed to include a fractional part. Default: no end time is applied,
+so image listings are output through the end of the imagelist.
+<DT><B>--files   {-F</B>}
 
 <DD>
-<I>format</I>
 <BR>
 
-Sets the data format associated with the imagelist or swath data
-file specified with the <B>--input</B> option. By default, this program
-will attempt to determine the format from the input file suffix
-(e.g. a file ending in .mb57 has a format id of 57, and a file
-ending in .mb-1 has a format id of -1). A imagelist has a format id
-of -1.
-<DT><B>--help</B>
+Requests that the plain image file paths be listed, one per line. This
+is the default output mode when none of <B>--parameters</B>,
+<B>--settings</B>, or <B>--imagelist</B> is specified.
+<DT><B>--help   {-H</B>}
 
 <DD>
 This &quot;help&quot; flag cause the program to print out a description
 of its operation and then exit immediately.
-<DT><B>--input</B>
+<DT><B>--imagelist</B>
 
 <DD>
-<I>FILE</I>
 <BR>
 
-Sets the input filename. If <I>format</I> &gt; 0 (set with the
-<B>-f</B> option) then the swath data filename specified by <I>infile</I>
-is output along with its format and a file weight of 1.0.
-If <I>format</I> &lt; 0, then <I>infile</I>
-is treated as a imagelist file containing a list of the input swath sonar
-data files to be processed and their formats.  The program will parse
-the imagelist (recursively, if necessary) and output each swath filename
-and the associated format and file weight.
-<DT><B>--make-ancilliary</B>
-
-<DD>
-This argument causes <B>MBimagelist</B> to generate three types of ancillary
-data files (&quot;inf&quot;, &quot;fbt&quot;, and &quot;fnv&quot;).
-In all cases,
-the ancillary filenames are just the original filename with
-&quot;.inf&quot;, &quot;.fbt&quot;, or &quot;.fnv&quot; appended on the end.
-<B>MB-System</B> makes use of ancillary data files in a number
-of instances. The most prominent ancillary files are metadata or
-&quot;inf&quot; files (created from the output of <B>mbinfo</B>).
-Programs such as <B>mbgrid</B> and <B>mbm_plot</B> try to check &quot;inf&quot;
-files to see if the corresponding data files include data within
-desired areas. Additional ancillary files are used to speed
-plotting and gridding functions. The &quot;fast bath&quot; or &quot;fbt&quot; files
-are generated by copying the swath bathymetry to a sparse,
-quickly read format (format 71). The &quot;fast nav&quot; or &quot;fnv&quot; files
-are just ASCII lists of navigation generated using <B>mblist</B>
-with a <B>--update-ancilliary</B><I>tMXYHSc</I> option. Programs such as <B>mbgrid</B>,
-<B>mbswath</B>, and <B>mbcontour</B> will try to read &quot;fbt&quot; and &quot;fnv&quot; files
-instead of the full data files whenever only bathymetry or
-navigation information are required.
-<DT><B>--update-ancilliary</B>
-
-<DD>
-This argument causes <B>MBimagelist</B> to generate the three ancillary
-data files (&quot;inf&quot;, &quot;fbt&quot;, and &quot;fnv&quot;) if
-these files don't already exist or are out of date.
-<DT><B>--processed</B>
-
-<DD>
-Normally, <B>mbimagelist</B> allows $PROCESSED and $RAW tags within
-the imagelist files to determine whether processed file names are
-reported when available ($PROCESSED) or only raw file names are
-reported ($RAW). The <B>--processed</B> option forces <B>mbimagelist</B>
-to output processed file names when they exist.
-<DT><B>--problem</B>
-
-<DD>
-This option causes the program to check each
-data file for the existence of any ancillary files
-referenced in its mbprocess parameter file
-(if the parameter file exists). The relevant ancillary
-files include edit save files generated by <B>mbedit</B>
-or <B>mbclean</B>, navigation files generated by <B>mbnavedit</B>
-or <B>mbnavadjust</B>, tide files, and svp files. An error message
-is output for each missing ancillary file.
-<DT><B>--bounds</B>
-
-<DD>
-<I>W/E/S/N</I>
+Requests that image listings be output in the same eight-column form
+used by imagelist files themselves:
 <BR>
 
-The bounds of the desired area are set in longitude
-and latitude using w=west, e=east, s=south, and n=north.
-This option causes the program to check each
-data file with an &quot;inf&quot; file for overlap with
-the desired bounds, and only report those
-files with data in the desired area (or no
-&quot;inf&quot; file to check). This behavior mimics that of
-<B>mbgrid</B>, allowing users to check what data files will
-contribute to gridding some particular area.
-<DT><B>--status</B>
+<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>left-image-path right-image-path left-time_d right-time_d left-gain right-gain left-exposure right-exposure<BR>
+<BR>
+
+Image paths are output relative to the current working directory
+(unless <B>--absolutepaths</B> is also given). If an entry has no
+left or no right image (a single-camera image, or a stereo pair
+missing one side), &quot;NULL&quot; is printed in place of the missing path and
+0.0 is printed for its associated time, gain, and exposure values.
+This option is an alternative to <B>--files</B> (the default) and
+<B>--settings</B>; if <B>--imagelist</B> is given it takes precedence
+over <B>--files</B> and <B>--settings</B> regardless of the order in
+which they are given on the command line. See also <B>--parameters</B>.
+<DT><B>--input=</B><I>file</I>   {<B>-I</B><I>file</I>}
 
 <DD>
-This option causes <B>mbimagelist</B> to report the status of the files
-it lists, including whether the file is up to date or needs reprocessing,
-and if the file is locked. <B>MBprocess</B> sets locks while operating on
-a swath file to prevent other instances of <B>mbprocess</B> from simultaneously
-operating on that same file. Locking consists of creating a small text file
-named by appending &quot;.lck&quot; to the swath filename; while this file exists
-other programs will not modify the locked file. The locking program deletes
-the lock file when it is done. Orphaned lock files may be left if <B>mbprocess</B>
-crashes or is interrupted. These will prevent reprocessing by <B>mbprocess</B>,
-but can be both detected and removed using <B>mbimagelist</B>.
-<DT><B>--raw</B>
+<BR>
+
+Sets the filename of the imagelist to be parsed. Imagelists are
+recursive, and may reference other imagelists as well as individual
+image files. Default: <I>file</I> = &quot;imagelist.mb-2&quot;.
+<DT><B>--left   {-L</B>}
 
 <DD>
-Normally, <B>mbimagelist</B> allows $PROCESSED and $RAW tags within
-the imagelist files to determine whether processed file names are
-reported when available ($PROCESSED) or
-only (raw) unprocessed file names are
-reported ($RAW). The <B>--raw</B> option forces <B>mbimagelist</B>
-to only output raw file names.
-<DT><B>--verbose</B>
+<BR>
+
+Restricts the listing to images from the left camera: stereo pairs
+(only the left-side path/time/gain/exposure values are listed; the
+right side is omitted, or written as <B>NULL</B> in <B>--imagelist</B>
+output) and left-only entries. Single-camera (non-stereo) images are
+excluded. The end-of-run left/right/single/total image counts, and any
+file copying requested with <B>--copy</B>, are likewise restricted to
+what is actually listed. Default: every image is listed.
+<DT><B>--parameters   {-P</B>}
 
 <DD>
-Normally, <B>mbimagelist</B> only prints out the filenames and formats.
-If the <B>--verbose</B> flag is given, then <B>mbinfo</B> works in a &quot;verbose&quot; mode and
-outputs the program version being used.
-<DT><B>--unlock</B>
+<BR>
+
+Causes a line to be printed for each processing parameter entry
+encountered while parsing the imagelist, in addition to (or instead
+of, if <B>--files</B> and <B>--settings</B> are not also given) the
+image file listing. If <B>--imagelist</B> is also in use, each
+parameter line is printed in the same form found in imagelist files,
+for example:
+<BR>
+
+<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>#PARAMETER --calibration-file=20250325_LASSCameraCalibration.yml<BR>
+<BR>
+
+Otherwise the parameter line is printed as a human-readable summary.
+<P>
+For those parameter options whose value is a file path (including but
+not limited to <B>--platform-file</B>, <B>--calibration-file</B>,
+<B>--navigation-file</B>, <B>--tide-file</B>,
+<B>--image-quality-file</B>, and <B>--correction-file</B>), a relative
+path value is rewritten to be prefixed by the directory containing the
+imagelist file in which the <B>#PARAMETER</B> entry was found, so that
+the path output is valid relative to the current working directory.
+This rewriting is applied regardless of which of <B>--files</B>,
+<B>--settings</B>, or <B>--imagelist</B> is in effect, and follows the
+same convention used by <B>mbphotomosaic</B> when it reads these
+entries. A path value that is already absolute (beginning with '/') is
+left unmodified. Default: parameter entries are not reported.
+<DT><B>--right   {-R</B>}
 
 <DD>
-This option causes <B>mbimagelist</B> to remove any processing locks on files
-it parses. <B>MBprocess</B> and other programs may set locks while
-operating on a swath file to prevent other programs from simultaneously
-operating on that same file.The consists of creating a small text file
-named by appending &quot;.lck&quot; to the swath filename; while this file exists
-other programs will not modify the locked file. The locking program deletes
-the lock file when it is done. Orphaned lock files may be left if <B>MB-System</B>
-programs crash or are interrupted. These can be detected using the <B>--status</B>
-option of <B>mbimagelist</B>.
-<DT><B>--imagelistp</B>
+<BR>
+
+Restricts the listing to images from the right camera: stereo pairs
+(only the right-side path/time/gain/exposure values are listed; the
+left side is omitted, or written as <B>NULL</B> in <B>--imagelist</B>
+output) and right-only entries. Single-camera (non-stereo) images are
+excluded. The end-of-run left/right/single/total image counts, and any
+file copying requested with <B>--copy</B>, are likewise restricted to
+what is actually listed. Default: every image is listed.
+<DT><B>--settings   {-S</B>}
 
 <DD>
-The <B>--imagelistp</B> option causes the program to generate a imagelist file that
-will first set a $PROCESSED flag and then reference the input
-file specified using the <B>--input</B>=<I>FILE</I> option.
-The output imagelist is named
-by adding a &quot;p.mb-1&quot; suffix to the root of the input file (the root is
-the portion before any <B>MB-System</B> suffix).
 <BR>
 
-By default, the input is assumed to be a imagelist named imagelist.mb-1, resulting
-in an output imagelist named imagelistp.mb-1 with the following contents:
+Causes each image line in the output to include the image timestamp,
+gain, and exposure values, in addition to the file path. Default:
+only the file path is printed. This option is an alternative to
+<B>--files</B> (the default); see <B>--imagelist</B> for a further
+alternative output form.
+<DT><B>--single</B>
+
+<DD>
 <BR>
 
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>$PROCESSED<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>imagelist.mb-1&nbsp;-1<BR>
+Restricts the listing to single-camera (non-stereo) images, excluding
+stereo pairs and left-only or right-only entries. The end-of-run
+left/right/single/total image counts, and any file copying requested
+with <B>--copy</B>, are likewise restricted to what is actually
+listed. Default: every image is listed. There is no short option
+equivalent.
+<DT><B>--start=</B><I>yyyy/mm/dd/hh/mm/ss.ssssss</I>
+
+<DD>
 <BR>
 
-If the input file is specified as a imagelist like
-imagelist_sslo.mb-1, then the output imagelist
-imagelist_sslop.mb-1
-will have the following contents:
+Sets the start of the time period for which image listings are output.
+Any image (or, for a stereo pair, any record whose left image time is
+used) with a timestamp earlier than this time is skipped. The time is
+specified as year/month/day/hour/minute/second, with the seconds field
+allowed to include a fractional part. Default: no start time is
+applied, so image listings are output starting from the beginning of
+the imagelist.
+<DT><B>--verbose   {-V</B>}
+
+<DD>
 <BR>
 
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>$PROCESSED<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>imagelist_sslo.mb-1&nbsp;-1<BR>
-<BR>
-
-If the input file is specified as a swath file like
-20050916122920.mb57, then the output imagelist 20050916122920p.mb-1
-will have the following contents:
-<BR>
-
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>$PROCESSED<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>20050916122920.mb57&nbsp;57<BR>
+Increases the verbosity of <B>mbimagelist</B>. Can be used multiple
+times. If used at all, a summary of the numbers of left, right,
+single, and total images listed is printed at the end of execution.
 <P>
 </DL>
 <A NAME="lbAH">&nbsp;</A>
 <H2>EXAMPLES</H2>
 
-Suppose we have two swath data files from an EM3000 multibeam
-and another two from an Hydrosweep MD multibeam. We might
-construct two imagelist files. For the EM3000 we might
-have a file imagelist_em3000.mb-1 containing:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>0004_20010705_165004_raw.mb57&nbsp;57<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>0005_20010705_172010_raw.mb57&nbsp;57<BR>
+Suppose we have a directory of images collected by a stereo camera
+rig, and that a file named imagelist.mb-2 has been constructed
+referencing the corresponding left and right image files along with
+their timestamps, gains, and exposures, together with the name of the
+calibration file used to process them. The tag <B>#STEREOCAMERA</B>
+indicates that unpaired image entries further down in the file should
+be treated as one-sided stereo pairs rather than single-camera images.
+The contents of imagelist.mb-2 might be:
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>#STEREOCAMERA<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>#PARAMETER&nbsp;--calibration-file=20250325_LASSCameraCalibration.yml<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_L/0001.tif&nbsp;PROSILICA_R/0001.tif&nbsp;1700000000.123456&nbsp;1700000000.223456&nbsp;10.0&nbsp;11.0&nbsp;4000.0&nbsp;4100.0<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_L/0002.tif&nbsp;PROSILICA_R/0002.tif&nbsp;1700003600.123456&nbsp;1700003600.223456&nbsp;12.0&nbsp;13.0&nbsp;4200.0&nbsp;4300.0<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_L/0003.tif&nbsp;1700007200.123456<BR>
 <BR>
 
-For the Hydrosweep MD data we might have a file imagelist_hsmd.mb-1
-containing:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>al10107051649.mb102&nbsp;102<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>al10107051719.mb102&nbsp;102<BR>
-<P>
-Further suppose that we have found it necessary to edit
-the bathymetry in 0005_20010705_172010_raw.mb57 and
-al10107051719.mb102 using <B>mbedit</B>, and that <B>mbprocess</B>
-has been run on both files to generate processed files
-called 0005_20010705_172010_rawp.mb57 and
-al10107051719p.mb102.
+The last line above is a single left-camera image with no right-camera
+counterpart.
 <P>
 If we run:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>mbimagelist&nbsp;--input=imagelist_em3000.mb-1<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>mbimagelist&nbsp;--input=imagelist.mb-2<BR>
 <BR>
 
-the output is:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>0004_20010705_165004_raw.mb57&nbsp;57&nbsp;1.000000<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>0005_20010705_172010_raw.mb57&nbsp;57&nbsp;1.000000<BR>
-<BR>
-
-Here the file name is followed by the format and then
-by a third column containing the default file weight of 1.0.
+the default <B>--files</B> output lists just the image paths encountered,
+one per line:
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_L/0001.tif<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_R/0001.tif<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_L/0002.tif<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_R/0002.tif<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_L/0003.tif<BR>
 <P>
-Similarly, if we run:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>mbimagelist&nbsp;--input=imagelist_hsmd.mb-1<BR>
+If we run:
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>mbimagelist&nbsp;--input=imagelist.mb-2&nbsp;--settings<BR>
 <BR>
 
-the output is:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>al10107051649.mb102&nbsp;102&nbsp;1.000000<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>al10107051719.mb102&nbsp;102&nbsp;1.000000<BR>
+each image path is followed by its timestamp, gain, and exposure:
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_L/0001.tif&nbsp;1700000000.123456&nbsp;10.000000&nbsp;4000.000000<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_R/0001.tif&nbsp;1700000000.223456&nbsp;11.000000&nbsp;4100.000000<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_L/0002.tif&nbsp;1700003600.123456&nbsp;12.000000&nbsp;4200.000000<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_R/0002.tif&nbsp;1700003600.223456&nbsp;13.000000&nbsp;4300.000000<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_L/0003.tif&nbsp;1700007200.123456&nbsp;15.000000&nbsp;4000.000000<BR>
+<BR>
+
+The single left-camera image is reported with the default gain (15.0)
+and exposure (4000.0) values, since none were given in the imagelist.
 <P>
-If we insert a line
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>$PROCESSED<BR>
+If we run:
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>mbimagelist&nbsp;--input=imagelist.mb-2&nbsp;--imagelist&nbsp;--parameters<BR>
 <BR>
 
-at the top of both imagelist_hsmd.mb-1 and imagelist_em3000.mb-1,
-then the output of <B>mbimagelist</B> changes so that:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>mbimagelist&nbsp;--input=imagelist_em3000.mb-1<BR>
+the output reproduces the imagelist file's own eight-column row format
+and also reports the processing parameter entry in the same form used
+in imagelist files:
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>#PARAMETER&nbsp;--calibration-file=20250325_LASSCameraCalibration.yml<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_L/0001.tif&nbsp;PROSILICA_R/0001.tif&nbsp;1700000000.123456&nbsp;1700000000.223456&nbsp;10.000000&nbsp;11.000000&nbsp;4000.000000&nbsp;4100.000000<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_L/0002.tif&nbsp;PROSILICA_R/0002.tif&nbsp;1700003600.123456&nbsp;1700003600.223456&nbsp;12.000000&nbsp;13.000000&nbsp;4200.000000&nbsp;4300.000000<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_L/0003.tif&nbsp;NULL&nbsp;1700007200.123456&nbsp;0.000000&nbsp;15.000000&nbsp;0.000000&nbsp;4000.000000&nbsp;0.000000<BR>
 <BR>
 
-yields:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>0004_20010705_165004_raw.mb57&nbsp;57&nbsp;1.000000<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>0005_20010705_172010_rawp.mb57&nbsp;57&nbsp;1.000000<BR>
-and:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>mbimagelist&nbsp;--input=imagelist_hsmd.mb-1<BR>
-<BR>
-
-yields:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>al10107051649.mb102&nbsp;102&nbsp;1.000000<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>al10107051719p.mb102&nbsp;102&nbsp;1.000000<BR>
+Since the third entry has no right-camera image, &quot;NULL&quot; is printed for
+the missing path, and 0.0 is printed for the associated time, gain,
+and exposure values.
 <P>
-Now suppose we create a imagelist file called imagelist_all.mb-1
-that refers to the two imagelists shown above (without the
-$PROCESSED tags). If the contents of imagelist_all.mb-1 are:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>imagelist_em3000.mb-1&nbsp;-1&nbsp;100.0<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>imagelist_hsmd.mb-1&nbsp;&nbsp;&nbsp;-1&nbsp;&nbsp;&nbsp;1.0<BR>
+If instead the imagelist file were located in a subdirectory, for
+example survey1/imagelist.mb-2, and also contained a navigation file
+parameter given as an absolute path:
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>#PARAMETER&nbsp;--calibration-file=20250325_LASSCameraCalibration.yml<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>#PARAMETER&nbsp;--navigation-file=/data/survey1/nav.txt<BR>
 <BR>
 
-where we have specified different file weights for the
-two imagelists, then:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>mbimagelist&nbsp;--input=imagelist_all.mb-1<BR>
+then running any of <B>--files --parameters</B>, <B>--settings</B>
+<B>--parameters</B>, or <B>--imagelist --parameters</B> against
+survey1/imagelist.mb-2 outputs:
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>#PARAMETER&nbsp;--calibration-file=survey1/20250325_LASSCameraCalibration.yml<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>#PARAMETER&nbsp;--navigation-file=/data/survey1/nav.txt<BR>
 <BR>
 
-yields:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>0004_20010705_165004_raw.mb57&nbsp;57&nbsp;100.000000<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>0005_20010705_172010_raw.mb57&nbsp;57&nbsp;100.000000<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>al10107051649.mb102&nbsp;102&nbsp;1.000000<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>al10107051719.mb102&nbsp;102&nbsp;1.000000<BR>
+The relative calibration file path is rewritten to be prefixed with the
+imagelist file's own directory, so that it remains valid relative to
+the current working directory, while the absolute navigation file path
+is left unmodified. This directory-prefixing is applied to the value
+of any <B>#PARAMETER</B> option that takes a file path, in all three of
+the <B>--files</B>, <B>--settings</B>, and <B>--imagelist</B> output modes.
 <P>
-Now, if we use the <B>--processed</B> option to force <B>mbimagelist</B>
-to output processed data file names when possible, then:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>mbimagelist&nbsp;--input=imagelist_all.mb-1&nbsp;--processed<BR>
+The timestamps in the first two entries correspond to
+2023/11/14 22:13:20 and 2023/11/14 23:13:20 respectively. If we only
+want image listings collected between 23:00 and 23:30 on that date, we
+can run:
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>mbimagelist&nbsp;--input=imagelist.mb-2&nbsp;--imagelist&nbsp;\<BR>
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>--start=2023/11/14/23/00/00&nbsp;--end=2023/11/14/23/30/00<BR>
 <BR>
 
-yields:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>0004_20010705_165004_raw.mb57&nbsp;57&nbsp;100.000000<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>0005_20010705_172010_rawp.mb57&nbsp;57&nbsp;100.000000<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>al10107051649.mb102&nbsp;102&nbsp;1.000000<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>al10107051719p.mb102&nbsp;102&nbsp;1.000000<BR>
+which yields only the second stereo pair:
+<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>PROSILICA_L/0002.tif&nbsp;PROSILICA_R/0002.tif&nbsp;1700003600.123456&nbsp;1700003600.223456&nbsp;12.000000&nbsp;13.000000&nbsp;4200.000000&nbsp;4300.000000<BR>
 <P>
-To demonstrate the imagelist file listing function, consider the imagelist file
-named imagelist.mb-1 that is located at the top of MBARI's shipboard swath mapping
-database structure. This file references imagelists under directories for each of
-the institutions that we have sourced survey data from (e.g. CCOM, GEOMAR, IFREMER,
-etc.), and each of those imagelists reference imagelist files in directories for
-individual surveys or expedition legs, which in turn reference swath files for
-those surveys (or in some cases reference more imagelists if the expedition leg
-is organized into multiple surveys). We use the <B>--report</B> option to obtain
-the following listing (which actually runs a lot longer than shown here):
-<BR>
-
-yields:
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;00&gt;&nbsp;imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;01&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT>CCOM/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>CCOM/NR07-1/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;01&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT>GEOMAR/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>GEOMAR/SONNE100/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>GEOMAR/SONNE47/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>GEOMAR/SO108/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>GEOMAR/GEOMETEP/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>GEOMAR/SO83/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>GEOMAR/SO92/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>GEOMAR/SO99/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>GEOMAR/SO109-1/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>GEOMAR/SO109-2/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>GEOMAR/SO111/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>GEOMAR/SO112/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>GEOMAR/SO141/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>GEOMAR/SO142/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;01&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT>IFREMER/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/CHARCOT/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/FOUNDATION/imagelist_mb71.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/GEOMETEP4/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/MANZPA/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/NOUPA/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/OLIPAC/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/PAPNOU87/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/PAPNOU99/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/POLYNAUT/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/SEAPOS/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/ZEPOLYF1/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/ZEPOLYF2/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/ZEPOLYF3/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/BENTHAUS/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/SISMITA/imagelist.mb-1<BR>
-<BR>&nbsp;<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>&lt;02&gt;&nbsp;<TT>&nbsp;&nbsp;&nbsp;</TT><TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</TT>IFREMER/ACT/imagelist.mb-1<BR>
 <P>
 <A NAME="lbAI">&nbsp;</A>
 <H2>SEE ALSO</H2>
@@ -497,7 +454,7 @@ files. Copying of processed files should also be an option.
 </PRE>
 
 <CENTER><P><BR>
-Last Updated: 31 March 2025</P></CENTER>
+Last Updated: 11 September 2026</P></CENTER>
 
 <HR>
 <center>

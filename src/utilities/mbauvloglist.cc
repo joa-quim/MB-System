@@ -37,8 +37,13 @@
 #include <cstring>
 #include <ctime>
 #include <getopt.h>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_aux.h"
 #include "mb_define.h"
 #include "mb_status.h"
@@ -262,7 +267,13 @@ int main(int argc, char **argv) {
     int decimate = 1;
 	output_t output_mode = OUTPUT_MODE_TAB;
 	int nprintfields = 0;
-	struct printfield printfields[NFIELDSMAX];
+	/* printfields (1 MB) and fields (2 MB) together overflow the 1 MB
+	   default Windows stack, so they live on the heap */
+	struct printfield *printfields = static_cast<struct printfield *>(calloc(NFIELDSMAX, sizeof(struct printfield)));
+	if (printfields == nullptr) {
+		fprintf(stderr, "\nUnable to allocate the print field table\n");
+		exit(MB_ERROR_MEMORY_FAIL);
+	}
 	bool calc_potentialtemp = false;
 	bool calc_soundspeed = false;
 	bool calc_density = false;
@@ -562,6 +573,12 @@ int main(int argc, char **argv) {
 		}
 	}
 
+#ifdef _WIN32
+	/* binary output must bypass the C runtime's CRLF translation */
+	if (output_mode == OUTPUT_MODE_BINARY)
+		_setmode(_fileno(stdout), _O_BINARY);
+#endif
+
 	int error = MB_ERROR_NO_ERROR;
 	char buffer[MB_PATH_MAXLINE];
 
@@ -725,7 +742,7 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "%d %d records read from nav file %s\n", nav_alloc, nav_num, nav_file);
 
 	/* open the input file */
-	FILE *fp = fopen(file, "r");
+	FILE *fp = fopen(file, "rb");
 	if (fp == nullptr) {
 		error = MB_ERROR_OPEN_FAIL;
 		status = MB_FAILURE;
@@ -740,7 +757,11 @@ int main(int argc, char **argv) {
     bool pvelocity_available = false;
 
 	/* auv log data */
-	struct field fields[NFIELDSMAX];
+	struct field *fields = static_cast<struct field *>(calloc(NFIELDSMAX, sizeof(struct field)));
+	if (fields == nullptr) {
+		fprintf(stderr, "\nUnable to allocate the log field table\n");
+		exit(MB_ERROR_MEMORY_FAIL);
+	}
 
 	bool cond_frequency_available = false;
 	bool temp_counts_available = false;
@@ -1581,6 +1602,9 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "dbg2  Ending status:\n");
 		fprintf(stderr, "dbg2       status:  %d\n", status);
 	}
+
+	free(fields);
+	free(printfields);
 
 	exit(error);
 }

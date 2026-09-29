@@ -11,7 +11,7 @@
 <CENTER><H3><U>MB-System Unix Manual Page</U></H3></CENTER>
 <PRE>
 <H1>mbdefaults</H1>
-Section:  MB-System 5.0  (1)<BR>Updated:  5 September 2014 <BR><A HREF="#index">Index</A>
+Section:  MB-System 5.0  (1)<BR>Updated:  7 September 2026 <BR><A HREF="#index">Index</A>
 <HR>
 
 <A NAME="lbAB">&nbsp;</A>
@@ -28,9 +28,40 @@ Version 5.0
 <A NAME="lbAD">&nbsp;</A>
 <H2>SYNOPSIS</H2>
 
-<B>mbdefaults</B> [<B>-B</B><I>fileiobuffer</I> <B>-D</B><I>psdisplay</I> <B>-F</B><I>fbtversion</I>  <B>-I</B><I>imagedisplay</I>
-<B>-L</B><I>lonflip</I> <B>-M</B><I>mbviewsettings</I> <B>-T</B><I>timegap</I> <B>-U</B><I>uselockfiles</I>
-<B>-W</B><I>project</I> <B>-V -H</B>]
+<B>mbdefaults</B>
+<BR>
+
+[--file-io-buffer=fileiobuffer {-Bfileiobuffer}
+<BR>
+
+--ps-display=psdisplay {-Dpsdisplay}
+<BR>
+
+--fbt-version=fbtversion {-Ffbtversion}
+<BR>
+
+--help {-H}
+<BR>
+
+--image-display=imagedisplay {-Iimagedisplay}
+<BR>
+
+--lonflip=lonflip {-Llonflip}
+<BR>
+
+--mbview-settings=mbviewsettings {-Mmbviewsettings}
+<BR>
+
+--time-gap=timegap {-Ttimegap}
+<BR>
+
+--use-lock-files=yes|no {-Uyes|no}
+<BR>
+
+--verbose {-V}
+<BR>
+
+--project=mbproject {-Wmbproject}]
 <P>
 <A NAME="lbAE">&nbsp;</A>
 <H2>DESCRIPTION</H2>
@@ -87,12 +118,9 @@ Christian do Santos Ferreira
 <H2>OPTIONS</H2>
 
 <DL COMPACT>
-<DT><B>-B</B>
+<DT><B>--file-io-buffer=fileiobuffer -Bfileiobuffer</B>
 
 <DD>
-<I>fileiobuffer</I>
-<BR>
-
 Sets the file i/o block buffer size for certain formats (currently formats 88 and 58).
 The <I>fileiobuffer</I> value is in kilobytes, so <I>fileiobuffer</I> = 1000 corresponds
 roughly to a one megabyte buffer.
@@ -104,52 +132,40 @@ locally attached hard drives. At MBARI, where our primary data storage is access
 a gigabit ethernet network, setting <I>fileiobuffer</I> = 10000 achieves an 8% run time reduction
 for <B>mbprocess</B>. Default: <I>fileiobuffer</I> = 0, which corresponds to the system
 default.
-<DT><B>-D</B>
+<DT><B>--ps-display=psdisplay -Dpsdisplay</B>
 
 <DD>
-<I>psdisplay</I>
-<BR>
-
 Sets the program used for displaying Postscript graphics files
 on a screen; this facility is used by shellscripts created through
 macros like <B>mbm_plot</B>. The default Postscript display
 utility is <B>gv</B>. Another common Postscript display utilities
 is <B>ghostview</B>; past postscript viewers included <B>pageview</B>
 (for Sun workstations) and <B>xpsview</B> (for Silicon Graphics workstations).
-<DT><B>-F</B>
+<DT><B>--fbt-version=fbtversion -Ffbtversion</B>
 
 <DD>
-<I>fbtversion</I>
-<BR>
-
 Set the version of fbt files created by <B>mbdatalist</B> and <B>mbprocess</B>.
 If <I>fbtversion</I> = 2, &quot;old&quot;, or &quot;OLD&quot;, then the pre-5.3.1897 version of
 format 71 will be used to write the &quot;fast bathymetry&quot; or &quot;*.fbt&quot; files.
 If <I>fbtversion</I> = 3, &quot;new&quot;, or &quot;NEW&quot;, then the new, 5.3.1897-or-later version of
 format 71 will be used to write the &quot;fast bathymetry&quot; or &quot;*.fbt&quot; files.
 <P>
-<DT><B>-H</B>
+<DT><B>--help -H</B>
 
 <DD>
 This &quot;help&quot; flag cause the program to print out a description
 of its operation and then exit immediately.
-<DT><B>-I</B>
+<DT><B>--image-display=imagedisplay -Iimagedisplay</B>
 
 <DD>
-<I>imagedisplay</I>
-<BR>
-
 Sets the program used for displaying Tiff image files
 on a screen; this facility is used by shellscripts created through
 macros like <B>mbm_grdtiff</B>. The default image display
 utility is <B>xv</B>. Other common image display utilities
 are <B>gimp</B> (GNU image processing) and <B>gqview</B>.
-<DT><B>-L</B>
+<DT><B>--lonflip=lonflip -Llonflip</B>
 
 <DD>
-<I>lonflip</I>
-<BR>
-
 Sets the range of the longitude values returned.
 If <I>lonflip</I>=-1 then the longitude values will be in
 the range from -360 to 0 degrees. If <I>lonflip</I>=0
@@ -158,12 +174,9 @@ the range from -180 to 180 degrees. If <I>lonflip</I>=1
 then the longitude values will be in
 the range from 0 to 360 degrees.
 Default: <I>lonflip</I> = 0.
-<DT><B>-MP</B>
+<DT><B>--mbview-settings=Pcolortable/colortable_mode/shade_mode -MPcolortable/colortable_mode/shade_mode</B>
 
 <DD>
-<I>colortable/colortable_mode/shade_mode</I>
-<BR>
-
 Sets the default colortable, colortable mode, and shading mode for
 the programs <B>MBgrdviz</B> and <B>MBeditviz</B>. The <I>colortable</I> identifiers are
 similar to those used for <B>mbm_grdplot</B>:
@@ -185,76 +198,55 @@ The <I>shade_mode</I> value determines whether shading is off
 (<I>shade_mode</I> = 0), done by illumination(<I>shade_mode</I> = 1),
 or done using slope magnitude (<I>shade_mode</I> = 2). Shading by overlay
 cannot be a default because overlay data are not always defined.
-<DT><B>-MG</B>
+<DT><B>--mbview-settings=Gslope_colortable/slope_colortable_mode -MGslope_colortable/slope_colortable_mode</B>
 
 <DD>
-<I>slope_colortable/slope_colortable_mode</I>
-<BR>
-
 Sets the default colortable and colortable mode for displays of slope
 using the programs <B>MBgrdviz</B> and <B>MBeditviz</B>.
 The colortable and colortable mode identifiers are the same as given
 above for <B>-MP</B>.
-<DT><B>-MO</B>
+<DT><B>--mbview-settings=Osecondary_colortable/secondary_colortable_mode -MOsecondary_colortable/secondary_colortable_mode</B>
 
 <DD>
-<I>secondary_colortable/secondary_colortable_mode</I>
-<BR>
-
-Sets the default colortable and colortable mode for displays of 
+Sets the default colortable and colortable mode for displays of
 overlay data using the programs <B>MBgrdviz</B> and <B>MBeditviz</B>.
 The colortable and colortable mode identifiers are the same as given
 above for <B>-MP</B>.
-<DT><B>-MI</B>
+<DT><B>--mbview-settings=Imagnitude/elevation/azimuth -MImagnitude/elevation/azimuth</B>
 
 <DD>
-<I>magnitude/elevation/azimuth</I>
-<BR>
-
 Sets the default parameters for shading by illumination using the
 programs <B>MBgrdviz</B> and <B>MBeditviz</B>.
 The <I>elevation</I> and <I>azimuth</I> values are in degrees.
-<DT><B>-MS</B>
+<DT><B>--mbview-settings=Smagnitude -MSmagnitude</B>
 
 <DD>
-<I>magnitude</I>
-<BR>
-
 Sets the default parameter for shading by slope magnitude using the
 programs <B>MBgrdviz</B> and <B>MBeditviz</B>.
-<DT><B>-T</B>
+<DT><B>--time-gap=timegap -Ttimegap</B>
 
 <DD>
-<I>timegap</I>
-<BR>
-
 Sets the maximum time gap in minutes between adjacent pings allowed before
 the data is considered to have a gap. Default: <I>timegap</I> = 1.
-<DT><B>-U</B>
+<DT><B>--use-lock-files=yes|no -Uyes|no</B>
 
 <DD>
-<I>uselockfiles</I>
-<BR>
-
 Sets whether <B>MB-System</B> uses the file locking mechanism to insure that
 a swath file is only processed or edited by a single program at a time.
 To revert to pre-lockfile behavior for <B>mbedit</B>, <B>mbeditviz</B>,
 <B>mbclean</B>, <B>mbareaclean</B>, <B>mbnavedit</B>, and <B>mbprocess</B>,
 use <B>-U</B><I>0</I> or  <B>-U</B><I>no</I>. To reinstate use of lock files,
 use <B>-U</B><I>1</I> or  <B>-U</B><I>yes</I>.
-<DT><B>-V</B>
+<DT><B>--verbose -V</B>
 
 <DD>
 Normally, <B>mbdefaults</B> outputs only a list of the default values
 to the stdout stream.  If the
 <B>-V</B> flag is given, then <B>mbdefaults</B> works in a &quot;verbose&quot; mode and
 also outputs the program version being used.
-<DT><B>-W</B>
+<DT><B>--project=mbproject -Wmbproject</B>
 
 <DD>
-<I>project</I>
-<BR>
-
 Sets the name of the default project. This will be used by
 MB-System database management utilities yet to be created.
 Default: <I>project</I> = &quot;none&quot;.
@@ -333,7 +325,7 @@ happen to you...
 </PRE>
 
 <CENTER><P><BR>
-Last Updated: 5 September 2014</P></CENTER>
+Last Updated: 7 September 2026</P></CENTER>
 
 <HR>
 <center>

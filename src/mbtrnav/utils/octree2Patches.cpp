@@ -16,7 +16,11 @@
 #include "Octree.hpp"
 #include <iostream>
 #include <iomanip>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 
 //#define INFILE "tripleIsland.bo"
 //#define OUTFILE "tripleIsland.csv" 

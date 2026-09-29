@@ -323,8 +323,8 @@ void msock_pstats_show(msock_pstats_t *self, bool verbose, uint16_t indent)
 {
     if (NULL != self) {
         fprintf(stderr,"%*s[self         %10p]\n",indent,(indent>0?" ":""), self);
-        fprintf(stderr,"%*s[t_connect    %10ld]\n",indent,(indent>0?" ":""), self->t_connect);
-        fprintf(stderr,"%*s[t_disconnect %10ld]\n",indent,(indent>0?" ":""), self->t_disconnect);
+        fprintf(stderr,"%*s[t_connect    %10lld]\n",indent,(indent>0?" ":""), (long long)self->t_connect);
+        fprintf(stderr,"%*s[t_disconnect %10lld]\n",indent,(indent>0?" ":""), (long long)self->t_disconnect);
         fprintf(stderr,"%*s[tx_count     %10u]\n",indent,(indent>0?" ":""), self->tx_count);
         fprintf(stderr,"%*s[tx_bytes     %10u]\n",indent,(indent>0?" ":""), self->tx_bytes);
         fprintf(stderr,"%*s[rx_count     %10u]\n",indent,(indent>0?" ":""), self->rx_count);
@@ -673,7 +673,18 @@ int64_t msock_recvfrom(msock_socket_t *s, msock_addr_t *addr, byte *buf, uint32_
         
 //        fprintf(stderr,"recvfrom connection[%p] dest_addr[%p] ai_family[%d] addrlen[%d]\n",addr,(addr?addr->ainfo->ai_addr:NULL),(int)(addr?addr->ainfo->ai_family:-1),(int)(addr?addr->ainfo->ai_addrlen:-1));
         
+#ifdef _WIN32
+        /* Winsock has no MSG_DONTWAIT: make the socket non-blocking for the
+         * duration of the call instead, then put it back. */
+        const int want_nonblock = ((flags & MSG_DONTWAIT) != 0);
+        const int pass_flags = flags & ~MSG_DONTWAIT;
+        if (want_nonblock) mbtrn_w32_set_nonblocking((int)s->fd, 1);
+        retval = recvfrom(s->fd,buf,len,pass_flags,dest_addr,&addrlen);
+        if (want_nonblock) mbtrn_w32_set_nonblocking((int)s->fd, 0);
+        if( retval>0 ){
+#else
         if( (retval = recvfrom(s->fd,buf,len,flags,dest_addr,&addrlen))>0){
+#endif
             // MX_PRINT("received data connection[%p] dest[%p] ainfo[%p] [%lld]\n", addr, dest_addr, addr->ainfo, retval);
         }
         else{

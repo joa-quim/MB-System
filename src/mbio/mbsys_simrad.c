@@ -1220,119 +1220,131 @@ int mbsys_simrad_beamangles(int verbose, void *store_ptr, bool *interleave,
 		/* get nbeams */
 		*nbeams = ping->beams_bath;
 
-		/* get angles */
+		/* get angles - no table is known for some sonars and modes (EM100) */
 		*interleave = false;
+		*angles_simrad = NULL;
+		int n_angles_simrad = 0;
 		if (store->sonar == MBSYS_SIMRAD_EM1000) {
 			if (ping->bath_mode == 1) {
-				*angles_simrad = angles_EM1000_ISO_ANG_60_2_MS_48_FAIS;
+				*angles_simrad = angles_EM1000_ISO_ANG_60_2_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_ISO_ANG_60_2_MS_48_FAIS) / sizeof(double));
 				*interleave = false;
 			}
 			else if (ping->bath_mode == 2) {
-				*angles_simrad = angles_EM1000_ISO_ANG_120_07_MS_48_FAIS;
+				*angles_simrad = angles_EM1000_ISO_ANG_120_07_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_ISO_ANG_120_07_MS_48_FAIS) / sizeof(double));
 				*interleave = true;
 			}
 			else if (ping->bath_mode == 3) {
-				*angles_simrad = angles_EM1000_ISO_ANG_150_02_MS_60_FAIS;
+				*angles_simrad = angles_EM1000_ISO_ANG_150_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_ISO_ANG_150_02_MS_60_FAIS) / sizeof(double));
 				*interleave = true;
 			}
 			else if (ping->bath_mode == 4) {
-				*angles_simrad = angles_EM1000_CHANNEL_02_MS_60_FAIS;
+				*angles_simrad = angles_EM1000_CHANNEL_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_CHANNEL_02_MS_60_FAIS) / sizeof(double));
 				*interleave = true;
 			}
 			else if (ping->bath_mode == 5) {
-				*angles_simrad = angles_EM1000_150_02_MS_60_FAIS;
+				*angles_simrad = angles_EM1000_150_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_150_02_MS_60_FAIS) / sizeof(double));
 				*interleave = true;
 			}
 			else if (ping->bath_mode == 6) {
-				*angles_simrad = angles_EM1000_140_02_MS_60_FAIS;
+				*angles_simrad = angles_EM1000_140_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_140_02_MS_60_FAIS) / sizeof(double));
 				*interleave = true;
 			}
 			else if (ping->bath_mode == 7) {
-				*angles_simrad = angles_EM1000_128_02_MS_60_FAIS;
+				*angles_simrad = angles_EM1000_128_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_128_02_MS_60_FAIS) / sizeof(double));
 				*interleave = true;
 			}
 			else if (ping->bath_mode == 8) {
-				*angles_simrad = angles_EM1000_120_07_MS_48_FAIS;
+				*angles_simrad = angles_EM1000_120_07_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_120_07_MS_48_FAIS) / sizeof(double));
 				*interleave = true;
 			}
 			else if (ping->bath_mode == 9) {
-				*angles_simrad = angles_EM1000_104_07_MS_48_FAIS;
+				*angles_simrad = angles_EM1000_104_07_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_104_07_MS_48_FAIS) / sizeof(double));
 				*interleave = true;
 			}
 			else if (ping->bath_mode == 10) {
-				*angles_simrad = angles_EM1000_88_07_MS_48_FAIS;
+				*angles_simrad = angles_EM1000_88_07_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_88_07_MS_48_FAIS) / sizeof(double));
 				*interleave = true;
 			}
 			else if (ping->bath_mode == 11) {
-				*angles_simrad = angles_EM1000_70_2_MS_48_FAIS;
+				*angles_simrad = angles_EM1000_70_2_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_70_2_MS_48_FAIS) / sizeof(double));
 				*interleave = false;
 			}
 			else if (ping->bath_mode == 12) {
-				*angles_simrad = angles_EM1000_BERGE_02_MS_60_FAIS;
+				*angles_simrad = angles_EM1000_BERGE_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_BERGE_02_MS_60_FAIS) / sizeof(double));
 				*interleave = true;
 			}
 			else if (ping->bath_mode == 13) {
-				*angles_simrad = angles_EM1000_BERGE_02_MS_60_FAIS;
+				*angles_simrad = angles_EM1000_BERGE_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_BERGE_02_MS_60_FAIS) / sizeof(double));
 				*interleave = true;
 			}
 		}
 		else if (store->sonar == MBSYS_SIMRAD_EM12S) {
 			if (ping->bath_mode == 1)
-				*angles_simrad = angles_EM12S_ISO_ANG_SHALLOW;
+				*angles_simrad = angles_EM12S_ISO_ANG_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12S_ISO_ANG_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 2)
-				*angles_simrad = angles_EM12S_ISO_ANG_DEEP;
+				*angles_simrad = angles_EM12S_ISO_ANG_DEEP, n_angles_simrad = (int)(sizeof(angles_EM12S_ISO_ANG_DEEP) / sizeof(double));
 			else if (ping->bath_mode == 3)
-				*angles_simrad = angles_EM12S_SHALLOW;
+				*angles_simrad = angles_EM12S_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12S_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 4)
-				*angles_simrad = angles_EM12S_120;
+				*angles_simrad = angles_EM12S_120, n_angles_simrad = (int)(sizeof(angles_EM12S_120) / sizeof(double));
 			else if (ping->bath_mode == 5)
-				*angles_simrad = angles_EM12S_105;
+				*angles_simrad = angles_EM12S_105, n_angles_simrad = (int)(sizeof(angles_EM12S_105) / sizeof(double));
 			else if (ping->bath_mode == 6)
-				*angles_simrad = angles_EM12S_90;
+				*angles_simrad = angles_EM12S_90, n_angles_simrad = (int)(sizeof(angles_EM12S_90) / sizeof(double));
 		}
 		else if (store->sonar == MBSYS_SIMRAD_EM12D && ping->swath_id == EM_SWATH_PORT) {
 			if (ping->bath_mode == 1)
-				*angles_simrad = angles_EM12DP_ISO_ANG_SHALLOW;
+				*angles_simrad = angles_EM12DP_ISO_ANG_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12DP_ISO_ANG_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 2)
-				*angles_simrad = angles_EM12DP_ISO_ANG_DEEP;
+				*angles_simrad = angles_EM12DP_ISO_ANG_DEEP, n_angles_simrad = (int)(sizeof(angles_EM12DP_ISO_ANG_DEEP) / sizeof(double));
 			else if (ping->bath_mode == 3)
-				*angles_simrad = angles_EM12DP_SHALLOW;
+				*angles_simrad = angles_EM12DP_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12DP_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 4)
-				*angles_simrad = angles_EM12DP_150;
+				*angles_simrad = angles_EM12DP_150, n_angles_simrad = (int)(sizeof(angles_EM12DP_150) / sizeof(double));
 			else if (ping->bath_mode == 5)
-				*angles_simrad = angles_EM12DP_140;
+				*angles_simrad = angles_EM12DP_140, n_angles_simrad = (int)(sizeof(angles_EM12DP_140) / sizeof(double));
 			else if (ping->bath_mode == 6)
-				*angles_simrad = angles_EM12DP_128;
+				*angles_simrad = angles_EM12DP_128, n_angles_simrad = (int)(sizeof(angles_EM12DP_128) / sizeof(double));
 			else if (ping->bath_mode == 7)
-				*angles_simrad = angles_EM12DP_114;
+				*angles_simrad = angles_EM12DP_114, n_angles_simrad = (int)(sizeof(angles_EM12DP_114) / sizeof(double));
 			else if (ping->bath_mode == 8)
-				*angles_simrad = angles_EM12DP_98;
+				*angles_simrad = angles_EM12DP_98, n_angles_simrad = (int)(sizeof(angles_EM12DP_98) / sizeof(double));
 		}
 		else if (store->sonar == MBSYS_SIMRAD_EM12D && ping->swath_id == EM_SWATH_STARBOARD) {
 			if (ping->bath_mode == 1)
-				*angles_simrad = angles_EM12DS_ISO_ANG_SHALLOW;
+				*angles_simrad = angles_EM12DS_ISO_ANG_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12DS_ISO_ANG_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 2)
-				*angles_simrad = angles_EM12DS_ISO_ANG_DEEP;
+				*angles_simrad = angles_EM12DS_ISO_ANG_DEEP, n_angles_simrad = (int)(sizeof(angles_EM12DS_ISO_ANG_DEEP) / sizeof(double));
 			else if (ping->bath_mode == 3)
-				*angles_simrad = angles_EM12DS_SHALLOW;
+				*angles_simrad = angles_EM12DS_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12DS_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 4)
-				*angles_simrad = angles_EM12DS_150;
+				*angles_simrad = angles_EM12DS_150, n_angles_simrad = (int)(sizeof(angles_EM12DS_150) / sizeof(double));
 			else if (ping->bath_mode == 5)
-				*angles_simrad = angles_EM12DS_140;
+				*angles_simrad = angles_EM12DS_140, n_angles_simrad = (int)(sizeof(angles_EM12DS_140) / sizeof(double));
 			else if (ping->bath_mode == 6)
-				*angles_simrad = angles_EM12DS_128;
+				*angles_simrad = angles_EM12DS_128, n_angles_simrad = (int)(sizeof(angles_EM12DS_128) / sizeof(double));
 			else if (ping->bath_mode == 7)
-				*angles_simrad = angles_EM12DS_114;
+				*angles_simrad = angles_EM12DS_114, n_angles_simrad = (int)(sizeof(angles_EM12DS_114) / sizeof(double));
 			else if (ping->bath_mode == 8)
-				*angles_simrad = angles_EM12DS_98;
+				*angles_simrad = angles_EM12DS_98, n_angles_simrad = (int)(sizeof(angles_EM12DS_98) / sizeof(double));
 		}
 		else if (store->sonar == MBSYS_SIMRAD_EM121) {
-			*angles_simrad = angles_EM121_GUESS;
+			*angles_simrad = angles_EM121_GUESS, n_angles_simrad = (int)(sizeof(angles_EM121_GUESS) / sizeof(double));
 		}
 
 		/* set status */
 		*error = MB_ERROR_NO_ERROR;
 		status = MB_SUCCESS;
+
+		/* the table must exist and cover every beam: interleaved EM1000
+		    modes use two table entries per beam */
+		const int n_angles_needed =
+		    (store->sonar == MBSYS_SIMRAD_EM1000 && (ping->bath_mode == 13 || *interleave)) ? 2 * (*nbeams) : *nbeams;
+		if (*angles_simrad == NULL || n_angles_simrad < n_angles_needed) {
+			*angles_simrad = NULL;
+			*error = MB_ERROR_BAD_DATA;
+			status = MB_FAILURE;
+		}
 
 		/* done translating values */
 	}
@@ -1359,7 +1371,7 @@ int mbsys_simrad_beamangles(int verbose, void *store_ptr, bool *interleave,
 		fprintf(stderr, "\ndbg2  MBIO function <%s> completed\n", __func__);
 		fprintf(stderr, "dbg2  Return values:\n");
 	}
-	if (verbose >= 2 && *error == MB_ERROR_NO_ERROR) {
+	if (verbose >= 2 && *error == MB_ERROR_NO_ERROR && *angles_simrad != NULL) {
 		fprintf(stderr, "dbg2       interleave: %d\n", *interleave);
 		fprintf(stderr, "dbg2       nbeams:     %d\n", *nbeams);
 		for (int i = 0; i < *nbeams; i++) {
@@ -1423,116 +1435,120 @@ int mbsys_simrad_ttimes(int verbose, void *mbio_ptr, void *store_ptr, int *kind,
 			*draft = store->em100_td;
 		else if (store->sonar == MBSYS_SIMRAD_EM1000)
 			*draft = store->em1000_td;
+		else
+			*draft = 0.0; /* no transducer depth stored for this sonar */
 
 		/* get travel times, angles */
 		bool interleave = false;
-		double *angles_simrad;
+		/* angle table for this sonar and mode (NULL if none is known) */
+		double *angles_simrad = NULL;
+		int n_angles_simrad = 0;
 		if (store->sonar == MBSYS_SIMRAD_EM1000) {
 			if (ping->bath_mode == 1) {
-				angles_simrad = angles_EM1000_ISO_ANG_60_2_MS_48_FAIS;
+				angles_simrad = angles_EM1000_ISO_ANG_60_2_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_ISO_ANG_60_2_MS_48_FAIS) / sizeof(double));
 				interleave = false;
 			}
 			else if (ping->bath_mode == 2) {
-				angles_simrad = angles_EM1000_ISO_ANG_120_07_MS_48_FAIS;
+				angles_simrad = angles_EM1000_ISO_ANG_120_07_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_ISO_ANG_120_07_MS_48_FAIS) / sizeof(double));
 				interleave = true;
 			}
 			else if (ping->bath_mode == 3) {
-				angles_simrad = angles_EM1000_ISO_ANG_150_02_MS_60_FAIS;
+				angles_simrad = angles_EM1000_ISO_ANG_150_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_ISO_ANG_150_02_MS_60_FAIS) / sizeof(double));
 				interleave = true;
 			}
 			else if (ping->bath_mode == 4) {
-				angles_simrad = angles_EM1000_CHANNEL_02_MS_60_FAIS;
+				angles_simrad = angles_EM1000_CHANNEL_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_CHANNEL_02_MS_60_FAIS) / sizeof(double));
 				interleave = true;
 			}
 			else if (ping->bath_mode == 5) {
-				angles_simrad = angles_EM1000_150_02_MS_60_FAIS;
+				angles_simrad = angles_EM1000_150_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_150_02_MS_60_FAIS) / sizeof(double));
 				interleave = true;
 			}
 			else if (ping->bath_mode == 6) {
-				angles_simrad = angles_EM1000_140_02_MS_60_FAIS;
+				angles_simrad = angles_EM1000_140_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_140_02_MS_60_FAIS) / sizeof(double));
 				interleave = true;
 			}
 			else if (ping->bath_mode == 7) {
-				angles_simrad = angles_EM1000_128_02_MS_60_FAIS;
+				angles_simrad = angles_EM1000_128_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_128_02_MS_60_FAIS) / sizeof(double));
 				interleave = true;
 			}
 			else if (ping->bath_mode == 8) {
-				angles_simrad = angles_EM1000_120_07_MS_48_FAIS;
+				angles_simrad = angles_EM1000_120_07_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_120_07_MS_48_FAIS) / sizeof(double));
 				interleave = true;
 			}
 			else if (ping->bath_mode == 9) {
-				angles_simrad = angles_EM1000_104_07_MS_48_FAIS;
+				angles_simrad = angles_EM1000_104_07_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_104_07_MS_48_FAIS) / sizeof(double));
 				interleave = true;
 			}
 			else if (ping->bath_mode == 10) {
-				angles_simrad = angles_EM1000_88_07_MS_48_FAIS;
+				angles_simrad = angles_EM1000_88_07_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_88_07_MS_48_FAIS) / sizeof(double));
 				interleave = true;
 			}
 			else if (ping->bath_mode == 11) {
-				angles_simrad = angles_EM1000_70_2_MS_48_FAIS;
+				angles_simrad = angles_EM1000_70_2_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_70_2_MS_48_FAIS) / sizeof(double));
 				interleave = false;
 			}
 			else if (ping->bath_mode == 12) {
-				angles_simrad = angles_EM1000_BERGE_02_MS_60_FAIS;
+				angles_simrad = angles_EM1000_BERGE_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_BERGE_02_MS_60_FAIS) / sizeof(double));
 				interleave = true;
 			}
 			else if (ping->bath_mode == 13) {
-				angles_simrad = angles_EM1000_BERGE_02_MS_60_FAIS;
+				angles_simrad = angles_EM1000_BERGE_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_BERGE_02_MS_60_FAIS) / sizeof(double));
 				interleave = true;
 			}
 		}
 		else if (store->sonar == MBSYS_SIMRAD_EM12S) {
 			if (ping->bath_mode == 1)
-				angles_simrad = angles_EM12S_ISO_ANG_SHALLOW;
+				angles_simrad = angles_EM12S_ISO_ANG_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12S_ISO_ANG_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 2)
-				angles_simrad = angles_EM12S_ISO_ANG_DEEP;
+				angles_simrad = angles_EM12S_ISO_ANG_DEEP, n_angles_simrad = (int)(sizeof(angles_EM12S_ISO_ANG_DEEP) / sizeof(double));
 			else if (ping->bath_mode == 3)
-				angles_simrad = angles_EM12S_SHALLOW;
+				angles_simrad = angles_EM12S_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12S_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 4)
-				angles_simrad = angles_EM12S_120;
+				angles_simrad = angles_EM12S_120, n_angles_simrad = (int)(sizeof(angles_EM12S_120) / sizeof(double));
 			else if (ping->bath_mode == 5)
-				angles_simrad = angles_EM12S_105;
+				angles_simrad = angles_EM12S_105, n_angles_simrad = (int)(sizeof(angles_EM12S_105) / sizeof(double));
 			else if (ping->bath_mode == 6)
-				angles_simrad = angles_EM12S_90;
+				angles_simrad = angles_EM12S_90, n_angles_simrad = (int)(sizeof(angles_EM12S_90) / sizeof(double));
 		}
 		else if (store->sonar == MBSYS_SIMRAD_EM12D && ping->swath_id == EM_SWATH_PORT) {
 			if (ping->bath_mode == 1)
-				angles_simrad = angles_EM12DP_ISO_ANG_SHALLOW;
+				angles_simrad = angles_EM12DP_ISO_ANG_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12DP_ISO_ANG_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 2)
-				angles_simrad = angles_EM12DP_ISO_ANG_DEEP;
+				angles_simrad = angles_EM12DP_ISO_ANG_DEEP, n_angles_simrad = (int)(sizeof(angles_EM12DP_ISO_ANG_DEEP) / sizeof(double));
 			else if (ping->bath_mode == 3)
-				angles_simrad = angles_EM12DP_SHALLOW;
+				angles_simrad = angles_EM12DP_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12DP_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 4)
-				angles_simrad = angles_EM12DP_150;
+				angles_simrad = angles_EM12DP_150, n_angles_simrad = (int)(sizeof(angles_EM12DP_150) / sizeof(double));
 			else if (ping->bath_mode == 5)
-				angles_simrad = angles_EM12DP_140;
+				angles_simrad = angles_EM12DP_140, n_angles_simrad = (int)(sizeof(angles_EM12DP_140) / sizeof(double));
 			else if (ping->bath_mode == 6)
-				angles_simrad = angles_EM12DP_128;
+				angles_simrad = angles_EM12DP_128, n_angles_simrad = (int)(sizeof(angles_EM12DP_128) / sizeof(double));
 			else if (ping->bath_mode == 7)
-				angles_simrad = angles_EM12DP_114;
+				angles_simrad = angles_EM12DP_114, n_angles_simrad = (int)(sizeof(angles_EM12DP_114) / sizeof(double));
 			else if (ping->bath_mode == 8)
-				angles_simrad = angles_EM12DP_98;
+				angles_simrad = angles_EM12DP_98, n_angles_simrad = (int)(sizeof(angles_EM12DP_98) / sizeof(double));
 		}
 		else if (store->sonar == MBSYS_SIMRAD_EM12D && ping->swath_id == EM_SWATH_STARBOARD) {
 			if (ping->bath_mode == 1)
-				angles_simrad = angles_EM12DS_ISO_ANG_SHALLOW;
+				angles_simrad = angles_EM12DS_ISO_ANG_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12DS_ISO_ANG_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 2)
-				angles_simrad = angles_EM12DS_ISO_ANG_DEEP;
+				angles_simrad = angles_EM12DS_ISO_ANG_DEEP, n_angles_simrad = (int)(sizeof(angles_EM12DS_ISO_ANG_DEEP) / sizeof(double));
 			else if (ping->bath_mode == 3)
-				angles_simrad = angles_EM12DS_SHALLOW;
+				angles_simrad = angles_EM12DS_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12DS_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 4)
-				angles_simrad = angles_EM12DS_150;
+				angles_simrad = angles_EM12DS_150, n_angles_simrad = (int)(sizeof(angles_EM12DS_150) / sizeof(double));
 			else if (ping->bath_mode == 5)
-				angles_simrad = angles_EM12DS_140;
+				angles_simrad = angles_EM12DS_140, n_angles_simrad = (int)(sizeof(angles_EM12DS_140) / sizeof(double));
 			else if (ping->bath_mode == 6)
-				angles_simrad = angles_EM12DS_128;
+				angles_simrad = angles_EM12DS_128, n_angles_simrad = (int)(sizeof(angles_EM12DS_128) / sizeof(double));
 			else if (ping->bath_mode == 7)
-				angles_simrad = angles_EM12DS_114;
+				angles_simrad = angles_EM12DS_114, n_angles_simrad = (int)(sizeof(angles_EM12DS_114) / sizeof(double));
 			else if (ping->bath_mode == 8)
-				angles_simrad = angles_EM12DS_98;
+				angles_simrad = angles_EM12DS_98, n_angles_simrad = (int)(sizeof(angles_EM12DS_98) / sizeof(double));
 		}
 		else if (store->sonar == MBSYS_SIMRAD_EM121) {
-			angles_simrad = angles_EM121_GUESS;
+			angles_simrad = angles_EM121_GUESS, n_angles_simrad = (int)(sizeof(angles_EM121_GUESS) / sizeof(double));
 		}
 
 		double ttscale;
@@ -1555,19 +1571,29 @@ int mbsys_simrad_ttimes(int verbose, void *mbio_ptr, void *store_ptr, int *kind,
 				istep = 1;
 			else if (ping->bath_mode == 13 && abs(ping->bath_acrosstrack[31]) < abs(ping->bath_acrosstrack[30]))
 				istep = 1;
-			else if (abs(ping->bath_acrosstrack[*nbeams / 2 - 1]) < abs(ping->bath_acrosstrack[*nbeams / 2]))
+			else if (*nbeams > 1 && abs(ping->bath_acrosstrack[*nbeams / 2 - 1]) < abs(ping->bath_acrosstrack[*nbeams / 2]))
 				istep = 1;
 			else
 				istep = 0;
 		}
 
+		/* the angle table must exist and cover every beam: interleaved
+		    EM1000 modes use two table entries per beam */
+		const int n_angles_needed =
+		    (store->sonar == MBSYS_SIMRAD_EM1000 && (ping->bath_mode == 13 || interleave)) ? 2 * (*nbeams) : *nbeams;
+		if (angles_simrad == NULL || n_angles_simrad < n_angles_needed) {
+			status = MB_FAILURE;
+			*error = MB_ERROR_BAD_DATA;
+		}
+
 		/* get travel times and angles */
-		for (int i = 0; i < *nbeams; i++) {
+		for (int i = 0; status == MB_SUCCESS && i < *nbeams; i++) {
 			ttimes[i] = ttscale * ping->tt[i];
 			const double alpha = 0.01 * ping->pitch;
 			double beta;
 			if (store->sonar == MBSYS_SIMRAD_EM1000 && ping->bath_mode == 13) {
-				beta = 90.0 - angles_simrad[*nbeams - 1 - (2 * i + istep)];
+				/* mirror of mode 12: walk the whole interleaved table backwards */
+				beta = 90.0 - angles_simrad[n_angles_simrad - 1 - (2 * i + istep)];
 			} else if (store->sonar == MBSYS_SIMRAD_EM1000 && interleave) {
 				beta = 90.0 + angles_simrad[2 * i + istep];
 			// } else if (store->sonar == MBSYS_SIMRAD_EM1000) {
@@ -2561,97 +2587,99 @@ int mbsys_simrad_makess(int verbose, void *mbio_ptr, void *store_ptr, int pixel_
 
 		/* get angles */
 		bool interleave = false;
-		double *angles_simrad;
+		/* angle table for this sonar and mode (NULL if none is known) */
+		double *angles_simrad = NULL;
+		int n_angles_simrad = 0;
 		if (store->sonar == MBSYS_SIMRAD_EM1000) {
 			if (ping->bath_mode == 1) {
-				angles_simrad = angles_EM1000_ISO_ANG_60_2_MS_48_FAIS;
+				angles_simrad = angles_EM1000_ISO_ANG_60_2_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_ISO_ANG_60_2_MS_48_FAIS) / sizeof(double));
 				interleave = false;
 			} else if (ping->bath_mode == 2) {
-				angles_simrad = angles_EM1000_ISO_ANG_120_07_MS_48_FAIS;
+				angles_simrad = angles_EM1000_ISO_ANG_120_07_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_ISO_ANG_120_07_MS_48_FAIS) / sizeof(double));
 				interleave = true;
 			} else if (ping->bath_mode == 3) {
-				angles_simrad = angles_EM1000_ISO_ANG_150_02_MS_60_FAIS;
+				angles_simrad = angles_EM1000_ISO_ANG_150_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_ISO_ANG_150_02_MS_60_FAIS) / sizeof(double));
 				interleave = true;
 			} else if (ping->bath_mode == 4) {
-				angles_simrad = angles_EM1000_CHANNEL_02_MS_60_FAIS;
+				angles_simrad = angles_EM1000_CHANNEL_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_CHANNEL_02_MS_60_FAIS) / sizeof(double));
 				interleave = true;
 			} else if (ping->bath_mode == 5) {
-				angles_simrad = angles_EM1000_150_02_MS_60_FAIS;
+				angles_simrad = angles_EM1000_150_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_150_02_MS_60_FAIS) / sizeof(double));
 				interleave = true;
 			} else if (ping->bath_mode == 6) {
-				angles_simrad = angles_EM1000_140_02_MS_60_FAIS;
+				angles_simrad = angles_EM1000_140_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_140_02_MS_60_FAIS) / sizeof(double));
 				interleave = true;
 			} else if (ping->bath_mode == 7) {
-				angles_simrad = angles_EM1000_128_02_MS_60_FAIS;
+				angles_simrad = angles_EM1000_128_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_128_02_MS_60_FAIS) / sizeof(double));
 				interleave = true;
 			} else if (ping->bath_mode == 8) {
-				angles_simrad = angles_EM1000_120_07_MS_48_FAIS;
+				angles_simrad = angles_EM1000_120_07_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_120_07_MS_48_FAIS) / sizeof(double));
 				interleave = true;
 			} else if (ping->bath_mode == 9) {
-				angles_simrad = angles_EM1000_104_07_MS_48_FAIS;
+				angles_simrad = angles_EM1000_104_07_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_104_07_MS_48_FAIS) / sizeof(double));
 				interleave = true;
 			} else if (ping->bath_mode == 10) {
-				angles_simrad = angles_EM1000_88_07_MS_48_FAIS;
+				angles_simrad = angles_EM1000_88_07_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_88_07_MS_48_FAIS) / sizeof(double));
 				interleave = true;
 			} else if (ping->bath_mode == 11) {
-				angles_simrad = angles_EM1000_70_2_MS_48_FAIS;
+				angles_simrad = angles_EM1000_70_2_MS_48_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_70_2_MS_48_FAIS) / sizeof(double));
 				interleave = false;
 			} else if (ping->bath_mode == 12) {
-				angles_simrad = angles_EM1000_BERGE_02_MS_60_FAIS;
+				angles_simrad = angles_EM1000_BERGE_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_BERGE_02_MS_60_FAIS) / sizeof(double));
 				interleave = true;
 			} else if (ping->bath_mode == 13) {
-				angles_simrad = angles_EM1000_BERGE_02_MS_60_FAIS;
+				angles_simrad = angles_EM1000_BERGE_02_MS_60_FAIS, n_angles_simrad = (int)(sizeof(angles_EM1000_BERGE_02_MS_60_FAIS) / sizeof(double));
 				interleave = true;
 			}
 		} else if (store->sonar == MBSYS_SIMRAD_EM12S) {
 			if (ping->bath_mode == 1)
-				angles_simrad = angles_EM12S_ISO_ANG_SHALLOW;
+				angles_simrad = angles_EM12S_ISO_ANG_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12S_ISO_ANG_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 2)
-				angles_simrad = angles_EM12S_ISO_ANG_DEEP;
+				angles_simrad = angles_EM12S_ISO_ANG_DEEP, n_angles_simrad = (int)(sizeof(angles_EM12S_ISO_ANG_DEEP) / sizeof(double));
 			else if (ping->bath_mode == 3)
-				angles_simrad = angles_EM12S_SHALLOW;
+				angles_simrad = angles_EM12S_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12S_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 4)
-				angles_simrad = angles_EM12S_120;
+				angles_simrad = angles_EM12S_120, n_angles_simrad = (int)(sizeof(angles_EM12S_120) / sizeof(double));
 			else if (ping->bath_mode == 5)
-				angles_simrad = angles_EM12S_105;
+				angles_simrad = angles_EM12S_105, n_angles_simrad = (int)(sizeof(angles_EM12S_105) / sizeof(double));
 			else if (ping->bath_mode == 6)
-				angles_simrad = angles_EM12S_90;
+				angles_simrad = angles_EM12S_90, n_angles_simrad = (int)(sizeof(angles_EM12S_90) / sizeof(double));
 		} else if (store->sonar == MBSYS_SIMRAD_EM12D && ping->swath_id == EM_SWATH_PORT) {
 			if (ping->bath_mode == 1)
-				angles_simrad = angles_EM12DP_ISO_ANG_SHALLOW;
+				angles_simrad = angles_EM12DP_ISO_ANG_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12DP_ISO_ANG_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 2)
-				angles_simrad = angles_EM12DP_ISO_ANG_DEEP;
+				angles_simrad = angles_EM12DP_ISO_ANG_DEEP, n_angles_simrad = (int)(sizeof(angles_EM12DP_ISO_ANG_DEEP) / sizeof(double));
 			else if (ping->bath_mode == 3)
-				angles_simrad = angles_EM12DP_SHALLOW;
+				angles_simrad = angles_EM12DP_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12DP_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 4)
-				angles_simrad = angles_EM12DP_150;
+				angles_simrad = angles_EM12DP_150, n_angles_simrad = (int)(sizeof(angles_EM12DP_150) / sizeof(double));
 			else if (ping->bath_mode == 5)
-				angles_simrad = angles_EM12DP_140;
+				angles_simrad = angles_EM12DP_140, n_angles_simrad = (int)(sizeof(angles_EM12DP_140) / sizeof(double));
 			else if (ping->bath_mode == 6)
-				angles_simrad = angles_EM12DP_128;
+				angles_simrad = angles_EM12DP_128, n_angles_simrad = (int)(sizeof(angles_EM12DP_128) / sizeof(double));
 			else if (ping->bath_mode == 7)
-				angles_simrad = angles_EM12DP_114;
+				angles_simrad = angles_EM12DP_114, n_angles_simrad = (int)(sizeof(angles_EM12DP_114) / sizeof(double));
 			else if (ping->bath_mode == 8)
-				angles_simrad = angles_EM12DP_98;
+				angles_simrad = angles_EM12DP_98, n_angles_simrad = (int)(sizeof(angles_EM12DP_98) / sizeof(double));
 		} else if (store->sonar == MBSYS_SIMRAD_EM12D && ping->swath_id == EM_SWATH_STARBOARD) {
 			if (ping->bath_mode == 1)
-				angles_simrad = angles_EM12DS_ISO_ANG_SHALLOW;
+				angles_simrad = angles_EM12DS_ISO_ANG_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12DS_ISO_ANG_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 2)
-				angles_simrad = angles_EM12DS_ISO_ANG_DEEP;
+				angles_simrad = angles_EM12DS_ISO_ANG_DEEP, n_angles_simrad = (int)(sizeof(angles_EM12DS_ISO_ANG_DEEP) / sizeof(double));
 			else if (ping->bath_mode == 3)
-				angles_simrad = angles_EM12DS_SHALLOW;
+				angles_simrad = angles_EM12DS_SHALLOW, n_angles_simrad = (int)(sizeof(angles_EM12DS_SHALLOW) / sizeof(double));
 			else if (ping->bath_mode == 4)
-				angles_simrad = angles_EM12DS_150;
+				angles_simrad = angles_EM12DS_150, n_angles_simrad = (int)(sizeof(angles_EM12DS_150) / sizeof(double));
 			else if (ping->bath_mode == 5)
-				angles_simrad = angles_EM12DS_140;
+				angles_simrad = angles_EM12DS_140, n_angles_simrad = (int)(sizeof(angles_EM12DS_140) / sizeof(double));
 			else if (ping->bath_mode == 6)
-				angles_simrad = angles_EM12DS_128;
+				angles_simrad = angles_EM12DS_128, n_angles_simrad = (int)(sizeof(angles_EM12DS_128) / sizeof(double));
 			else if (ping->bath_mode == 7)
-				angles_simrad = angles_EM12DS_114;
+				angles_simrad = angles_EM12DS_114, n_angles_simrad = (int)(sizeof(angles_EM12DS_114) / sizeof(double));
 			else if (ping->bath_mode == 8)
-				angles_simrad = angles_EM12DS_98;
+				angles_simrad = angles_EM12DS_98, n_angles_simrad = (int)(sizeof(angles_EM12DS_98) / sizeof(double));
 		} else if (store->sonar == MBSYS_SIMRAD_EM121) {
-			angles_simrad = angles_EM121_GUESS;
+			angles_simrad = angles_EM121_GUESS, n_angles_simrad = (int)(sizeof(angles_EM121_GUESS) / sizeof(double));
 		}
 
 		/* if interleaved get center beam */
@@ -2661,7 +2689,7 @@ int mbsys_simrad_makess(int verbose, void *mbio_ptr, void *store_ptr, int pixel_
 				istep = 1;
 			else if (ping->bath_mode == 13 && abs(ping->bath_acrosstrack[31]) < abs(ping->bath_acrosstrack[30]))
 				istep = 1;
-			else if (abs(ping->bath_acrosstrack[ping->beams_bath / 2 - 1]) < abs(ping->bath_acrosstrack[ping->beams_bath / 2]))
+			else if (ping->beams_bath > 1 && abs(ping->bath_acrosstrack[ping->beams_bath / 2 - 1]) < abs(ping->bath_acrosstrack[ping->beams_bath / 2]))
 				istep = 1;
 			else
 				istep = 0;
@@ -2701,7 +2729,23 @@ int mbsys_simrad_makess(int verbose, void *mbio_ptr, void *store_ptr, int pixel_
 		else if (store->sonar == MBSYS_SIMRAD_EM1000) {
 			beamwidth = 2.5;
 		} else {
-			assert(false);
+			/* no beam geometry known for this sonar (EM100): the sidescan
+			    cannot be regenerated */
+			beamwidth = 0.0;
+		}
+
+		/* the angle table must exist and cover every beam */
+		const int n_angles_needed = (store->sonar == MBSYS_SIMRAD_EM1000 && (ping->bath_mode == 13 || interleave))
+		                                ? 2 * ping->beams_bath
+		                                : ping->beams_bath;
+		if (beamwidth <= 0.0 || angles_simrad == NULL || n_angles_simrad < n_angles_needed) {
+			if (verbose >= 2) {
+				fprintf(stderr, "\ndbg2  MBIO function <%s> completed\n", __func__);
+				fprintf(stderr, "dbg2       sidescan not regenerated: no beam angle table for sonar %d mode %d\n",
+				        store->sonar, ping->bath_mode);
+			}
+			*error = MB_ERROR_BAD_DATA;
+			return (MB_FAILURE);
 		}
 
 		/* get median depth */
@@ -2773,7 +2817,8 @@ int mbsys_simrad_makess(int verbose, void *mbio_ptr, void *store_ptr, int pixel_
 					const double range = sqrt(depth * depth + xtrack * xtrack);
 					double angle;
 					if (store->sonar == MBSYS_SIMRAD_EM1000 && ping->bath_mode == 13) {
-						angle = angles_simrad[ping->beams_bath - 1 - (2 * i + istep)];
+						/* mirror of mode 12: walk the whole interleaved table backwards */
+						angle = angles_simrad[n_angles_simrad - 1 - (2 * i + istep)];
 					} else if (store->sonar == MBSYS_SIMRAD_EM1000 && interleave) {
 						angle = -angles_simrad[2 * i + istep];
 					// } else if (store->sonar == MBSYS_SIMRAD_EM1000) {

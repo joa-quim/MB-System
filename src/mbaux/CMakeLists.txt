@@ -47,6 +47,12 @@ add_library(
   mb_truecont.c
   mb_zgrid.c)
 
+# GMT pulls in GDAL, whose DLL stops the C runtime flushing stdio at exit on
+# Windows; mb_exitflush_win32.c restores that for every program linking mbaux.
+if(WIN32)
+  target_sources(mbaux PRIVATE mb_exitflush_win32.c)
+endif()
+
 set(HEADERS 
     mb_aux.h)
 
@@ -64,6 +70,15 @@ if(buildGUIs)
   target_link_libraries(mbxgr GMT::GMT GDAL::GDAL mbio ${X11_LIBRARIES})
 
   install(TARGETS mbxgr DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+  find_package(Motif REQUIRED)
+  add_library(mbxmutil mb_xmutil.c)
+  set_target_properties(mbxmutil PROPERTIES VERSION "0" SOVERSION "0")
+  target_include_directories(mbxmutil PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${MOTIF_INCLUDE_DIR})
+  target_link_libraries(mbxmutil ${MOTIF_LIBRARIES} ${X11_LIBRARIES} ${X11_Xt_LIB})
+
+  install(TARGETS mbxmutil DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  install(FILES mb_xmutil.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 endif()
 
 # Windows lacks SunRPC/XDR or TIRPC/XDR, so provide an alternative library to support data formats

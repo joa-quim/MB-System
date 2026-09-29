@@ -51,6 +51,17 @@
 
 const char *HOME = "HOME";
 
+/* The home directory holding .mbio_defaults. Windows does not set HOME
+   (only some shells do), so fall back to USERPROFILE there. */
+static const char *mb_home_directory(void) {
+  const char *home = getenv(HOME);
+#ifdef _WIN32
+  if (home == NULL || home[0] == '\0')
+    home = getenv("USERPROFILE");
+#endif
+  return home;
+}
+
 /*--------------------------------------------------------------------*/
 int mb_version(int verbose, char *version_string, int *version_id, int *version_major, 
                 int *version_minor, int *version_archive, int *error) {
@@ -225,7 +236,7 @@ int mb_defaults(int verbose, int *format, int *pings, int *lonflip,
                   bounds, btime_i, etime_i, speedmin, timegap);
 
   /* set the filename */
-  const char *home_ptr = getenv(HOME);
+  const char *home_ptr = mb_home_directory();
   if (home_ptr != NULL) {
     char file[MB_PATH_MAXLINE];
     strcpy(file, home_ptr);
@@ -299,7 +310,7 @@ int mb_env(int verbose, char *psdisplay, char *imgdisplay, char *mbproject) {
   strcpy(mbproject, "none");
 
   /* set the filename */
-  const char *home_ptr = getenv(HOME);
+  const char *home_ptr = mb_home_directory();
   if (home_ptr != NULL) {
     char file[MB_PATH_MAXLINE];
     strcpy(file, home_ptr);
@@ -347,7 +358,7 @@ int mb_lonflip(int verbose, int *lonflip) {
   *lonflip = 0;
 
   /* set the filename */
-  const char *home_ptr = getenv(HOME);
+  const char *home_ptr = mb_home_directory();
   if (home_ptr != NULL) {
     char file[MB_PATH_MAXLINE];
     strcpy(file, home_ptr);
@@ -403,7 +414,7 @@ int mb_mbview_defaults(int verbose, int *primary_colortable, int *primary_colort
   *slope_magnitude = 1.0;
 
   /* set the filename */
-  const char *home_ptr = getenv(HOME);
+  const char *home_ptr = mb_home_directory();
   if (home_ptr != NULL) {
     char file[MB_PATH_MAXLINE];
     strcpy(file, home_ptr);
@@ -476,7 +487,7 @@ int mb_fbtversion(int verbose, int *fbtversion) {
   *fbtversion = 3;
 
   /* set the filename */
-  const char *home_ptr = getenv(HOME);
+  const char *home_ptr = mb_home_directory();
   if (home_ptr != NULL) {
     char file[MB_PATH_MAXLINE];
     strcpy(file, home_ptr);
@@ -527,7 +538,7 @@ int mb_uselockfiles(int verbose, bool *uselockfiles) {
   *uselockfiles = true;
 
   /* set the filename */
-  const char *home_ptr = getenv(HOME);
+  const char *home_ptr = mb_home_directory();
   if (home_ptr != NULL) {
     char file[MB_PATH_MAXLINE];
     strcpy(file, home_ptr);
@@ -576,7 +587,7 @@ int mb_fileiobuffer(int verbose, int *fileiobuffer) {
   *fileiobuffer = 0;
 
   /* set the filename */
-  const char *home_ptr = getenv(HOME);
+  const char *home_ptr = mb_home_directory();
   if (home_ptr != NULL) {
     char file[MB_PATH_MAXLINE];
     strcpy(file, home_ptr);

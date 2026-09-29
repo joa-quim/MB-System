@@ -12,7 +12,11 @@
 // Includes
 #include <stdlib.h>
 #include <stdio.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <signal.h>
 // initalizers for header-only modules
 // must be defined before any framework headers are included

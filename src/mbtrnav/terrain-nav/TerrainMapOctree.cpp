@@ -17,9 +17,17 @@
 
 #include <libgen.h>
 #include <cmath>
+#ifdef _WIN32
+#include "dirent_w.h"
+#else
 #include <dirent.h>
+#endif
 #include <fcntl.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <sys/stat.h>
 #include <fstream>
 

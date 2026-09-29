@@ -6841,6 +6841,18 @@ int mbr_rt_mbnetcdf(int verbose, void *mbio_ptr, void *store_ptr, int *error) {
   return (status);
 }
 /*--------------------------------------------------------------------*/
+/*--------------------------------------------------------------------*/
+/* Copy a fixed-width netCDF character field: the source holds srclen
+   characters with no terminator, the destination dstlen; stop at the
+   shorter width or a NUL and zero-fill the rest. */
+static void mbnetcdf_copy_field(char *dst, size_t dstlen, const char *src, size_t srclen) {
+	size_t n = 0;
+	for (; n < dstlen && n < srclen && src[n] != '\0'; n++)
+		dst[n] = src[n];
+	for (; n < dstlen; n++)
+		dst[n] = '\0';
+}
+/*--------------------------------------------------------------------*/
 int mbr_wt_mbnetcdf(int verbose, void *mbio_ptr, void *store_ptr, int *error) {
   if (verbose >= 2) {
     fprintf(stderr, "\ndbg2  MBIO function <%s> called\n", __func__);
@@ -6909,20 +6921,20 @@ int mbr_wt_mbnetcdf(int verbose, void *mbio_ptr, void *store_ptr, int *error) {
       /* figure out which comment is being passed */
       int icomment = -1;
       for (int i = 0; i < store->mbNbrHistoryRec; i++) {
-        if (strncmp(store->comment, &store->mbHistComment[i * store->mbCommentLength], MBSYS_NETCDF_COMMENTLEN) == 0) {
+        if (strncmp(store->comment, &store->mbHistComment[i * store->mbCommentLength], MIN(store->mbCommentLength, MBSYS_NETCDF_COMMENTLEN)) == 0) {
           icomment = i;
         }
       }
       if (icomment > -1 && icomment < store->mbNbrHistoryRec) {
-        strncpy(&(storelocal->mbHistAutor[(*commentwrite) * storelocal->mbNameLength]),
-                &(store->mbHistAutor[icomment * store->mbNameLength]), MBSYS_NETCDF_NAMELEN);
-        strncpy(&(storelocal->mbHistModule[(*commentwrite) * storelocal->mbNameLength]),
-                &(store->mbHistModule[icomment * store->mbNameLength]), MBSYS_NETCDF_NAMELEN);
-        strncpy(&(storelocal->mbHistComment[(*commentwrite) * storelocal->mbCommentLength]),
-                &(store->mbHistComment[icomment * store->mbCommentLength]), MBSYS_NETCDF_COMMENTLEN);
-        storelocal->mbHistDate[*commentwrite] = store->mbHistDate[icomment];
-        storelocal->mbHistTime[*commentwrite] = store->mbHistTime[icomment];
-        storelocal->mbHistCode[*commentwrite] = 1;
+        mbnetcdf_copy_field(&(storelocal->mbHistAutor[storelocal->mbNbrHistoryRec * storelocal->mbNameLength]), storelocal->mbNameLength,
+				        &(store->mbHistAutor[icomment * store->mbNameLength]), store->mbNameLength);
+        mbnetcdf_copy_field(&(storelocal->mbHistModule[storelocal->mbNbrHistoryRec * storelocal->mbNameLength]), storelocal->mbNameLength,
+				        &(store->mbHistModule[icomment * store->mbNameLength]), store->mbNameLength);
+        mbnetcdf_copy_field(&(storelocal->mbHistComment[storelocal->mbNbrHistoryRec * storelocal->mbCommentLength]), storelocal->mbCommentLength,
+				        &(store->mbHistComment[icomment * store->mbCommentLength]), store->mbCommentLength);
+        storelocal->mbHistDate[storelocal->mbNbrHistoryRec] = store->mbHistDate[icomment];
+        storelocal->mbHistTime[storelocal->mbNbrHistoryRec] = store->mbHistTime[icomment];
+        storelocal->mbHistCode[storelocal->mbNbrHistoryRec] = 1;
         storelocal->mbNbrHistoryRec++;
       }
     }
@@ -6931,14 +6943,13 @@ int mbr_wt_mbnetcdf(int verbose, void *mbio_ptr, void *store_ptr, int *error) {
     else {
       char user[256], host[256], date[32];
       status = mb_user_host_date(verbose, user, host, date, error);
-      strncpy(&(storelocal->mbHistAutor[(*commentwrite) * storelocal->mbNameLength]), user, MBSYS_NETCDF_NAMELEN);
-      strncpy(&(storelocal->mbHistModule[(*commentwrite) * storelocal->mbNameLength]), "MB-System", MBSYS_NETCDF_NAMELEN);
-      strncpy(&(storelocal->mbHistComment[(*commentwrite) * storelocal->mbCommentLength]), store->comment,
-              MBSYS_NETCDF_COMMENTLEN);
+      mbnetcdf_copy_field(&(storelocal->mbHistAutor[storelocal->mbNbrHistoryRec * storelocal->mbNameLength]), storelocal->mbNameLength, user, sizeof(user));
+      mbnetcdf_copy_field(&(storelocal->mbHistModule[storelocal->mbNbrHistoryRec * storelocal->mbNameLength]), storelocal->mbNameLength, "MB-System", sizeof("MB-System"));
+      mbnetcdf_copy_field(&(storelocal->mbHistComment[storelocal->mbNbrHistoryRec * storelocal->mbCommentLength]), storelocal->mbCommentLength, store->comment, sizeof(store->comment));
       const double time_d = (double)time((time_t *)0);
-      storelocal->mbHistDate[*commentwrite] = (int)(time_d / SECINDAY);
-      storelocal->mbHistTime[*commentwrite] = (int)(1000 * (time_d - storelocal->mbHistDate[*commentwrite] * SECINDAY));
-      storelocal->mbHistCode[*commentwrite] = 1;
+      storelocal->mbHistDate[storelocal->mbNbrHistoryRec] = (int)(time_d / SECINDAY);
+      storelocal->mbHistTime[storelocal->mbNbrHistoryRec] = (int)(1000 * (time_d - storelocal->mbHistDate[storelocal->mbNbrHistoryRec] * SECINDAY));
+      storelocal->mbHistCode[storelocal->mbNbrHistoryRec] = 1;
       storelocal->mbNbrHistoryRec++;
     }
 
@@ -12297,6 +12308,13 @@ int mbr_wt_mbnetcdf(int verbose, void *mbio_ptr, void *store_ptr, int *error) {
         *error = MB_ERROR_EOF;
       }
     }
+  }
+
+  /* a data record whose arrays were never allocated (no beams ever
+     inserted) cannot be written */
+  if (store->kind == MB_DATA_DATA && status == MB_SUCCESS && store->mbDate == NULL) {
+    status = MB_FAILURE;
+    *error = MB_ERROR_DATA_NOT_INSERTED;
   }
 
   /* now write the data */

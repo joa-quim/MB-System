@@ -569,7 +569,7 @@ static int s_log_set_seg(mlog_t *self, int16_t segno)
         #if defined(__QNX__)
         new_name=(char *)malloc(len);
         #else
-        char new_name[len];
+        char *new_name = (char*)alloca(len); /* was VLA */
         #endif
         
         memset(new_name,0,len);

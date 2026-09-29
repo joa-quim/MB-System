@@ -54,6 +54,7 @@ typedef enum {
     MB_PLATFORM_SATELLITE,
     MB_PLATFORM_MOORING,
     MB_PLATFORM_FIXED,
+    MB_PLATFORM_COUNT, // used to check if platform type values are valid
 } mb_platform_enum;
 
 #ifdef __cplusplus
@@ -107,10 +108,10 @@ const char *mb_platform_type(mb_platform_enum platform);
 #define MB_SENSOR_TIME_LATENCY_NONE 0
 #define MB_SENSOR_TIME_LATENCY_STATIC 1
 #define MB_SENSOR_TIME_LATENCY_MODEL 2
-#define MB_SENSOR_POSITION_OFFSET_NONE 0
-#define MB_SENSOR_POSITION_OFFSET_STATIC 1
-#define MB_SENSOR_ATTITUDE_OFFSET_NONE 0
-#define MB_SENSOR_ATTITUDE_OFFSET_STATIC 1
+#define MB_SENSOR_POSITION_OFFSET_NONE false
+#define MB_SENSOR_POSITION_OFFSET_STATIC true
+#define MB_SENSOR_ATTITUDE_OFFSET_NONE false
+#define MB_SENSOR_ATTITUDE_OFFSET_STATIC true
 
 /* survey platform sensor type defines */
 #define NUM_MB_SENSOR_TYPES 22
@@ -137,9 +138,23 @@ const char *mb_platform_type(mb_platform_enum platform);
 #define MB_SENSOR_TYPE_PRESSURE 111
 #define MB_SENSOR_TYPE_SOUNDSPEED 120
 
-/* These arrays are defined in mb_platform.c and extern elsewhere */
+/* These arrays are defined in mb_platform.c and extern elsewhere.
+   CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS only auto-exports functions, not data;
+   these need an explicit dllexport/dllimport to cross the mbio.dll boundary. */
+#if defined(_WIN32) && defined(mbio_EXPORTS)
+#define MB_SENSOR_TYPE_API __declspec(dllexport)
+#elif defined(_WIN32)
+#define MB_SENSOR_TYPE_API __declspec(dllimport)
+#else
+#define MB_SENSOR_TYPE_API
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifdef MB_NEED_SENSOR_TYPE
-const int mb_sensor_type_id[] = {
+MB_SENSOR_TYPE_API const int mb_sensor_type_id[] = {
     MB_SENSOR_TYPE_NONE,                    // 0
     MB_SENSOR_TYPE_SONAR_ECHOSOUNDER,       // 10
     MB_SENSOR_TYPE_SONAR_MULTIECHOSOUNDER,  // 11
@@ -163,7 +178,7 @@ const int mb_sensor_type_id[] = {
     MB_SENSOR_TYPE_PRESSURE,                // 111
     MB_SENSOR_TYPE_SOUNDSPEED,              // 120
 };
-const char *mb_sensor_type_string[] = {"Unknown sensor type",
+MB_SENSOR_TYPE_API const char *mb_sensor_type_string[] = {"Unknown sensor type",
                                         "Sonar echosounder",
                                         "Sonar multiechosounder",
                                         "Sonar sidescan",
@@ -186,9 +201,13 @@ const char *mb_sensor_type_string[] = {"Unknown sensor type",
                                         "Pressure",
                                         "Soundspeed"};
 #else
-extern const int mb_sensor_type_id[];
-extern const char *mb_sensor_type_string[];
+MB_SENSOR_TYPE_API extern const int mb_sensor_type_id[];
+MB_SENSOR_TYPE_API extern const char *mb_sensor_type_string[];
 #endif  // MB_NEED_SENSOR_TYPE
+
+#ifdef __cplusplus
+}  /* extern "C" */
+#endif
 
 /* survey platform sensor capability bitmask defines */
 #define MB_SENSOR_CAPABILITY1_NONE 0x00000000          // All bits = 0
@@ -329,12 +348,10 @@ extern const char *mb_sensor_type_string[];
 
 /* survey platform definition structures */
 struct mb_sensor_offset_struct {
-  int position_offset_mode;
   double position_offset_x;
   double position_offset_y;
   double position_offset_z;
 
-  int attitude_offset_mode;
   double attitude_offset_heading;
   double attitude_offset_roll;
   double attitude_offset_pitch;
@@ -361,9 +378,13 @@ struct mb_sensor_struct {
   int num_time_latency_alloc;
   double *time_latency_time_d;
   double *time_latency_value;
+
+  bool heading_flipsign_heading;
+  bool attitude_flipsign_roll;
+  bool attitude_flipsign_pitch;
 };
 struct mb_platform_struct {
-  int type;
+  mb_platform_enum type;
   mb_longname name;
   mb_longname organization;
   mb_longname documentation_url;
@@ -527,7 +548,6 @@ struct mb_io_struct {
   void *xdrs2;                 /* XDR stream handle #2 */
   void *xdrs3;                 /* XDR stream handle #2 */
 
-
   /* file indexing (used by some formats) */
   unsigned int num_indextable;
   unsigned int num_indextable_alloc;
@@ -621,6 +641,25 @@ struct mb_io_struct {
   bool projection_initialized;
   mb_name projection_id;
   void *pjptr;
+  
+  /* preprocessing parameter structure used by some formats */
+  bool preprocess_initialized;
+  struct mb_preprocess_struct preprocess_pars;
+
+  /* variables for embedded platform descriptions that can be used by proprocess functions */
+  bool platform_initialized;
+  void *platformptr;
+
+  /* scratch arrays used by mb_preprocess_generic() (the fallback preprocessing
+     applied when no format-specific mb_io_preprocess function is registered) */
+  char *generic_preprocess_beamflag;
+  double *generic_preprocess_bath;
+  double *generic_preprocess_amp;
+  double *generic_preprocess_bathacrosstrack;
+  double *generic_preprocess_bathalongtrack;
+  double *generic_preprocess_ss;
+  double *generic_preprocess_ssacrosstrack;
+  double *generic_preprocess_ssalongtrack;
 
   /* variables for interpolating/extrapolating navigation
       for formats containing nav as asynchronous
@@ -659,9 +698,6 @@ struct mb_io_struct {
   int naltitude;
   double altitude_time_d[MB_ASYNCH_SAVE_MAX];
   double altitude_altitude[MB_ASYNCH_SAVE_MAX];
-
-  /* preprocessing parameter structure used by some formats */
-  struct mb_preprocess_struct preprocess_pars;
 
   /* variables for accumulating MBIO notices */
   int notice_list[MB_NOTICE_MAX];

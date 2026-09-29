@@ -39,7 +39,11 @@
 #include <getopt.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <limits>
 
 #include "mb_aux.h"
@@ -144,15 +148,16 @@ int get_segy_limits(int verbose, char *segyfile, int *tracemode, int *tracestart
 
 	double delay0 = 0.0;
 	double delaydel = 0.0;
-	int shot0;
-	int shot1;
-	int shottrace0;
-	int shottrace1;
-	int rp0;
-	int rp1;
+	/* zero: without a readable .sinf file nothing below sets them */
+	int shot0 = 0;
+	int shot1 = 0;
+	int shottrace0 = 0;
+	int shottrace1 = 0;
+	int rp0 = 0;
+	int rp1 = 0;
 	int rpdel = 0;
-	int rptrace0;
-	int rptrace1;
+	int rptrace0 = 0;
+	int rptrace1 = 0;
 
 	/* read sinf file if possible */
 	snprintf(sinffile, sizeof(sinffile), "%s.sinf", segyfile);

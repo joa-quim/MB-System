@@ -67,7 +67,11 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <lcm/lcm-cpp.hpp>
 #include "LcmIF.h"
 

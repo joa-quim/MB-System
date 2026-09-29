@@ -16,7 +16,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include "BinaryFile.h"
 #include "Exception.h"
 #include "ourTypes.h"

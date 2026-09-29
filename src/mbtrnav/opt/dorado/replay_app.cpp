@@ -16,10 +16,18 @@
 /****************************************************************************/
 
 #include <sys/stat.h>
+#ifdef _WIN32
+#include "dirent_w.h"
+#else
 #include <dirent.h>
+#endif
 #include <sys/types.h>
 #include <sys/socket.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/time.h>

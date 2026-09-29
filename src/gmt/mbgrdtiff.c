@@ -1071,7 +1071,7 @@ int GMT_mbgrdtiff(void *V_API, int mode, void *args) {
 	}
 
 	/* open TIFF file */
-	if ((tfp = fopen(Ctrl->O.file, "w")) == NULL) {
+	if ((tfp = fopen(Ctrl->O.file, "wb")) == NULL) {
 		API->error++;
 		return (API->error);
 	}

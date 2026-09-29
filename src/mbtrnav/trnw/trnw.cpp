@@ -66,7 +66,11 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 
 #include "trnw.h"
 #include "TerrainNav.h"
@@ -821,7 +825,7 @@ void commst_initialize(wtnav_t *self, wcommst_t *msg)
         if(NULL!=ct && NULL!=trn){
 
             int errors=0;
-            int BUF_SIZE=512;
+            const const int BUF_SIZE=512;   /* const so the arrays below are not VLAs */   /* const so the arrays below are not VLAs */
             char mapname[BUF_SIZE];
             char cfgname[BUF_SIZE];
             char particlename[BUF_SIZE];

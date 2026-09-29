@@ -1,0 +1,171 @@
+#!/usr/bin/env julia
+#--------------------------------------------------------------------
+#    The MB-system:  mbjl_histplot
+#
+#    Copyright (c) 2026 by
+#    David W. Caress (caress@mbari.org)
+#      Monterey Bay Aquarium Research Institute
+#      Moss Landing, California, USA
+#
+#    See README.md file for copying and redistribution conditions.
+#--------------------------------------------------------------------
+#
+# Purpose:
+#   Julia port of src/macros/mbpy_histplot, the Python/PyGMT-era
+#   replacement for the Perl macro mbm_histplot: reads
+#   a one-column data file and generates a GMT **modern mode**
+#   shellscript that plots a frequency histogram of it (via `gmt
+#   histogram`), following the same page-layout and projection-fitting
+#   conventions as mbm_histplot itself. See src/macros/julia/mbjl_
+#   {layout,histplot_script}.jl for the underlying port of that logic;
+#   mbjl_layout is shared with mbjl_grdplot and mbjl_grd3dplot.
+#
+# Usage:
+#   mbjl_histplot -I data.txt -O plot [options...]
+#   mbjl_histplot --input data.txt --output plot --title "My Histogram" \
+#       --cell-width 0.5 --fill orange
+#
+
+# Locate the sibling mbjl_* modules: they sit alongside this script
+# (both in the source tree's src/macros/julia and once installed), but
+# also try a julia/ subdirectory so a copy placed one level up still
+# finds them.
+let here = dirname(realpath(@__FILE__))
+    for candidate in (here, joinpath(here, "julia"))
+        if isfile(joinpath(candidate, "mbjl_histplot_script.jl"))
+            include(joinpath(candidate, "mbjl_util.jl"))
+            include(joinpath(candidate, "mbjl_layout.jl"))
+            include(joinpath(candidate, "mbjl_histplot_script.jl"))
+            break
+        end
+    end
+end
+
+using .MbjlUtil
+import .MbjlLayout as layout
+import .MbjlHistplotScript as script
+
+
+function build_arg_parser()::ArgParser
+    p = ArgParser(
+        prog = "mbjl_histplot",
+        description = "Generate a GMT modern-mode frequency-histogram plotting script for a " *
+                      "one-column data file (Julia port of the Python/PyGMT-era replacement for mbm_histplot).",
+    )
+
+    g = add_argument_group(p, "input/output")
+    add_argument!(g, "-I", "--input", required = true, metavar = "FILE", help = "input data file, one value per line")
+    add_argument!(g, "-O", "--output", metavar = "ROOT", help = "output root name [default: the input file's own name]")
+    add_argument!(g, "--format", default = "pdf", metavar = "FMT", help = "output format: pdf, png, ps, jpg, tif, eps, ... [pdf]")
+    add_argument!(g, "--title", metavar = "TEXT", help = "plot title [default: \"Frequency Histogram of <input>\"]")
+    add_argument!(g, "--xlabel", default = " ", metavar = "TEXT", help = "x-axis label [none]")
+    add_argument!(g, "--ylabel", default = "Frequency %", metavar = "TEXT", help = "y-axis label [\"Frequency %%\"]")
+    add_argument!(g, "--dpi", type = Int, metavar = "DPI", help = "final raster's resolution")
+    add_argument!(g, "-X", "--execute", action = :store_true, help = "run the generated script immediately")
+    add_argument!(g, "-V", "--verbose", action = :store_true, help = "print the generated script path and a brief summary")
+
+    g = add_argument_group(p, "histogram")
+    add_argument!(g, "-C", "--cell-width", metavar = "[XMIN/XMAX/]WIDTH",
+                  help = "bin width, or \"xmin/xmax/width\" to also override the data's own x bounds " *
+                         "[default width: (xmax-xmin)/10]")
+    add_argument!(g, "-G", "--fill", default = "gray", metavar = "COLOR", help = "bar fill color, or \"N\" for no fill [gray]")
+    add_argument!(g, "-W", "--pen", default = "1p", metavar = "PEN", help = "bar outline pen [1p]")
+
+    g = add_argument_group(p, "region / projection / page")
+    add_argument!(g, "-R", "--region", metavar = "XMIN/XMAX/YMIN/YMAX", help = "plot region [default: data x range, computed y range]")
+    add_argument!(g, "-J", "--projection", metavar = "SPEC", help = "GMT projection/scale spec, e.g. \"x0.02\" [default: auto-fit linear]")
+    add_argument!(g, "-P", "--pagesize", default = "a", metavar = "SIZE", help = "page size code (a, b, c, ... a4, ...) [a]")
+    orient = add_mutually_exclusive_group(p)
+    add_argument!(orient, "--portrait", action = :store_const, dest = "orientation", const_ = 1, help = "force portrait orientation")
+    add_argument!(orient, "--landscape", action = :store_const, dest = "orientation", const_ = 2, help = "force landscape orientation")
+    add_argument!(g, "--tick-info", metavar = "SPEC", help = "raw -B basemap tick spec override")
+
+    g = add_argument_group(p, "GMT defaults")
+    add_argument!(g, "--gmt-default", action = :append, default = String[], metavar = "PARAM/VALUE", help = "override a GMT default (repeatable)")
+
+    return p
+end
+
+
+_nonempty(s) = s !== nothing && !isempty(s)
+
+function main(argv = ARGS)::Int
+    args = parse_args(build_arg_parser(), argv)
+
+    root = _nonempty(args[:output]) ? args[:output] : replace(basename(args[:input]), r"\.[A-Za-z0-9]+$" => "")
+
+    xmind, xmaxd, count = script.scan_data_bounds(args[:input])
+
+    xmin, xmax = xmind, xmaxd
+    ymin = ymax = nothing
+    if _nonempty(args[:region])
+        parts = split(args[:region], "/")
+        if length(parts) == 4
+            xmin, xmax, ymin, ymax = (pyfloat(v) for v in parts)
+        end
+    end
+
+    cellwidth = nothing
+    if _nonempty(args[:cell_width])
+        parts = split(args[:cell_width], "/")
+        if length(parts) == 3
+            xmin, xmax, cellwidth = pyfloat(parts[1]), pyfloat(parts[2]), pyfloat(parts[3])
+        else
+            cellwidth = pyfloat(parts[1])
+        end
+    end
+    if cellwidth === nothing
+        cellwidth = (xmax - xmin) / 10.0
+    end
+
+    # port of mbm_histplot lines ~322-330: pad the cell grid by 5 extra
+    # cells and align it to a cellwidth-aligned origin below xmin.
+    #
+    # NOTE: mbm_histplot applies this padding to xmin/xmax unconditionally
+    # (even when a full 4-field -R was given), but only lets it affect the
+    # plot's own -R when -R was *not* given -- when -R was given, the plot
+    # region keeps the user's raw xmin/xmax while the -T bin spec silently
+    # uses the padded ones instead, so the two can disagree. This port
+    # applies the padding consistently to both the plot region and the
+    # bin spec instead of reproducing that inconsistency.
+    ncell = floor(Int, (xmax - xmin) / cellwidth) + 5
+    nxmin = floor(Int, xmin / cellwidth) - 1
+    xmin = (nxmin - 0.5) * cellwidth
+    xmax = xmin + cellwidth * ncell
+
+    if ymin === nothing || ymax === nothing
+        ymin = 0.0
+        ymax = script.compute_histogram_yrange(args[:input], xmin, cellwidth, ncell, count)
+    end
+
+    lay = script.compute_layout_hist(
+        xmin, xmax, ymin, ymax; pagesize = args[:pagesize], map_scale = args[:projection],
+        orientation = something(args[:orientation], 0), xlabel = args[:xlabel], ylabel = args[:ylabel],
+        tick_info = args[:tick_info],
+    )
+
+    opts = script.ScriptOptionsHist(
+        file_data = args[:input], root = root, layout = lay,
+        xmin = xmin, xmax = xmax, cellwidth = cellwidth,
+        output_format = args[:format], title = args[:title], dpi = args[:dpi],
+        fill = args[:fill], pen = args[:pen], gmt_defs = collect(String, args[:gmt_default]),
+    )
+
+    script_path = "$(root).sh"
+    script.generate_and_write_hist(opts, script_path)
+
+    if args[:verbose]
+        println("Generated $(script_path) (output: $(root).$(args[:format]))")
+    end
+
+    if args[:execute]
+        run(`bash $script_path`)
+    end
+
+    return 0
+end
+
+
+if abspath(PROGRAM_FILE) == abspath(@__FILE__)
+    exit(main())
+end

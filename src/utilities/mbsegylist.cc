@@ -37,8 +37,13 @@
 #include <cstring>
 #include <ctime>
 #include <getopt.h>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include <limits>
 
 #include "mb_define.h"
@@ -386,6 +391,12 @@ int main(int argc, char **argv) {
 		}
 	}
 
+#ifdef _WIN32
+	/* binary output must bypass the C runtime's CRLF translation */
+	if (!ascii)
+		_setmode(_fileno(stdout), _O_BINARY);
+#endif
+
 	/* set depth scaling */
 	const double bathy_scale = bathy_in_feet ? 1.0 / 0.3048 : 1.0;
 
@@ -689,22 +700,22 @@ int main(int argc, char **argv) {
 					}
 					break;
 				case 'U': /* unix time in seconds since 1/1/70 00:00:00 */
-					time_u = (int)time_d;
+					time_u = (time_t)time_d;
 					if (ascii)
-						printf("%ld", time_u);
+						printf("%lld", (long long)time_u);
 					else {
 						const double b = time_u;
 						fwrite(&b, sizeof(double), 1, stdout);
 					}
 					break;
 				case 'u': /* time in seconds since first record */
-					time_u = (int)time_d;
+					time_u = (time_t)time_d;
 					if (first_u) {
 						time_u_ref = time_u;
 						first_u = false;
 					}
 					if (ascii)
-						printf("%ld", time_u - time_u_ref);
+						printf("%lld", (long long)(time_u - time_u_ref));
 					else {
 						const double b = time_u - time_u_ref;
 						fwrite(&b, sizeof(double), 1, stdout);

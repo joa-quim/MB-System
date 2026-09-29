@@ -67,7 +67,7 @@
 // Includes 
 /////////////////////////
 
-#if defined (__UNIX__) || defined (__unix__) || defined (__APPLE__)
+#if defined (__UNIX__) || defined (__unix__) || defined (__APPLE__) || defined (_WIN32)
 #include "netif.h"
 #include "trnw.h"
 #include "msocket.h"
@@ -119,7 +119,7 @@
 // Type Definitions
 /////////////////////////
 
-#if defined (__UNIX__) || defined (__unix__) || defined (__APPLE__)
+#if defined (__UNIX__) || defined (__unix__) || defined (__APPLE__) || defined (_WIN32)
 // resource bundle points to
 // objects/data needed by message handlers, etc.
 typedef struct trnif_res_s{
@@ -159,7 +159,7 @@ trnuif_msg_t *trnu_msg_pd(const char *mid, int n, double *darr);
 trnuif_msg_t *trnu_msg_d3(const char *mid, double d0, double d1, double d2);
 trnuif_msg_t *trnu_msg_d6(const char *mid, double d0, double d1, double d2, double d3, double d4, double d5);
 
-#if defined (__UNIX__) || defined (__unix__) || defined (__APPLE__)
+#if defined (__UNIX__) || defined (__unix__) || defined (__APPLE__) || defined (_WIN32)
     int trnif_msg_read_ct(byte **pdest, uint32_t *len, netif_t *self, msock_connection_t *peer, int *errout);
     int trnif_msg_handle_ct(void *msg, netif_t *self, msock_connection_t *peer, int *errout);
 

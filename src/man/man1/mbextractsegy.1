@@ -1,4 +1,4 @@
-.TH mbextractsegy 1 "10 March 2024" "MB-System 5.0" "MB-System 5.0"
+.TH mbextractsegy 1 "7 September 2026" "MB-System 5.0" "MB-System 5.0"
 .SH NAME
 \fBmbextractsegy\fP \- extracts subbottom profiler, center beam reflection,
 or seismic reflection data from swath data supported by MB-System and
@@ -8,11 +8,39 @@ rewrites it as a SEGY file.
 Version 5.0
 
 .SH SYNOPSIS
-\fBmbextractsegy\fP [\fB\-B\fP\fIyr/mo/da/hr/mn/sc\fP \fB\-E\fP\fIyr/mo/da/hr/mn/sc\fP
-\fB\-F\fP\fIformat\fP \fB\-I\fP\fIfile\fP \fB\-J\fP\fIxscale/yscale/maxwidth\fP
-\fB\-L\fP\fIstartline/lineroot\fP \fB\-M \-O\fP\fIsegyfile\fP \fB\-Q\fP\fIroutetimefile\fP
-\fB\-R\fP\fIroutefile\fP \fB\-S\fP\fIsampleformat\fP
-\fB\-T\fP\fItimeshift\fP \fB\-U\fP\fIrangethreshold\fP \fB\-Z\fP\fIplotmax\fP \fB\-V \-H\fP]
+\fBmbextractsegy\fP
+.br
+[--begin-time=yr/mo/da/hr/mn/sc/us {-Byr/mo/da/hr/mn/sc/us}
+.br
+--check-route-bearing {-M}
+.br
+--end-time=yr/mo/da/hr/mn/sc/us {-Eyr/mo/da/hr/mn/sc/us}
+.br
+--format=format {-Fformat}
+.br
+--help {-H}
+.br
+--input=file {-Ifile}
+.br
+--output=segyfile {-Osegyfile}
+.br
+--plot-max=plotmax {-Zplotmax}
+.br
+--plot-scale=xscale/yscale/maxwidth {-Jxscale/yscale/maxwidth}
+.br
+--range-threshold=rangethreshold {-Urangethreshold}
+.br
+--route=routefile {-Rroutefile}
+.br
+--sample-format=sampleformat {-Ssampleformat}
+.br
+--start-line=startline/lineroot {-Lstartline/lineroot}
+.br
+--time-list=timelistfile {-Qtimelistfile}
+.br
+--time-shift=timeshift {-Ttimeshift}
+.br
+--verbose {-V}]
 
 .SH DESCRIPTION
 \fBMBextractsegy\fP is a utility for reading a swath sonar data file
@@ -68,9 +96,7 @@ Christian do Santos Ferreira
 
 .SH OPTIONS
 .TP
-.B \-B
-\fIyr/mo/da/hr/mn/sc\fP
-.br
+.B \-\-begin\-time=yr/mo/da/hr/mn/sc/us \-Byr/mo/da/hr/mn/sc/us
 This option sets the starting time for data allowed in the input data.
 The \fB\-E\fP option sets the ending time for data. If the
 starting time is before the ending time, then any data
@@ -80,9 +106,8 @@ after the ending time, then any data between the ending
 and starting time will be ignored. This scheme allows time
 windowing both inside and outside a specified interval.
 Default: \fIyr/mo/da/hr/mn/sc\fP = 1962/2/21/10/30/0.
-.B \-E
-\fIyr/mo/da/hr/mn/sc\fP
-.br
+.TP
+.B \-\-end\-time=yr/mo/da/hr/mn/sc/us \-Eyr/mo/da/hr/mn/sc/us
 This option sets the ending time for data allowed in the input data.
 The \fB\-B\fP option sets the starting time for data. If the
 starting time is before the ending time, then any data
@@ -93,9 +118,7 @@ and starting time will be ignored. This scheme allows time
 windowing both inside and outside a specified interval.
 Default: \fIyr/mo/da/hr/mn/sc\fP = 2062/2/21/10/30/0.
 .TP
-.B \-F
-\fIformat\fP
-.br
+.B \-\-format=format \-Fformat
 Sets the data format used if the input is read from stdin
 or from a file. If \fIformat\fP < 0, then the input file specified
 with the \fB\-I\fP option will actually contain a list of input swath sonar
@@ -106,13 +129,11 @@ currently supported by \fBMBIO\fP and their identifier values
 is given in the \fBMBIO\fP manual page. The default format is set
 using the program \fBmbdefaults\fP..
 .TP
-.B \-H
+.B \-\-help \-H
 This "help" flag cause the program to print out a description
 of its operation and then exit immediately.
 .TP
-.B \-I
-\fIinfile\fP
-.br
+.B \-\-input=file \-Ifile
 Sets the input file path. If \fIformat\fP > 0 (set with the
 \fB\-f\fP option or \fBmbdefaults\fP) then the swath sonar data contained in \fIinfile\fP
 is read and processed. If \fIformat\fP < 0, then \fIinfile\fP
@@ -129,9 +150,7 @@ format supported by \fBMBIO\fP. A list of the swath sonar data formats
 currently supported by \fBMBIO\fP and their identifier values
 is given in the \fBMBIO\fP manual page. Default: \fIinfile\fP = "stdin".
 .TP
-.B \-J
-\fIxscale/yscale/maxwidth\fP
-.br
+.B \-\-plot\-scale=xscale/yscale/maxwidth \-Jxscale/yscale/maxwidth
 Sets the scale of the default section plots. The \fIxscale\fP value is
 in inches per shot, and the \fIyscale\fP value is in inches per second.
 The \fImaxwidth\fP value sets the maximum plot width in inches. If
@@ -139,29 +158,23 @@ The \fImaxwidth\fP value sets the maximum plot width in inches. If
 then the section will be broken up into multiple plots.
 Default: \fIxscale\fP = 0.01; \fIyscale\fP = 50.0; \fImaxwidth\fP = 30.0
 .TP
-.B \-L
-\fIstartline/lineroot\fP
-.br
+.B \-\-start\-line=startline/lineroot \-Lstartline/lineroot
 This option sets the starting line number and the output filename root
 used when \fB\-R\fP is specified so that data are output according
 to planned survey lines. Default: \fIstartline\fP = 1; \fIlineroot\fP = "sbp".
 .TP
-.B \-M
-.br
+.B \-\-check\-route\-bearing \-M
 This option causes \fBmbextractsegy\fP to omit data during turns when
 extracting into line files according to a specified set of waypoints
 (\fB\-R\fP option). The traces will not be output until the heading is
 within 15 degrees of the next survey line's bearing.
 .TP
-.B \-O
-.br
+.B \-\-output=segyfile \-Osegyfile
 This option sets the output SEGY file path. If neither \fB\-O\fP nore \fB\-R\fP are invoked,
 the output SEGY filename (or files if a datalist is being processed) will
 be the input swath filename with ".segy" appended.
 .TP
-.B \-Q
-\fIroutetimefile\fP
-.br
+.B \-\-time\-list=timelistfile \-Qtimelistfile
 This option specifies route file containing the times that the survey reached
 the intended waypoints. This text file consists of lines of the form:
  	count waypoint longitude latitude heading time_d
@@ -180,9 +193,7 @@ using the \fB\-L\fP options.  If neither \fB\-O\fP nore \fB\-R\fP are invoked,
 the output SEGY filename (or files if a datalist is being processed) will
 be the input swath filename with ".segy" appended.
 .TP
-.B \-R
-\fIroutefile\fP
-.br
+.B \-\-route=routefile \-Rroutefile
 This option specifies an \fBmbgrdviz\fP route file containing the intended
 waypoints of the survey. If \fIroutefile\fP is specified, \fBmbextractsegy\fP
 will output SEGY data in files corresponding to the planned survey lines.
@@ -192,9 +203,7 @@ using the \fB\-L\fP options.  If neither \fB\-O\fP nore \fB\-R\fP are invoked,
 the output SEGY filename (or files if a datalist is being processed) will
 be the input swath filename with ".segy" appended.
 .TP
-.B \-S
-\fIsampleformat\fP
-.br
+.B \-\-sample\-format=sampleformat \-Ssampleformat
 Sets the sample format desired for use in the output SEGY data, which in turn
 determines how many SEGY files are output. Each SEGY file will contain one
 trace per ping (or shot); outputting multiple traces per ping creates
@@ -223,18 +232,14 @@ MB_SEGY_SAMPLEFORMAT_ANALYTIC, then there will be three traces (and three
 SEGY files) output, the real part of the analytic data, the imaginary part
 of the analytic data, and the envelope function calculated from the analytic data.
 .TP
-.B \-T
-\fItimeshift\fP
-.br
+.B \-\-time\-shift=timeshift \-Ttimeshift
 This option applies a time shift of \fItimeshift\fP seconds to the
 timestamps stored in the output SEGY trace headers. A positive
 \fItimeshift\fP value shifts the trace timestamps later; a negative
 value shifts them earlier. Default: \fItimeshift\fP = 0.0 (no time
 shift applied).
 .TP
-.B \-U
-\fIrangethreshold\fP
-.br
+.B \-\-range\-threshold=rangethreshold \-Urangethreshold
 If the \fB\-R\fP option is specified, \fBmbextractsegy\fP breaks up the
 output into files corresponding to survey lines specified in a route file.
 This option sets the threshold distance in meters used to determine when
@@ -243,13 +248,11 @@ next waypoint reached when the range to the waypoint becomes smaller
 than \fIrangethreshold\fP and then ceases to decrease.
 Default: \fIrangethreshold\fP = 25 m.
 .TP
-.B \-Z
-\fIplotmax\fP
-.br
+.B \-\-plot\-max=plotmax \-Zplotmax
 Specifies the trace value corresponding to the maximum grayscale (black)
 in the section plots. Default: \fIplotmax\fP = 50.
 .TP
-.B \-V
+.B \-\-verbose \-V
 This option increases the verbosity of \fBmbextractsegy\fP, causing it
 to print out messages regarding its progress to stdout.
 

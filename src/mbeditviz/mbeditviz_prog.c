@@ -254,7 +254,7 @@ int mbeditviz_init(int argc, char **argv,
         sscanf(optarg, "%d", &mbdef_format);
       }
       else if (strcmp("input", options[option_index].name) == 0) {
-        sscanf(optarg, "%s", ifile);
+        sscanf(optarg, "%1023s", ifile);
         input_file_set = true;
       }
       else if (strcmp("simple-mean-grid", options[option_index].name) == 0) {
@@ -279,7 +279,7 @@ int mbeditviz_init(int argc, char **argv,
       break;
     case 'I':
     case 'i':
-      sscanf(optarg, "%s", ifile);
+      sscanf(optarg, "%1023s", ifile);
       input_file_set = true;
       break;
     case 'R':
@@ -419,6 +419,17 @@ int mbeditviz_open_data(char *path, int format) {
           }
         }
       }
+      else {
+        /* could not open the datalist - do not loop forever retrying */
+        done = true;
+      }
+    }
+    else {
+      /* format unrecognized (e.g. 0, or any other value not handled
+          above) - bail out instead of spinning forever */
+      mbev_status = MB_FAILURE;
+      mbev_error = MB_ERROR_BAD_FORMAT;
+      done = true;
     }
   }
   (*hideMessage)();
@@ -492,8 +503,8 @@ int mbeditviz_import_file(char *path, int format) {
     file->load_status_shown = false;
     file->locked = false;
     file->esf_exists = false;
-    strcpy(file->path, path);
-    strcpy(file->name, root);
+    snprintf(file->path, sizeof(file->path), "%s", path);
+    snprintf(file->name, sizeof(file->name), "%s", root);
     file->format = format;
     file->raw_info_loaded = false;
     file->esf_open = false;
@@ -1250,8 +1261,7 @@ int mbeditviz_load_file(int ifile, bool assertLock) {
     /* load asynchronous data if available */
     if (mbev_status == MB_SUCCESS) {
       /* try to load asynchronous heading data from .bah file */
-      strcpy(asyncfile, file->path);
-      strcat(asyncfile, ".bah");
+      snprintf(asyncfile, sizeof(asyncfile), "%s%s", file->path, ".bah");
       if (stat(asyncfile, &file_status) == 0 && (file_status.st_mode & S_IFMT) != S_IFDIR &&
           file_status.st_size > 0) {
         /* allocate space for asynchronous heading */
@@ -1289,8 +1299,7 @@ int mbeditviz_load_file(int ifile, bool assertLock) {
 
       /* if necessary try to load heading data from ath file */
       if (file->n_async_heading <= 0) {
-        strcpy(asyncfile, file->path);
-        strcat(asyncfile, ".ath");
+        snprintf(asyncfile, sizeof(asyncfile), "%s%s", file->path, ".ath");
         if (stat(asyncfile, &file_status) == 0 && (file_status.st_mode & S_IFMT) != S_IFDIR) {
           /* count the asynchronous heading data */
           file->n_async_heading = 0;
@@ -1358,8 +1367,7 @@ int mbeditviz_load_file(int ifile, bool assertLock) {
       }
 
       /* try to load asynchronous sensordepth data from .bas file */
-      strcpy(asyncfile, file->path);
-      strcat(asyncfile, ".bas");
+      snprintf(asyncfile, sizeof(asyncfile), "%s%s", file->path, ".bas");
       if (stat(asyncfile, &file_status) == 0 && (file_status.st_mode & S_IFMT) != S_IFDIR &&
           file_status.st_size > 0) {
         /* allocate space for asynchronous sensordepth */
@@ -1397,13 +1405,24 @@ int mbeditviz_load_file(int ifile, bool assertLock) {
       }
 
       /* if necessary try to load sensordepth data from ats file */
-      if (file->n_async_heading <= 0) {
-        strcpy(asyncfile, file->path);
-        strcat(asyncfile, ".ats");
+      if (file->n_async_sensordepth <= 0) {
+        snprintf(asyncfile, sizeof(asyncfile), "%s%s", file->path, ".ats");
         if (stat(asyncfile, &file_status) == 0 && (file_status.st_mode & S_IFMT) != S_IFDIR) {
           /* count the asynchronous sensordepth data */
           file->n_async_sensordepth = 0;
           file->n_async_sensordepth_alloc = 0;
+          /* free any sensordepth arrays allocated by an earlier attempt
+              (e.g. a partially successful .bas load above) before this
+              block reassigns the pointers via malloc() below, so that
+              attempt's buffer is not leaked */
+          if (file->async_sensordepth_time_d != NULL) {
+            free(file->async_sensordepth_time_d);
+            file->async_sensordepth_time_d = NULL;
+          }
+          if (file->async_sensordepth_sensordepth != NULL) {
+            free(file->async_sensordepth_sensordepth);
+            file->async_sensordepth_sensordepth = NULL;
+          }
           if ((afp = fopen(asyncfile, "r")) != NULL) {
             while ((result = fgets(buffer, MBP_FILENAMESIZE, afp)) == buffer)
               if (buffer[0] != '#')
@@ -1469,8 +1488,7 @@ int mbeditviz_load_file(int ifile, bool assertLock) {
       }
 
       /* try to load asynchronous attitude data from .baa file */
-      strcpy(asyncfile, file->path);
-      strcat(asyncfile, ".baa");
+      snprintf(asyncfile, sizeof(asyncfile), "%s%s", file->path, ".baa");
       if (stat(asyncfile, &file_status) == 0 && (file_status.st_mode & S_IFMT) != S_IFDIR &&
           file_status.st_size > 0) {
         /* allocate space for asynchronous attitude */
@@ -1521,8 +1539,7 @@ int mbeditviz_load_file(int ifile, bool assertLock) {
 
       /* if necessary try to load asynchronous attitude data from ata file */
       if (file->n_async_attitude <= 0) {
-        strcpy(asyncfile, file->path);
-        strcat(asyncfile, ".ata");
+        snprintf(asyncfile, sizeof(asyncfile), "%s%s", file->path, ".ata");
         if (stat(asyncfile, &file_status) == 0 && (file_status.st_mode & S_IFMT) != S_IFDIR) {
           /* count the asynchronous attitude data */
           file->n_async_attitude = 0;
@@ -1617,8 +1634,7 @@ int mbeditviz_load_file(int ifile, bool assertLock) {
       }
 
       /* try to load synchronous attitude data from .bsa file */
-      strcpy(asyncfile, file->path);
-      strcat(asyncfile, ".bsa");
+      snprintf(asyncfile, sizeof(asyncfile), "%s%s", file->path, ".bsa");
       if (stat(asyncfile, &file_status) == 0 && (file_status.st_mode & S_IFMT) != S_IFDIR &&
           file_status.st_size > 0) {
         /* allocate space for synchronous attitude */
@@ -1667,8 +1683,7 @@ int mbeditviz_load_file(int ifile, bool assertLock) {
 
       /* if necessary try to load synchronous attitude data from sta file */
       if (file->n_sync_attitude <= 0) {
-        strcpy(asyncfile, file->path);
-        strcat(asyncfile, ".sta");
+        snprintf(asyncfile, sizeof(asyncfile), "%s%s", file->path, ".sta");
         if (stat(asyncfile, &file_status) == 0 && (file_status.st_mode & S_IFMT) != S_IFDIR) {
           /* count the synchronous attitude data */
           file->n_sync_attitude = 0;
@@ -2609,22 +2624,41 @@ int mbeditviz_setup_grid() {
 
   /* allocate memory for grid */
   if (mbev_status == MB_SUCCESS) {
-    if ((mbev_grid.sum = (float *)malloc(mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float))) == NULL)
+    /* Guard against bogus bounds (e.g. from a nav outlier in one of the
+       loaded files) or a too-small cell size producing a grid whose
+       column*row cell count overflows a 32-bit int. Left unchecked, that
+       overflow previously wrapped to a small positive number, so the
+       mallocs below "succeeded" with an undersized buffer while the
+       (correct, huge) n_columns/n_rows were still used to index into it,
+       causing out-of-bounds writes and a crash instead of a clean failure. */
+    const size_t ncells = (size_t)mbev_grid.n_columns * (size_t)mbev_grid.n_rows;
+    if (mbev_grid.n_columns <= 0 || mbev_grid.n_rows <= 0 || ncells > MBEV_GRID_MAX_CELLS) {
+      fprintf(stderr, "\nMBeditviz: Requested grid is too large (%d columns x %d rows = %zu cells, max %d).\n"
+                      "This is usually caused by a bad navigation fix in the loaded data producing\n"
+                      "unreasonable grid bounds, or by too small a grid cell size. Aborting the grid.\n",
+              mbev_grid.n_columns, mbev_grid.n_rows, ncells, MBEV_GRID_MAX_CELLS);
       mbev_error = MB_ERROR_MEMORY_FAIL;
-    if ((mbev_grid.wgt = (float *)malloc(mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float))) == NULL)
-      mbev_error = MB_ERROR_MEMORY_FAIL;
-    if ((mbev_grid.val = (float *)malloc(mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float))) == NULL)
-      mbev_error = MB_ERROR_MEMORY_FAIL;
-    if ((mbev_grid.sgm = (float *)malloc(mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float))) == NULL)
-      mbev_error = MB_ERROR_MEMORY_FAIL;
-    if (mbev_error == MB_ERROR_NO_ERROR) {
-      memset(mbev_grid.sum, 0, mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float));
-      memset(mbev_grid.wgt, 0, mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float));
-      memset(mbev_grid.val, 0, mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float));
-      memset(mbev_grid.sgm, 0, mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float));
-    }
-    else
       mbev_status = MB_FAILURE;
+    }
+    else {
+      const size_t gridbytes = ncells * sizeof(float);
+      if ((mbev_grid.sum = (float *)malloc(gridbytes)) == NULL)
+        mbev_error = MB_ERROR_MEMORY_FAIL;
+      if ((mbev_grid.wgt = (float *)malloc(gridbytes)) == NULL)
+        mbev_error = MB_ERROR_MEMORY_FAIL;
+      if ((mbev_grid.val = (float *)malloc(gridbytes)) == NULL)
+        mbev_error = MB_ERROR_MEMORY_FAIL;
+      if ((mbev_grid.sgm = (float *)malloc(gridbytes)) == NULL)
+        mbev_error = MB_ERROR_MEMORY_FAIL;
+      if (mbev_error == MB_ERROR_NO_ERROR) {
+        memset(mbev_grid.sum, 0, gridbytes);
+        memset(mbev_grid.wgt, 0, gridbytes);
+        memset(mbev_grid.val, 0, gridbytes);
+        memset(mbev_grid.sgm, 0, gridbytes);
+      }
+      else
+        mbev_status = MB_FAILURE;
+    }
   }
 
   if (mbev_verbose >= 2) {
@@ -2705,11 +2739,22 @@ int mbeditviz_make_grid() {
     fprintf(stderr, "Algorithm: Shoal Bias\n");
   fprintf(stderr, "Interpolation: %d\n\n", mbev_grid_interpolation);
 
+  /* if the preceding mbeditviz_setup_grid() call failed (e.g. it refused
+     to allocate an unreasonably large grid), the grid arrays are NULL or
+     stale - bail out here instead of using them */
+  if (mbev_status != MB_SUCCESS || mbev_grid.sum == NULL || mbev_grid.wgt == NULL ||
+      mbev_grid.val == NULL || mbev_grid.sgm == NULL) {
+    fprintf(stderr, "\nMBeditviz: Grid arrays not available - skipping grid generation.\n");
+    mbev_status = MB_FAILURE;
+    return (mbev_status);
+  }
+
   /* zero the grid arrays */
-  memset(mbev_grid.sum, 0, mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float));
-  memset(mbev_grid.wgt, 0, mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float));
-  /* memset(mbev_grid.val, 0, mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float));*/
-  memset(mbev_grid.sgm, 0, mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float));
+  const size_t gridbytes = (size_t)mbev_grid.n_columns * (size_t)mbev_grid.n_rows * sizeof(float);
+  memset(mbev_grid.sum, 0, gridbytes);
+  memset(mbev_grid.wgt, 0, gridbytes);
+  /* memset(mbev_grid.val, 0, gridbytes);*/
+  memset(mbev_grid.sgm, 0, gridbytes);
 
   /* loop over loaded files */
   int filecount = 0;
@@ -2733,7 +2778,7 @@ int mbeditviz_make_grid() {
   bool first = true;
   for (int i = 0; i < mbev_grid.n_columns; i++)
     for (int j = 0; j < mbev_grid.n_rows; j++) {
-      const int k = i * mbev_grid.n_rows + j;
+      const size_t k = (size_t)i * (size_t)mbev_grid.n_rows + (size_t)j;
       if (mbev_grid.wgt[k] > 0.0) {
         mbev_grid.val[k] = mbev_grid.sum[k] / mbev_grid.wgt[k];
         mbev_grid.sgm[k] = sqrt(fabs(mbev_grid.sgm[k] / mbev_grid.wgt[k] - mbev_grid.val[k] * mbev_grid.val[k]));
@@ -2801,7 +2846,7 @@ int mbeditviz_grid_beam(struct mbev_file_struct *file, struct mbev_ping_struct *
     /* shoal bias gridding mode */
     if (mbev_grid_algorithm == MBEV_GRID_ALGORITHM_SHOALBIAS) {
       /* get location in grid arrays */
-      const int kk = i * mbev_grid.n_rows + j;
+      const size_t kk = (size_t)i * (size_t)mbev_grid.n_rows + (size_t)j;
 
       if (isnan(ping->bathcorr[ibeam])) {
         fprintf(stderr, "\nFunction mbeditviz_grid_beam(): Encountered NaN value in swath data from file: %s\n",
@@ -2844,7 +2889,7 @@ int mbeditviz_grid_beam(struct mbev_file_struct *file, struct mbev_ping_struct *
     /* simple gridding mode */
     else if (file->topo_type != MB_TOPOGRAPHY_TYPE_MULTIBEAM || mbev_grid_algorithm == MBEV_GRID_ALGORITHM_SIMPLEMEAN) {
       /* get location in grid arrays */
-      const int kk = i * mbev_grid.n_rows + j;
+      const size_t kk = (size_t)i * (size_t)mbev_grid.n_rows + (size_t)j;
 
       if (isnan(ping->bathcorr[ibeam])) {
         fprintf(stderr, "\nFunction mbeditviz_grid_beam(): Encountered NaN value in swath data from file: %s\n",
@@ -2968,7 +3013,7 @@ int mbeditviz_grid_beam(struct mbev_file_struct *file, struct mbev_ping_struct *
           /* if beam affects cell apply using weight */
           if (use_weight == MBEV_USE_YES) {
             /* get location in grid arrays */
-            const int kk = ii * mbev_grid.n_rows + jj;
+            const size_t kk = (size_t)ii * (size_t)mbev_grid.n_rows + (size_t)jj;
 
             /* add to weights and sums */
             if (beam_ok) {
@@ -3174,22 +3219,38 @@ int mbeditviz_make_grid_simple() {
 
   /* allocate memory for grid */
   if (mbev_status == MB_SUCCESS) {
-    if ((mbev_grid.sum = (float *)malloc(mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float))) == NULL)
+    /* see mbeditviz_setup_grid() for why this check is needed: an
+       unreasonable bounds/cell-size combination can produce a cell count
+       that overflows a 32-bit int, silently undersizing these mallocs
+       while indexing still uses the full (correct) n_columns/n_rows. */
+    const size_t ncells = (size_t)mbev_grid.n_columns * (size_t)mbev_grid.n_rows;
+    if (mbev_grid.n_columns <= 0 || mbev_grid.n_rows <= 0 || ncells > MBEV_GRID_MAX_CELLS) {
+      fprintf(stderr, "\nMBeditviz: Requested grid is too large (%d columns x %d rows = %zu cells, max %d).\n"
+                      "This is usually caused by a bad navigation fix in the loaded data producing\n"
+                      "unreasonable grid bounds, or by too small a grid cell size. Aborting the grid.\n",
+              mbev_grid.n_columns, mbev_grid.n_rows, ncells, MBEV_GRID_MAX_CELLS);
       mbev_error = MB_ERROR_MEMORY_FAIL;
-    if ((mbev_grid.wgt = (float *)malloc(mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float))) == NULL)
-      mbev_error = MB_ERROR_MEMORY_FAIL;
-    if ((mbev_grid.val = (float *)malloc(mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float))) == NULL)
-      mbev_error = MB_ERROR_MEMORY_FAIL;
-    if ((mbev_grid.sgm = (float *)malloc(mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float))) == NULL)
-      mbev_error = MB_ERROR_MEMORY_FAIL;
-    if (mbev_error == MB_ERROR_NO_ERROR) {
-      memset(mbev_grid.sum, 0, mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float));
-      memset(mbev_grid.wgt, 0, mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float));
-      memset(mbev_grid.val, 0, mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float));
-      memset(mbev_grid.sgm, 0, mbev_grid.n_columns * mbev_grid.n_rows * sizeof(float));
-    }
-    else
       mbev_status = MB_FAILURE;
+    }
+    else {
+      const size_t gridbytes = ncells * sizeof(float);
+      if ((mbev_grid.sum = (float *)malloc(gridbytes)) == NULL)
+        mbev_error = MB_ERROR_MEMORY_FAIL;
+      if ((mbev_grid.wgt = (float *)malloc(gridbytes)) == NULL)
+        mbev_error = MB_ERROR_MEMORY_FAIL;
+      if ((mbev_grid.val = (float *)malloc(gridbytes)) == NULL)
+        mbev_error = MB_ERROR_MEMORY_FAIL;
+      if ((mbev_grid.sgm = (float *)malloc(gridbytes)) == NULL)
+        mbev_error = MB_ERROR_MEMORY_FAIL;
+      if (mbev_error == MB_ERROR_NO_ERROR) {
+        memset(mbev_grid.sum, 0, gridbytes);
+        memset(mbev_grid.wgt, 0, gridbytes);
+        memset(mbev_grid.val, 0, gridbytes);
+        memset(mbev_grid.sgm, 0, gridbytes);
+      }
+      else
+        mbev_status = MB_FAILURE;
+    }
   }
 
   /* make grid */
@@ -3212,7 +3273,7 @@ int mbeditviz_make_grid_simple() {
             if (mb_beam_ok(ping->beamflag[ibeam])) {
               const int i = (ping->bathx[ibeam] - mbev_grid.boundsutm[0] + 0.5 * mbev_grid.dx) / mbev_grid.dx;
               const int j = (ping->bathy[ibeam] - mbev_grid.boundsutm[2] + 0.5 * mbev_grid.dy) / mbev_grid.dy;
-              const int k = i * mbev_grid.n_rows + j;
+              const size_t k = (size_t)i * (size_t)mbev_grid.n_rows + (size_t)j;
               mbev_grid.sum[k] += (-ping->bathcorr[ibeam]);
               mbev_grid.wgt[k] += 1.0;
               mbev_grid.sgm[k] += ping->bathcorr[ibeam] * ping->bathcorr[ibeam];
@@ -3225,7 +3286,7 @@ int mbeditviz_make_grid_simple() {
     first = true;
     for (int i = 0; i < mbev_grid.n_columns; i++)
       for (int j = 0; j < mbev_grid.n_rows; j++) {
-        const int k = i * mbev_grid.n_rows + j;
+        const size_t k = (size_t)i * (size_t)mbev_grid.n_rows + (size_t)j;
         if (mbev_grid.wgt[k] > 0.0) {
           mbev_grid.val[k] = mbev_grid.sum[k] / mbev_grid.wgt[k];
           mbev_grid.sgm[k] = sqrt(fabs(mbev_grid.sgm[k] / mbev_grid.wgt[k] - mbev_grid.val[k] * mbev_grid.val[k]));
@@ -3464,6 +3525,7 @@ int mbeditviz_selectregion(size_t instance) {
     mbev_selected.num_soundings = 0;
     mbev_selected.num_soundings_unflagged = 0;
     mbev_selected.num_soundings_flagged = 0;
+    bool soundings_alloc_failed = false;
 
     /* loop over all files */
     for (int ifile = 0; ifile < mbev_num_files; ifile++) {
@@ -3487,10 +3549,29 @@ int mbeditviz_selectregion(size_t instance) {
                   ping->bathy[ibeam] <= ymax) {
                 /* allocate memory if needed */
                 if (mbev_selected.num_soundings >= mbev_selected.num_soundings_alloc) {
-                  mbev_selected.num_soundings_alloc += MBEV_ALLOCK_NUM;
-                  mbev_selected.soundings =
-                      realloc(mbev_selected.soundings,
-                              mbev_selected.num_soundings_alloc * sizeof(struct mb3dsoundings_sounding_struct));
+                  if (soundings_alloc_failed)
+                    continue;
+                  const int num_soundings_alloc_new = mbev_selected.num_soundings_alloc + MBEV_ALLOCK_NUM;
+                  void *tmp_soundings = realloc(mbev_selected.soundings,
+                              num_soundings_alloc_new * sizeof(struct mb3dsoundings_sounding_struct));
+                  if (tmp_soundings != NULL) {
+                    mbev_selected.soundings = tmp_soundings;
+                    mbev_selected.num_soundings_alloc = num_soundings_alloc_new;
+                  }
+                  else {
+                    /* realloc() failure leaves the previous block (if any)
+                        untouched and still owned by mbev_selected.soundings;
+                        report the failure once and stop growing the
+                        selection rather than write through a NULL pointer
+                        or silently retry the same failing allocation for
+                        every remaining beam */
+                    soundings_alloc_failed = true;
+                    fprintf(stderr, "\nUnable to allocate memory for selected soundings - selection truncated at %d soundings\n",
+                            mbev_selected.num_soundings);
+                    (*showErrorDialog)("Unable to allocate memory", "for the selected soundings -",
+                                       "selection has been truncated.");
+                    continue;
+                  }
                 }
 
                 /* same beam ids */
@@ -3632,6 +3713,7 @@ int mbeditviz_selectarea(size_t instance) {
     mbev_selected.num_soundings = 0;
     mbev_selected.num_soundings_unflagged = 0;
     mbev_selected.num_soundings_flagged = 0;
+    bool soundings_alloc_failed = false;
 
     double zmin;
     double zmax;
@@ -3664,10 +3746,29 @@ int mbeditviz_selectarea(size_t instance) {
                   yy <= mbev_selected.ymax) {
                 /* allocate memory if needed */
                 if (mbev_selected.num_soundings >= mbev_selected.num_soundings_alloc) {
-                  mbev_selected.num_soundings_alloc += MBEV_ALLOCK_NUM;
-                  mbev_selected.soundings =
-                      realloc(mbev_selected.soundings,
-                              mbev_selected.num_soundings_alloc * sizeof(struct mb3dsoundings_sounding_struct));
+                  if (soundings_alloc_failed)
+                    continue;
+                  const int num_soundings_alloc_new = mbev_selected.num_soundings_alloc + MBEV_ALLOCK_NUM;
+                  void *tmp_soundings = realloc(mbev_selected.soundings,
+                              num_soundings_alloc_new * sizeof(struct mb3dsoundings_sounding_struct));
+                  if (tmp_soundings != NULL) {
+                    mbev_selected.soundings = tmp_soundings;
+                    mbev_selected.num_soundings_alloc = num_soundings_alloc_new;
+                  }
+                  else {
+                    /* realloc() failure leaves the previous block (if any)
+                        untouched and still owned by mbev_selected.soundings;
+                        report the failure once and stop growing the
+                        selection rather than write through a NULL pointer
+                        or silently retry the same failing allocation for
+                        every remaining beam */
+                    soundings_alloc_failed = true;
+                    fprintf(stderr, "\nUnable to allocate memory for selected soundings - selection truncated at %d soundings\n",
+                            mbev_selected.num_soundings);
+                    (*showErrorDialog)("Unable to allocate memory", "for the selected soundings -",
+                                       "selection has been truncated.");
+                    continue;
+                  }
                 }
 
                 /* same beam ids */
@@ -3787,6 +3888,7 @@ int mbeditviz_selectnav(size_t instance) {
     mbev_selected.num_soundings = 0;
     mbev_selected.num_soundings_unflagged = 0;
     mbev_selected.num_soundings_flagged = 0;
+    bool soundings_alloc_failed = false;
 
     /* get sounding bearing */
     mbev_selected.bearing = 90.0;
@@ -3829,10 +3931,29 @@ int mbeditviz_selectnav(size_t instance) {
 								|| (mbviewdata->state21 && mb_beam_check_flag_multipick(ping->beamflag[ibeam]))) {
 								/* allocate memory if needed */
 								if (mbev_selected.num_soundings >= mbev_selected.num_soundings_alloc) {
-									mbev_selected.num_soundings_alloc += MBEV_ALLOCK_NUM;
-									mbev_selected.soundings =
-											realloc(mbev_selected.soundings,
-															mbev_selected.num_soundings_alloc * sizeof(struct mb3dsoundings_sounding_struct));
+									if (soundings_alloc_failed)
+										continue;
+									const int num_soundings_alloc_new = mbev_selected.num_soundings_alloc + MBEV_ALLOCK_NUM;
+									void *tmp_soundings = realloc(mbev_selected.soundings,
+											num_soundings_alloc_new * sizeof(struct mb3dsoundings_sounding_struct));
+									if (tmp_soundings != NULL) {
+										mbev_selected.soundings = tmp_soundings;
+										mbev_selected.num_soundings_alloc = num_soundings_alloc_new;
+									}
+									else {
+										/* realloc() failure leaves the previous block (if any)
+										    untouched and still owned by mbev_selected.soundings;
+										    report the failure once and stop growing the
+										    selection rather than write through a NULL pointer
+										    or silently retry the same failing allocation for
+										    every remaining beam */
+										soundings_alloc_failed = true;
+										fprintf(stderr, "\nUnable to allocate memory for selected soundings - selection truncated at %d soundings\n",
+												mbev_selected.num_soundings);
+										(*showErrorDialog)("Unable to allocate memory", "for the selected soundings -",
+															"selection has been truncated.");
+										continue;
+									}
 								}
 	
 								/* same beam ids */
@@ -5290,13 +5411,33 @@ void mbeditviz_mb3dsoundings_optimizebiasvalues(int mode, double *rollbias_best,
   double *local_grid_first = NULL;
   mbev_status = mb_mallocd(mbev_verbose, __FILE__, __LINE__, size_double, (void **)&local_grid_first, &mbev_error);
   double *local_grid_sum = NULL;
-  mbev_status = mb_mallocd(mbev_verbose, __FILE__, __LINE__, size_double, (void **)&local_grid_sum, &mbev_error);
+  if (mbev_status == MB_SUCCESS)
+    mbev_status = mb_mallocd(mbev_verbose, __FILE__, __LINE__, size_double, (void **)&local_grid_sum, &mbev_error);
   double *local_grid_sum2 = NULL;
-  mbev_status = mb_mallocd(mbev_verbose, __FILE__, __LINE__, size_double, (void **)&local_grid_sum2, &mbev_error);
+  if (mbev_status == MB_SUCCESS)
+    mbev_status = mb_mallocd(mbev_verbose, __FILE__, __LINE__, size_double, (void **)&local_grid_sum2, &mbev_error);
   double *local_grid_variance = NULL;
-  mbev_status = mb_mallocd(mbev_verbose, __FILE__, __LINE__, size_double, (void **)&local_grid_variance, &mbev_error);
+  if (mbev_status == MB_SUCCESS)
+    mbev_status = mb_mallocd(mbev_verbose, __FILE__, __LINE__, size_double, (void **)&local_grid_variance, &mbev_error);
   int *local_grid_num = NULL;
-  mbev_status = mb_mallocd(mbev_verbose, __FILE__, __LINE__, size_int, (void **)&local_grid_num, &mbev_error);
+  if (mbev_status == MB_SUCCESS)
+    mbev_status = mb_mallocd(mbev_verbose, __FILE__, __LINE__, size_int, (void **)&local_grid_num, &mbev_error);
+
+  /* if any of the five allocations above failed, free whatever did
+      succeed and abort the optimization rather than run the
+      roll/pitch/heading/timelag/snell search loops (which memset() and
+      write into these buffers via mbeditviz_mb3dsoundings_getbiasvariance)
+      against partially-allocated or NULL buffers */
+  if (mbev_status != MB_SUCCESS) {
+    mb_freed(mbev_verbose, __FILE__, __LINE__, (void **)&local_grid_first, &mbev_error);
+    mb_freed(mbev_verbose, __FILE__, __LINE__, (void **)&local_grid_sum, &mbev_error);
+    mb_freed(mbev_verbose, __FILE__, __LINE__, (void **)&local_grid_sum2, &mbev_error);
+    mb_freed(mbev_verbose, __FILE__, __LINE__, (void **)&local_grid_variance, &mbev_error);
+    mb_freed(mbev_verbose, __FILE__, __LINE__, (void **)&local_grid_num, &mbev_error);
+    fprintf(stderr, "\nUnable to allocate memory for bias optimization grids - optimization aborted\n");
+    (*showErrorDialog)("Unable to allocate memory", "for bias optimization grids -", "optimization aborted.");
+    return;
+  }
 
   /* now loop over all different values of bias parameters looking for the
    * combination that minimizes the overall variance

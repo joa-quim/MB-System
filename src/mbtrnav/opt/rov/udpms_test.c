@@ -21,7 +21,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <string.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include "udpm_sub.h"

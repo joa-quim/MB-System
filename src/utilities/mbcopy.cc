@@ -40,9 +40,18 @@
 #include <cstring>
 #include <ctime>
 #include <getopt.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_define.h"
+
+/* POSIX sleep(seconds) — Windows has Sleep(milliseconds). */
+#ifdef _WIN32
+#define sleep(s) Sleep((s) * 1000)
+#endif
+
 #include "mb_format.h"
 #include "mb_io.h"
 #include "mb_status.h"
@@ -1085,14 +1094,14 @@ int mbcopy_simrad_to_simrad2(int verbose, struct mbsys_simrad_struct *istore, st
       mbsys_simrad_beamangles(verbose, (void *)istore,
       		                    &interleave, &nbeams, &angles_simrad, error);
 
-      if (*error == MB_ERROR_NO_ERROR && nbeams > 0 && angles_simrad != nullptr) {
+      if (*error == MB_ERROR_NO_ERROR && nbeams > 0 && angles_simrad != nullptr && oping->png_nbeams <= nbeams) {
         /* if interleaved get center beam */
         if (interleave) {
           if (iping->bath_mode == 12 && abs(iping->bath_acrosstrack[28]) < abs(iping->bath_acrosstrack[29]))
             istep = 1;
           else if (iping->bath_mode == 13 && abs(iping->bath_acrosstrack[31]) < abs(iping->bath_acrosstrack[30]))
             istep = 1;
-          else if (abs(iping->bath_acrosstrack[oping->png_nbeams / 2 - 1]) <
+          else if (oping->png_nbeams > 1 && abs(iping->bath_acrosstrack[oping->png_nbeams / 2 - 1]) <
                    abs(iping->bath_acrosstrack[oping->png_nbeams / 2]))
             istep = 1;
           else
@@ -1112,7 +1121,7 @@ int mbcopy_simrad_to_simrad2(int verbose, struct mbsys_simrad_struct *istore, st
 
           alpha = 0.01 * iping->pitch;
           if (istore->sonar == MBSYS_SIMRAD_EM1000 && iping->bath_mode == 13) {
-            beta = 90.0 - angles_simrad[oping->png_nbeams - 1 - (2 * i + istep)];
+            beta = 90.0 - angles_simrad[2 * nbeams - 1 - (2 * i + istep)];
           }
           else if (istore->sonar == MBSYS_SIMRAD_EM1000 && interleave) {
             beta = 90.0 + angles_simrad[2 * i + istep];
@@ -1628,7 +1637,7 @@ int mbcopy_reson8k_to_gsf(int verbose, void *imbio_ptr, void *ombio_ptr, int *er
           records->comment.comment_length = 0;
         }
       }
-      if ((status = MB_SUCCESS) && (records->comment.comment != nullptr)) {
+      if (status == MB_SUCCESS && records->comment.comment != nullptr) {
         strcpy(records->comment.comment, istore->comment);
         records->comment.comment_length = strlen(istore->comment) + 1;
         records->comment.comment_time.tv_sec = (int)istore->png_time_d;
@@ -1970,7 +1979,7 @@ int main(int argc, char **argv) {
   struct mb_io_struct *omb_io_ptr;
   struct mb_io_struct *imb_io_ptr;
   void *istore_ptr;
-  void *ostore_ptr;
+  void *ostore_ptr = nullptr;
   int kind;
   int time_i[7];
   double time_d;
@@ -2253,6 +2262,13 @@ int main(int argc, char **argv) {
     obeams_amp = ibeams_amp;
   if (omb_io_ptr->variable_beams && opixels_ss != ipixels_ss)
     opixels_ss = ipixels_ss;
+  /* the output arrays were registered at the output format's maximum beam
+     counts; a variable-beam output format takes the input counts, so grow
+     the arrays when those are larger */
+  if (obeams_bath > omb_io_ptr->beams_bath_alloc || obeams_amp > omb_io_ptr->beams_amp_alloc
+      || opixels_ss > omb_io_ptr->pixels_ss_alloc)
+    mb_update_arrays(verbose, ombio_ptr, MAX(obeams_bath, omb_io_ptr->beams_bath_alloc),
+                     MAX(obeams_amp, omb_io_ptr->beams_amp_alloc), MAX(opixels_ss, omb_io_ptr->pixels_ss_alloc), &error);
   setup_transfer_rules(verbose, ibeams_bath, obeams_bath, &istart_bath, &iend_bath, &offset_bath, &error);
   setup_transfer_rules(verbose, ibeams_amp, obeams_amp, &istart_amp, &iend_amp, &offset_amp, &error);
   setup_transfer_rules(verbose, ipixels_ss, opixels_ss, &istart_ss, &iend_ss, &offset_ss, &error);
@@ -2448,18 +2464,39 @@ int main(int argc, char **argv) {
       if (omb_io_ptr->variable_beams)
         obeams_bath = ibeams_bath;
       setup_transfer_rules(verbose, ibeams_bath, obeams_bath, &istart_bath, &iend_bath, &offset_bath, &error);
+      /* the output arrays were registered at the output format's maximum beam
+         counts; a variable-beam output format takes the input counts, so grow
+         the arrays when those are larger */
+      if (obeams_bath > omb_io_ptr->beams_bath_alloc || obeams_amp > omb_io_ptr->beams_amp_alloc
+          || opixels_ss > omb_io_ptr->pixels_ss_alloc)
+        mb_update_arrays(verbose, ombio_ptr, MAX(obeams_bath, omb_io_ptr->beams_bath_alloc),
+                         MAX(obeams_amp, omb_io_ptr->beams_amp_alloc), MAX(opixels_ss, omb_io_ptr->pixels_ss_alloc), &error);
     }
     if (copymode == MBCOPY_PARTIAL && kind == MB_DATA_DATA && error == MB_ERROR_NO_ERROR && namp != ibeams_amp) {
       ibeams_amp = namp;
       if (omb_io_ptr->variable_beams)
         obeams_amp = ibeams_amp;
       setup_transfer_rules(verbose, ibeams_amp, obeams_amp, &istart_amp, &iend_amp, &offset_amp, &error);
+      /* the output arrays were registered at the output format's maximum beam
+         counts; a variable-beam output format takes the input counts, so grow
+         the arrays when those are larger */
+      if (obeams_bath > omb_io_ptr->beams_bath_alloc || obeams_amp > omb_io_ptr->beams_amp_alloc
+          || opixels_ss > omb_io_ptr->pixels_ss_alloc)
+        mb_update_arrays(verbose, ombio_ptr, MAX(obeams_bath, omb_io_ptr->beams_bath_alloc),
+                         MAX(obeams_amp, omb_io_ptr->beams_amp_alloc), MAX(opixels_ss, omb_io_ptr->pixels_ss_alloc), &error);
     }
     if (copymode == MBCOPY_PARTIAL && kind == MB_DATA_DATA && error == MB_ERROR_NO_ERROR && nss != ipixels_ss) {
       ipixels_ss = nss;
       if (omb_io_ptr->variable_beams)
         opixels_ss = ipixels_ss;
       setup_transfer_rules(verbose, ipixels_ss, opixels_ss, &istart_ss, &iend_ss, &offset_ss, &error);
+      /* the output arrays were registered at the output format's maximum beam
+         counts; a variable-beam output format takes the input counts, so grow
+         the arrays when those are larger */
+      if (obeams_bath > omb_io_ptr->beams_bath_alloc || obeams_amp > omb_io_ptr->beams_amp_alloc
+          || opixels_ss > omb_io_ptr->pixels_ss_alloc)
+        mb_update_arrays(verbose, ombio_ptr, MAX(obeams_bath, omb_io_ptr->beams_bath_alloc),
+                         MAX(obeams_amp, omb_io_ptr->beams_amp_alloc), MAX(opixels_ss, omb_io_ptr->pixels_ss_alloc), &error);
     }
 
     /* output error messages */
@@ -2570,31 +2607,36 @@ int main(int argc, char **argv) {
       }
     }
 
+    /* comment records arrive with MB_ERROR_COMMENT; they must still reach
+       the output store - otherwise ostore_ptr was never set when a file
+       began with a comment, and mb_put_all() crashed on it */
+    const bool record_ok = error == MB_ERROR_NO_ERROR || (kind == MB_DATA_COMMENT && error == MB_ERROR_COMMENT);
+
     /* handle special full translation cases */
-    if (copymode == MBCOPY_FULL && error == MB_ERROR_NO_ERROR) {
+    if (copymode == MBCOPY_FULL && record_ok) {
       ostore_ptr = istore_ptr;
     }
-    else if (copymode == MBCOPY_ELACMK2_TO_XSE && error == MB_ERROR_NO_ERROR) {
+    else if (copymode == MBCOPY_ELACMK2_TO_XSE && record_ok) {
       ostore_ptr = omb_io_ptr->store_data;
       status = mbcopy_elacmk2_to_xse(verbose, static_cast<mbsys_elacmk2_struct *>(istore_ptr),
                                      static_cast<mbsys_xse_struct *>(ostore_ptr), &error);
     }
-    else if (copymode == MBCOPY_XSE_TO_ELACMK2 && error == MB_ERROR_NO_ERROR) {
+    else if (copymode == MBCOPY_XSE_TO_ELACMK2 && record_ok) {
       ostore_ptr = omb_io_ptr->store_data;
       status = mbcopy_xse_to_elacmk2(verbose, static_cast<mbsys_xse_struct *>(istore_ptr), static_cast<mbsys_elacmk2_struct *>(ostore_ptr), &error);
     }
-    else if (copymode == MBCOPY_SIMRAD_TO_SIMRAD2 && error == MB_ERROR_NO_ERROR) {
+    else if (copymode == MBCOPY_SIMRAD_TO_SIMRAD2 && record_ok) {
       ostore_ptr = omb_io_ptr->store_data;
       status = mbcopy_simrad_to_simrad2(verbose, static_cast<mbsys_simrad_struct *>(istore_ptr), static_cast<mbsys_simrad2_struct *>(ostore_ptr), &error);
     }
 #ifdef ENABLE_GSF
-    else if (copymode == MBCOPY_RESON8K_TO_GSF && error == MB_ERROR_NO_ERROR) {
+    else if (copymode == MBCOPY_RESON8K_TO_GSF && record_ok) {
 
       ostore_ptr = omb_io_ptr->store_data;
       status = mbcopy_reson8k_to_gsf(verbose, imbio_ptr, ombio_ptr, &error);
     }
 #endif
-    else if (copymode == MBCOPY_ANY_TO_MBLDEOIH && error == MB_ERROR_NO_ERROR) {
+    else if (copymode == MBCOPY_ANY_TO_MBLDEOIH && record_ok) {
       if (kind == MB_DATA_DATA) {
         mb_extract_nav(verbose, imbio_ptr, istore_ptr, &kind, time_i, &time_d, &navlon, &navlat, &speed, &heading, &draft,
                        &roll, &pitch, &heave, &error);
@@ -2630,7 +2672,7 @@ int main(int argc, char **argv) {
       else
         error = MB_ERROR_OTHER;
     }
-    else if (copymode == MBCOPY_PARTIAL && error == MB_ERROR_NO_ERROR) {
+    else if (copymode == MBCOPY_PARTIAL && record_ok) {
       istore_ptr = imb_io_ptr->store_data;
       ostore_ptr = omb_io_ptr->store_data;
       if (pings == 1 && (kind == MB_DATA_DATA
@@ -2642,6 +2684,11 @@ int main(int argc, char **argv) {
                       heave, &error);
       }
       if (kind == MB_DATA_DATA) {
+        status = mb_insert(verbose, ombio_ptr, ostore_ptr, kind, time_i, time_d, navlon, navlat, speed, heading, obeams_bath,
+                         obeams_amp, opixels_ss, obeamflag, obath, oamp, obathacrosstrack, obathalongtrack, oss,
+                         ossacrosstrack, ossalongtrack, comment, &error);
+      }
+      else if (kind == MB_DATA_COMMENT) {
         status = mb_insert(verbose, ombio_ptr, ostore_ptr, kind, time_i, time_d, navlon, navlat, speed, heading, obeams_bath,
                          obeams_amp, opixels_ss, obeamflag, obath, oamp, obathacrosstrack, obathalongtrack, oss,
                          ossacrosstrack, ossalongtrack, comment, &error);
@@ -2669,8 +2716,9 @@ int main(int argc, char **argv) {
     }
 
     /* write some data */
-    if ((kind != MB_DATA_COMMENT && error == MB_ERROR_NO_ERROR && inbounds) ||
-        (kind == MB_DATA_COMMENT && stripmode == MBCOPY_STRIPMODE_NONE)) {
+    if (ostore_ptr != nullptr &&
+        ((kind != MB_DATA_COMMENT && error == MB_ERROR_NO_ERROR && inbounds) ||
+         (kind == MB_DATA_COMMENT && stripmode == MBCOPY_STRIPMODE_NONE))) {
       error = MB_ERROR_NO_ERROR;
       status = mb_put_all(verbose, ombio_ptr, ostore_ptr, false, kind, time_i, time_d, navlon, navlat, speed, heading,
                           obeams_bath, obeams_amp, opixels_ss, obeamflag, obath, oamp, obathacrosstrack, obathalongtrack,

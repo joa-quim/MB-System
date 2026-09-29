@@ -45,7 +45,13 @@
 #include <cstring>
 #include <ctime>
 #include <getopt.h>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <limits>
 
 #include <algorithm>
@@ -1575,10 +1581,16 @@ int main(int argc, char **argv) {
 
   FILE *outfile;
   if (!netcdf) {
-    if (0 == strncmp("-", output_file, 2))
+    if (0 == strncmp("-", output_file, 2)) {
       outfile = stdout;
+#ifdef _WIN32
+      /* binary output must bypass the C runtime's CRLF translation */
+      if (!ascii)
+        _setmode(_fileno(stdout), _O_BINARY);
+#endif
+    }
     else
-      outfile = fopen(output_file, "w");
+      outfile = fopen(output_file, ascii ? "w" : "wb");
     if (nullptr == outfile) {
       fprintf(stderr, "Could not open file: %s\n", output_file);
       exit(1);
@@ -4240,22 +4252,22 @@ if (error == MB_ERROR_NO_ERROR)
                   }
                   break;
                 case 'U': /* unix time in seconds since 1/1/70 00:00:00 */
-                  time_u = (int)time_d;
+                  time_u = (time_t)time_d;
                   if (ascii)
-                    fprintf(output[i], "%ld", time_u);
+                    fprintf(output[i], "%lld", (long long)time_u);
                   else {
                     b = time_u;
                     fwrite(&b, sizeof(double), 1, outfile);
                   }
                   break;
                 case 'u': /* time in seconds since first record */
-                  time_u = (int)time_d;
+                  time_u = (time_t)time_d;
                   if (first_u) {
                     time_u_ref = time_u;
                     first_u = false;
                   }
                   if (ascii)
-                    fprintf(output[i], "%ld", time_u - time_u_ref);
+                    fprintf(output[i], "%lld", (long long)(time_u - time_u_ref));
                   else {
                     b = time_u - time_u_ref;
                     fwrite(&b, sizeof(double), 1, outfile);
@@ -5288,22 +5300,22 @@ if (error == MB_ERROR_NO_ERROR)
                   }
                   break;
                 case 'U': /* unix time in seconds since 1/1/70 00:00:00 */
-                  time_u = (int)time_d;
+                  time_u = (time_t)time_d;
                   if (ascii)
-                    fprintf(output[i], "%ld", time_u);
+                    fprintf(output[i], "%lld", (long long)time_u);
                   else {
                     b = time_u;
                     fwrite(&b, sizeof(double), 1, outfile);
                   }
                   break;
                 case 'u': /* time in seconds since first record */
-                  time_u = (int)time_d;
+                  time_u = (time_t)time_d;
                   if (first_u) {
                     time_u_ref = time_u;
                     first_u = false;
                   }
                   if (ascii)
-                    fprintf(output[i], "%ld", time_u - time_u_ref);
+                    fprintf(output[i], "%lld", (long long)(time_u - time_u_ref));
                   else {
                     b = time_u - time_u_ref;
                     fwrite(&b, sizeof(double), 1, outfile);

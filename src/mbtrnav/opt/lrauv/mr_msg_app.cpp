@@ -70,7 +70,11 @@
 #include <lcm/lcm-cpp.hpp>
 #include <sys/time.h>
 #include <stdio.h>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include "lrconav_app.h"
 #include "MRFilterLog.h"
 

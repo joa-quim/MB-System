@@ -47,11 +47,69 @@ set (MBSYSTEM_SUPPL_PURPOSE
     "MB-System: GMT modules for swath bathymetry processing and plotting")
 
 set (MBSYSTEM_MODULE_SRCS
+    mb7k2jstar.c
+    mbauvloglist.c
+    mbdefaults.c
+    mbdumpesf.c
+    mbfnv2navlab.c
+    mbmakeplatform.c
+    mbminirovnav.c
+    mbnavadjustmerge.c
+    mbnavlab2fnv.c
+    mbrolltimelag.c
+    mbroutetime.c
+    mbsegygrid.c
+    mbsegylist.c
+    mbsegypsd.c
+    mbsslayout.c
+    mbusbl2fnv.c
+    mbabsorption.c
+    mbareaclean.c
+    mbbackangle.c
+    mbclean.c
+    mbconfig.c
     mbcontour.c
+    mbcopy.c
+    mbctdlist.c
+    mbdatalist.c
+    mbextractsegy.c
+    mbfilter.c
+    mbformat.c
+    mbgetesf.c
+    mbgetdata.c
+    mbgpstide.c
+    mbgrd2gltf.c
     mbgrd2obj.c
+    mbgrid.c
+    mbhistogram.c
+    mbimport.c
+    mbinfo.c
+    mblevitus.c
+    mblist.c
+    mbmakedatalist.c
+    mbmapscale.c
+    mbmesh.c
+    mbmosaic.c
+    mbnavlist.c
+    mbotps.c
+    mbpreprocess.c
+    mbprocess.c
+    mbsegyinfo.c
+    mbset.c
+    mbsvplist.c
+    mbsvpselect.c
+    mbswath2las.c
+    mbtime.c
+    mbvoxelclean.c
     #mbgrdtiff.c NOTE: new version doesn't work, still using pre-GMT6 version
     mbgrdtifforg.c
     mbswath.c)
+
+# Support sources that are not modules themselves. mbotps.c needs the OTPS
+# tidal prediction engine, which src/otps also compiles into its program.
+set (MBSYSTEM_EXTRA_SRCS
+    ${CMAKE_SOURCE_DIR}/src/otps/mb_otps_predict.c
+    mb_getopt.c)
 
 set (MBSYSTEM_MODULEINFO_H
     "${CMAKE_CURRENT_BINARY_DIR}/gmt_${MBSYSTEM_SUPPL_NAME}_moduleinfo.h")
@@ -88,6 +146,7 @@ configure_file (
 
 add_library(mbsystem
     ${MBSYSTEM_MODULE_SRCS}
+    ${MBSYSTEM_EXTRA_SRCS}
     ${MBSYSTEM_GLUE_C}
     ${MBSYSTEM_MODULEINFO_H})
 
@@ -105,6 +164,39 @@ set_source_files_properties(mbconfig.c PROPERTIES COMPILE_DEFINITIONS
 target_include_directories(mbsystem PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # Generated glue + moduleinfo header live in the binary dir.
 target_include_directories(mbsystem PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(mbsystem GMT::GMT GMT::PSL mbio mbaux)
+# mbotps.c includes otps.h, which src/otps generates with file(WRITE) - that
+# lands in src/otps in the source tree - plus mb_otps_predict.h from the same
+# place. The binary directory is kept on the path in case that generation is
+# ever moved there.
+target_include_directories(mbsystem PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/otps
+    ${CMAKE_BINARY_DIR}/src/otps)
+# mbswath2las queries the target CRS through PROJ for the LAS WKT record
+# (the same dependency src/utilities/mbswath2las has).
+find_package(LibPROJ REQUIRED)
+target_link_libraries(mbsystem LibPROJ::LibPROJ)
+# mbmesh.c drives the mbmesh reconstruction pipeline through the plain C
+# bridge in src/mbmesh/mbmesh_capi.h; mbmesh_pipeline carries that bridge, the
+# C++ it wraps, and the include directories the header needs. The target is
+# defined by src/mbmesh, which CMake processes after this directory; linking by
+# name is resolved at generate time, so the ordering does not matter.
+target_link_libraries(mbsystem mbmesh_pipeline)
+# mbgrd2gltf.c drives the glTF conversion through the plain C bridge in
+# src/mbgrd2gltf/mbgrd2gltf_capi.h; mbgrd2gltf_pipeline carries that bridge,
+# the C++ it wraps (including Draco) and the include directory the header
+# needs. That library does not link back to mbsystem, so there is no cycle.
+target_link_libraries(mbsystem mbgrd2gltf_pipeline)
+# mbprocess.c runs its processing threads on pthreads outside Windows
+# (MB_SYSLIBS carries pthread there and is empty on MSVC).
+target_link_libraries(mbsystem ${MB_SYSLIBS})
+# mbsegypsd.c computes its spectra with FFTW, as src/utilities/mbsegypsd does.
+find_package(FFTW REQUIRED COMPONENTS DOUBLE_LIB)
+target_link_libraries(mbsystem FFTW::Double)
+# mbnavadjustmerge.c works on mbnavadjust projects through mbnavadjust_core
+# (defined in src/mbnavadjust; linking by name resolves at generate time).
+target_link_libraries(mbsystem mbnavadjust_core)
+# mbcopy/mbgpstide reach mbsys_gsf.h, which includes <gsf.h>; linking mbgsf
+# (as src/utilities does) brings both the header path and the symbols.
+target_link_libraries(mbsystem GMT::GMT GMT::PSL mbio mbaux mbbsio mbsapi mbgsf)
 
 install(TARGETS mbsystem DESTINATION ${CMAKE_INSTALL_LIBDIR})

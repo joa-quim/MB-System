@@ -1525,8 +1525,8 @@ static msock_socket_t **s_get_mb1_instance(app_cfg_t *cfg)
         mtime_delay_ms(250);
         if(test==0){
             s_dbg_printf(stderr,cfg->debug, "%s:%d mb1svr sending REQ %s:%d\n", __func__, __LINE__, cfg->mb1_host, cfg->mb1_port);
-            int REQ_BYTES=4;
-            byte req[REQ_BYTES];
+            enum { REQ_BYTES = 4 };   /* enum, not const int: in C only an enum is a constant expression */
+            byte *req = (byte *)alloca(REQ_BYTES);
             memset(req, 0, REQ_BYTES);
             snprintf((char *)req, REQ_BYTES, "REQ");
             int64_t st = msock_sendto(mb1_sock,NULL,req, REQ_BYTES, 0);
@@ -1534,8 +1534,8 @@ static msock_socket_t **s_get_mb1_instance(app_cfg_t *cfg)
                 s_dbg_printf(stderr,cfg->debug, "%s:%d sendto ret[%"PRId64"]\n", __func__, __LINE__, st);
                 mtime_delay_ms(250);
 
-                int ACK_BYTES=4;
-                byte ack[ACK_BYTES];
+                enum { ACK_BYTES = 4 };   /* enum, not const int: in C only an enum is a constant expression */
+                byte *ack = (byte *)alloca(ACK_BYTES);
                 memset(ack,0,ACK_BYTES);
 
                 msock_set_blocking(mb1_sock,true);

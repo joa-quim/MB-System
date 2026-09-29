@@ -18,7 +18,11 @@
 
 #include <cstdio>
 #include <cstdlib>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
+#endif
 #include <getopt.h>
 // for basename
 #include <libgen.h>
@@ -1388,7 +1392,7 @@ void TrnPlayer::copy_config()
 {
     if(strlen(ctx->cpath) > 0) {
         size_t blen = LBUF_SZ+16; 
-        char syscmd[blen];
+        char *syscmd = (char*)alloca(blen); /* was VLA */
         memset(syscmd, 0, blen);
         snprintf(syscmd, blen, "cp %s latestTRN/.", ctx->cpath);
         int rv = system(syscmd);

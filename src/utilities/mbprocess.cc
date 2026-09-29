@@ -55,10 +55,20 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <thread>
+#ifdef _WIN32
+#include "unistd_w.h"
+#else
 #include <unistd.h>
-
+#endif
 #include "mb_aux.h"
 #include "mb_define.h"
+
+/* MSVC has no fseeko/ftello; use the native 64-bit file APIs instead. */
+#ifdef _WIN32
+#define ftello _ftelli64
+#define fseeko(fp, off, whence) _fseeki64((fp), (off), (whence))
+#endif
+
 #include "mb_format.h"
 #include "mb_process.h"
 #include "mb_status.h"
@@ -3091,7 +3101,7 @@ void process_file(int verbose, int thread_id, struct mb_process_struct *process,
 
   /* open reverse edit save file (*.resf) */
   snprintf(resf_file, sizeof(resf_file), "%s.resf", process->mbp_ifile);
-  if ((resf_fp = fopen(resf_file, "w")) == nullptr) {
+  if ((resf_fp = fopen(resf_file, "wb")) == nullptr) {
     *error = MB_ERROR_OPEN_FAIL;
     char *message = nullptr;
     mb_error(verbose, *error, &message);
@@ -5921,7 +5931,7 @@ int main(int argc, char **argv) {
     if (errflg) {
       fprintf(stderr, "usage: %s\n", usage_message);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      exit(MB_ERROR_BAD_USAGE);
+      return MB_ERROR_BAD_USAGE;
     }
 
     if (help) {
@@ -5929,7 +5939,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "MB-System Version %s\n", MB_VERSION);
       fprintf(stderr, "\n%s\n", help_message);
       fprintf(stderr, "\nusage: %s\n", usage_message);
-      exit(MB_ERROR_NO_ERROR);
+      return MB_ERROR_NO_ERROR;
     }
   }
 
@@ -5949,7 +5959,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "The input file may be specified with the -I option.\n");
     fprintf(stderr, "The default input file is \"datalist.mb-1\".\n");
     fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-    exit(MB_ERROR_OPEN_FAIL);
+    return MB_ERROR_OPEN_FAIL;
   }
 
   /* get format if required */
@@ -5969,7 +5979,7 @@ int main(int argc, char **argv) {
     if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
       fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      exit(MB_ERROR_OPEN_FAIL);
+      return MB_ERROR_OPEN_FAIL;
     }
     read_data = (mb_datalist_read(verbose, datalist, mbp_ifile, mbp_dfile, &mbp_format, &file_weight, &error) == MB_SUCCESS);
   } else {
@@ -6042,7 +6052,14 @@ int main(int argc, char **argv) {
   int thread_error[MB_THREAD_MAX];
 
   /* parameter controls */
-  struct mb_process_struct processPars[MB_THREAD_MAX];
+  /* MB_THREAD_MAX parameter structures take about 450 KB - too much for the
+     stack of a worker or host thread - so they live on the heap */
+  struct mb_process_struct *processPars =
+      static_cast<struct mb_process_struct *>(calloc(MB_THREAD_MAX, sizeof(struct mb_process_struct)));
+  if (processPars == nullptr) {
+    fprintf(stderr, "\nUnable to allocate the processing parameter structures\n");
+    exit(MB_ERROR_MEMORY_FAIL);
+  }
 
   /* topography grids for backscatter correction */
   struct mbprocess_grid_struct grids[MB_PR_TOPOGRID_NUM_MAX];
@@ -6382,7 +6399,9 @@ int main(int argc, char **argv) {
             if (!grids_read[i]) {
               igrid_use = i;
             } else {
-              if (grids_countSinceUsed[i] > largest_count_since_used) {
+              /* compare as int: against the unsigned count the initial -1
+                 converted to UINT_MAX and no grid was ever chosen for deletion */
+              if ((int)grids_countSinceUsed[i] > largest_count_since_used) {
                 largest_count_since_used = grids_countSinceUsed[i];
                 igrid_delete = i;
               }
@@ -6415,12 +6434,12 @@ int main(int argc, char **argv) {
             } else {
               fprintf(stderr, "\nUnable to read topography grid file: %s\n", grids[igrid_use].file);
               fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-              exit(MB_ERROR_OPEN_FAIL);
+              return MB_ERROR_OPEN_FAIL;
             }
           } else {
             fprintf(stderr, "\nUnable to clear memory to read topography grid file: %s\n", process->mbp_ampsscorr_topofile);
             fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-            exit(MB_ERROR_OPEN_FAIL);
+            return MB_ERROR_OPEN_FAIL;
           }
         }
       }
@@ -6478,6 +6497,8 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Program %s completed but failed to deallocate all allocated memory - the code has a memory leak somewhere!\n", program_name);
   }
 
-  exit(error);
+  free(processPars);
+
+  return error;
 }
 /*--------------------------------------------------------------------*/
