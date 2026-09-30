@@ -825,7 +825,7 @@ void commst_initialize(wtnav_t *self, wcommst_t *msg)
         if(NULL!=ct && NULL!=trn){
 
             int errors=0;
-            const const int BUF_SIZE=512;   /* const so the arrays below are not VLAs */   /* const so the arrays below are not VLAs */
+            const int BUF_SIZE=512;   /* const so the arrays below are not VLAs */
             char mapname[BUF_SIZE];
             char cfgname[BUF_SIZE];
             char particlename[BUF_SIZE];

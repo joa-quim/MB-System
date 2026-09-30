@@ -1,4 +1,5 @@
-# Build MB-System (no graphical tools) on Windows (MSVC) and Linux (GCC).
+# Build MB-System (no graphical tools) on Windows (MSVC), Linux (GCC) and
+# macOS (Clang, Homebrew dependencies).
 #
 # Windows dependencies (GMT, GDAL, PROJ, NetCDF, FFTW, pthreads-win32,
 # getopt-win32, GLib) come from conda-forge. The paths that ConfigUser.cmake
@@ -52,12 +53,16 @@ jobs:
         shell: pwsh
         run: |
           $L = "$env:CONDA_PREFIX\Library" -replace '\\', '/'
-          $pthread = (Get-ChildItem "$L/lib/pthreadVC*.lib" | Select-Object -First 1).FullName -replace '\\', '/'
-          $getopt  = (Get-ChildItem "$L/lib/getopt*.lib"    | Select-Object -First 1).FullName -replace '\\', '/'
-          if (-not $pthread) { throw "pthreads-win32 import library not found in $L/lib" }
-          if (-not $getopt)  { throw "getopt import library not found in $L/lib" }
-          Write-Host "pthreads: $pthread"
-          Write-Host "getopt:   $getopt"
+          # conda-forge pthreads-win32 ships pthread.lib (import lib of pthreadVSE2.dll);
+          # getopt-win32 ships getopt.lib.
+          $pthread = "$L/lib/pthread.lib"
+          $getopt  = "$L/lib/getopt.lib"
+          foreach ($f in $pthread, $getopt) {
+            if (-not (Test-Path $f)) {
+              Get-ChildItem "$L/lib" -Filter *.lib | ForEach-Object { $_.Name }
+              throw "$f not found"
+            }
+          }
           cmake -S . -B build-ci -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_PREFIX_PATH="$L" `
@@ -80,7 +85,8 @@ jobs:
 
       - name: Build
         shell: pwsh
-        run: cmake --build build-ci --parallel
+        # -k 0: keep going after errors so one run reports every failure.
+        run: cmake --build build-ci --parallel -- -k 0
 
   linux:
     name: Linux (GCC, Ubuntu 24.04)
@@ -107,4 +113,30 @@ jobs:
             -DbuildTests=ON
 
       - name: Build
-        run: cmake --build build-ci --parallel
+        run: cmake --build build-ci --parallel -- -k 0
+
+  macos:
+    name: macOS (Clang, arm64)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+        run: brew install cmake ninja gmt gdal proj netcdf fftw
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
+            -DbuildGUIs=OFF \
+            -DbuildOpenCV=OFF \
+            -DbuildTRN=ON \
+            -DbuildTests=ON
+
+      - name: Build
+        run: cmake --build build-ci --parallel -- -k 0
