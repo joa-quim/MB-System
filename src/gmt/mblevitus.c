@@ -57,7 +57,10 @@
 #include "mb_status.h"
 
 #ifndef _WIN32
-#include "levitus.h"
+/* Install location of LevitusAnnual82.dat, set by src/gmt/CMakeLists.txt.
+ * (src/utilities/levitus.h is not used: it also defines otps_location,
+ * which src/otps/otps.h defines again for mbotps.c in this same library.) */
+static const char *levitusfile = MBLEVITUS_FILE;
 #endif
 
 #define NDEPTH_MAX   46

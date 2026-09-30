@@ -157,10 +157,17 @@ target_compile_definitions(mbsystem PUBLIC MB_PACKAGE_VERSION="${PROJECT_VERSION
 # is defined — needed when we're the TU defining a GMT_<module> plugin entry.
 # Without this, MSVC warns C4273 (declared dllimport, defined as plain extern).
 target_compile_definitions(mbsystem PRIVATE LIBRARY_EXPORTS)
+# GMT parses module options (reentrant mb_getopt.h where a getopt loop was kept),
+# so keep the system <getopt.h> out of src/mbio/unistd_w.h: getopt-win32's
+# "#define option option_a" breaks struct GMT_OPTION's 'option' member.
+target_compile_definitions(mbsystem PRIVATE MB_NO_SYSTEM_GETOPT)
 # mbconfig.c needs install-prefix + database location strings (same vars
 # defined for src/utilities/mbconfig).
 set_source_files_properties(mbconfig.c PROPERTIES COMPILE_DEFINITIONS
     "MBSYSTEM_INSTALL_PREFIX=\"${CMAKE_INSTALL_PREFIX}\";ENV_OTPSDIR=\"${otpsDir}\";ENV_LEVITUSANNUAL82=\"${levitusDir}/LevitusAnnual82.dat\"")
+# mblevitus.c: compile-time location of the Levitus database (non-Windows lookup).
+set_source_files_properties(mblevitus.c PROPERTIES COMPILE_DEFINITIONS
+    "MBLEVITUS_FILE=\"${CMAKE_INSTALL_PREFIX}/${levitusDir}/LevitusAnnual82.dat\"")
 target_include_directories(mbsystem PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # Generated glue + moduleinfo header live in the binary dir.
 target_include_directories(mbsystem PRIVATE ${CMAKE_CURRENT_BINARY_DIR})

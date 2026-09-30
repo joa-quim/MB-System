@@ -22,8 +22,13 @@
 #include <io.h>
 
 /* POSIX declares getopt(), optarg, optind and friends in <unistd.h>, so
- * code that includes only <unistd.h> expects them here. */
+ * code that includes only <unistd.h> expects them here.
+ * The GMT modules (src/gmt) define MB_NO_SYSTEM_GETOPT: GMT parses their
+ * options, and getopt-win32 (vcpkg, conda-forge) does "#define option option_a",
+ * which renames the 'option' member of GMT's struct GMT_OPTION. */
+#ifndef MB_NO_SYSTEM_GETOPT
 #include <getopt.h>
+#endif
 
 #ifndef PATH_MAX
 #  define PATH_MAX 1024

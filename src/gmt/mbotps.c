@@ -76,7 +76,6 @@
  * Date:  September 2, 2026 (native tidal prediction engine)
  */
 
-#ifdef _WIN32
 #define THIS_MODULE_NAME    "mbotps"
 #define THIS_MODULE_LIB     "mbsystem"
 #define THIS_MODULE_PURPOSE "Predict tides using the OSU Tidal Prediction Software models"
@@ -89,6 +88,7 @@
 
 #include "gmt_dev.h"
 
+#ifdef _WIN32
 #include "dirent_w.h"
 #else
 #include <dirent.h>
