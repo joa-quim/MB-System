@@ -1,0 +1,110 @@
+# Build MB-System (no graphical tools) on Windows (MSVC) and Linux (GCC).
+#
+# Windows dependencies (GMT, GDAL, PROJ, NetCDF, FFTW, pthreads-win32,
+# getopt-win32, GLib) come from conda-forge. The paths that ConfigUser.cmake
+# hard-codes for the local machine are passed here as -D options instead;
+# ConfigUser.cmake is not used in CI.
+
+name: Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows (MSVC, x64)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (conda-forge)
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: mbdeps
+          init-shell: powershell
+          cache-environment: true
+          create-args: >-
+            gmt
+            libgdal
+            proj
+            libnetcdf
+            fftw
+            pthreads-win32
+            getopt-win32
+            glib
+            cmake
+            ninja
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $L = "$env:CONDA_PREFIX\Library" -replace '\\', '/'
+          $pthread = (Get-ChildItem "$L/lib/pthreadVC*.lib" | Select-Object -First 1).FullName -replace '\\', '/'
+          $getopt  = (Get-ChildItem "$L/lib/getopt*.lib"    | Select-Object -First 1).FullName -replace '\\', '/'
+          if (-not $pthread) { throw "pthreads-win32 import library not found in $L/lib" }
+          if (-not $getopt)  { throw "getopt import library not found in $L/lib" }
+          Write-Host "pthreads: $pthread"
+          Write-Host "getopt:   $getopt"
+          cmake -S . -B build-ci -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_PREFIX_PATH="$L" `
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/install" `
+            -DbuildGUIs=OFF `
+            -DbuildOpenCV=OFF `
+            -DbuildTRN=ON `
+            -DbuildTests=ON `
+            -DGMT_INCLUDE_DIR="$L/include/gmt" `
+            -DGMT_LIBRARY="$L/lib/gmt.lib" `
+            -DPSL_LIBRARY="$L/lib/postscriptlight.lib" `
+            -DNetCDF_INCLUDE_DIR="$L/include" `
+            -DGETOPT_INCLUDE_DIR="$L/include" `
+            -DGETOPT_LIBRARY="$getopt" `
+            -DPTHREADINC="$L/include" `
+            -DPTHREADLIB="$pthread" `
+            -DGLIB_INCLUDE_DIR="$L/include/glib-2.0" `
+            -DGLIB_CONFIG_DIR="$L/lib/glib-2.0/include" `
+            -DGLIB_LIBRARY="$L/lib/glib-2.0.lib"
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build-ci --parallel
+
+  linux:
+    name: Linux (GCC, Ubuntu 24.04)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build \
+            gmt libgmt-dev libgdal-dev libproj-dev libnetcdf-dev \
+            libfftw3-dev libtirpc-dev
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DbuildGUIs=OFF \
+            -DbuildOpenCV=OFF \
+            -DbuildTRN=ON \
+            -DbuildTests=ON
+
+      - name: Build
+        run: cmake --build build-ci --parallel
