@@ -252,3 +252,67 @@ jobs:
           name: mbsystem-macos-arm64
           path: mbsystem-macos-arm64.tar.gz
           if-no-files-found: error
+
+  # Full Linux build including the Motif/X11 graphical tools (mbedit,
+  # mbnavedit, mbvelocitytool, mbgrdviz, mbeditviz, mbnavadjust). Built on
+  # Ubuntu 22.04 to match the WSL2 Ubuntu 22.04 it is meant to run on, so the
+  # system libraries it links against are the same versions.
+  linux-gui:
+    name: Linux with GUIs (GCC, Ubuntu 22.04, for WSL2)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build \
+            gmt libgmt-dev libgdal-dev libproj-dev libnetcdf-dev \
+            libfftw3-dev libtirpc-dev \
+            libmotif-dev libx11-dev libxt-dev \
+            libgl1-mesa-dev libglu1-mesa-dev
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DbuildGUIs=ON \
+            -DbuildOpenCV=OFF \
+            -DbuildTRN=ON \
+            -DbuildTests=OFF
+
+      - name: Build
+        run: cmake --build build-ci --parallel -- -k 0
+
+      # The binaries have /usr/local compiled in (library RPATH, data file
+      # locations), so the package holds a /usr/local tree.
+      - name: Package
+        run: |
+          DESTDIR="$PWD/stage" cmake --install build-ci
+          cat > stage/usr/local/README-wsl.txt <<'TXT'
+          MB-System with graphical tools, built for Ubuntu 22.04 (WSL2 on Windows 11).
+
+          1. Install the libraries the programs need (inside WSL):
+               sudo apt update
+               sudo apt install gmt libgmt6 libgdal30 libproj22 libnetcdf19 \
+                 libfftw3-double3 libtirpc3 libxm4 libxt6 libgl1 libglu1-mesa
+
+          2. Unpack this archive into /usr/local and refresh the library cache:
+               sudo tar -xzf mbsystem-linux-gui-ubuntu22.04.tar.gz -C /usr/local
+               sudo ldconfig
+
+          3. Run a graphical tool, e.g.:
+               mbgrdviz
+               mbedit
+             On Windows 11 the windows open on the Windows desktop (WSLg).
+          TXT
+          tar -czf mbsystem-linux-gui-ubuntu22.04.tar.gz -C stage/usr/local .
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mbsystem-linux-gui-ubuntu22.04
+          path: mbsystem-linux-gui-ubuntu22.04.tar.gz
+          if-no-files-found: error
