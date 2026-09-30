@@ -66,7 +66,7 @@ jobs:
           cmake -S . -B build-ci -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_PREFIX_PATH="$L" `
-            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/install" `
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/mbsystem" `
             -DbuildGUIs=OFF `
             -DbuildOpenCV=OFF `
             -DbuildTRN=ON `
@@ -87,6 +87,90 @@ jobs:
         shell: pwsh
         # -k 0: keep going after errors so one run reports every failure.
         run: cmake --build build-ci --parallel -- -k 0
+
+      - name: Install
+        shell: pwsh
+        run: cmake --install build-ci --prefix "${{ github.workspace }}/mbsystem"
+
+      - name: Make package self-contained
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = "${{ github.workspace }}\mbsystem"
+          $bin  = "$root\bin"
+          $L    = "$env:CONDA_PREFIX\Library"
+
+          # MB-System installs its own DLLs to lib/, but Windows only finds
+          # DLLs next to the executable (or on PATH).
+          Copy-Item "$root\lib\*.dll" $bin -Force
+          # googletest DLLs are only used by the unit tests.
+          Remove-Item "$bin\gtest*.dll", "$bin\gmock*.dll" -ErrorAction SilentlyContinue
+          # gmt.exe runs the MB-System GMT modules in mbsystem.dll.
+          Copy-Item "$L\bin\gmt.exe" $bin
+
+          # Copy every DLL the executables and DLLs in bin/ depend on,
+          # recursively, from the conda environment (conda keeps the MSVC
+          # runtime in the environment root). Windows system DLLs are not
+          # found there and are skipped.
+          $search = @("$L\bin", $env:CONDA_PREFIX)
+          $seen   = @{}
+          $queue  = [System.Collections.Generic.Queue[string]]::new()
+          Get-ChildItem "$bin\*" -Include *.exe, *.dll | ForEach-Object {
+            $seen[$_.Name.ToLower()] = $true
+            $queue.Enqueue($_.FullName)
+          }
+          $added = 0
+          while ($queue.Count -gt 0) {
+            $file = $queue.Dequeue()
+            foreach ($line in (dumpbin /nologo /dependents $file)) {
+              if ($line -notmatch '^\s+(\S+\.dll)\s*$') { continue }
+              $name = $Matches[1]
+              $key  = $name.ToLower()
+              if ($seen.ContainsKey($key)) { continue }
+              $seen[$key] = $true
+              if ($key -match '^(api-ms-|ext-ms-|ucrtbase)') { continue }
+              foreach ($dir in $search) {
+                $src = Join-Path $dir $name
+                if (Test-Path $src) {
+                  Copy-Item $src $bin
+                  $queue.Enqueue((Join-Path $bin $name))
+                  $added++
+                  break
+                }
+              }
+            }
+          }
+          Write-Host "Copied $added dependency DLLs into bin/"
+
+          # Runtime data: GMT defaults, PROJ database, GDAL data.
+          foreach ($d in 'gmt', 'proj', 'gdal') {
+            if (Test-Path "$L\share\$d") {
+              Copy-Item "$L\share\$d" "$root\share\$d" -Recurse -Force
+            }
+          }
+
+          @"
+          MB-System for Windows x64 (built by GitHub Actions, commit ${{ github.sha }})
+
+          All programs are in bin\ together with the DLLs they need.
+          Add bin\ to PATH, or run the programs from there.
+
+          If GMT, PROJ or GDAL cannot find their data files, set:
+            GMT_SHAREDIR = <this folder>\share\gmt
+            PROJ_DATA    = <this folder>\share\proj
+            GDAL_DATA    = <this folder>\share\gdal
+
+          To run the MB-System GMT modules with the bundled gmt.exe, point GMT
+          at the plugin, e.g. in gmt.conf:
+            GMT_CUSTOM_LIBS = <this folder>\bin\mbsystem.dll
+          "@ | Set-Content "$root\README-windows.txt" -Encoding utf8
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mbsystem-windows-x64
+          path: mbsystem
+          if-no-files-found: error
 
   linux:
     name: Linux (GCC, Ubuntu 24.04)
@@ -115,6 +199,21 @@ jobs:
       - name: Build
         run: cmake --build build-ci --parallel -- -k 0
 
+      # The binaries have /usr/local compiled in (library RPATH, data file
+      # locations), so the package holds a /usr/local tree. A tarball keeps
+      # the executable bits that the artifact zip would drop.
+      - name: Package
+        run: |
+          DESTDIR="$PWD/stage" cmake --install build-ci
+          tar -czf mbsystem-linux-x64.tar.gz -C stage/usr/local .
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mbsystem-linux-x64
+          path: mbsystem-linux-x64.tar.gz
+          if-no-files-found: error
+
   macos:
     name: macOS (Clang, arm64)
     runs-on: macos-latest
@@ -140,3 +239,16 @@ jobs:
 
       - name: Build
         run: cmake --build build-ci --parallel -- -k 0
+
+      # Same /usr/local layout as the Linux package.
+      - name: Package
+        run: |
+          DESTDIR="$PWD/stage" cmake --install build-ci
+          tar -czf mbsystem-macos-arm64.tar.gz -C stage/usr/local .
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mbsystem-macos-arm64
+          path: mbsystem-macos-arm64.tar.gz
+          if-no-files-found: error
