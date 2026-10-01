@@ -316,3 +316,66 @@ jobs:
           name: mbsystem-linux-gui-ubuntu22.04
           path: mbsystem-linux-gui-ubuntu22.04.tar.gz
           if-no-files-found: error
+
+  # Full macOS build including the Motif/X11 graphical tools, with Motif, X11
+  # and Mesa (libGL/libGLU) from Homebrew, as build-utils/FindMotif.cmake and
+  # FindOpenGL.cmake expect under /opt/homebrew.
+  macos-gui:
+    name: macOS with GUIs (Clang, arm64)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+        run: |
+          brew install cmake ninja gmt gdal proj netcdf fftw \
+            openmotif libx11 libxt mesa mesa-glu
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
+            -DbuildGUIs=ON \
+            -DbuildOpenCV=OFF \
+            -DbuildTRN=ON \
+            -DbuildTests=OFF
+
+      - name: Build
+        run: cmake --build build-ci --parallel -- -k 0
+
+      # Same /usr/local layout as the other Unix packages.
+      - name: Package
+        run: |
+          DESTDIR="$PWD/stage" cmake --install build-ci
+          cat > stage/usr/local/README-macos.txt <<'TXT'
+          MB-System with graphical tools for macOS on Apple Silicon (arm64).
+
+          1. Install the libraries the programs need (Homebrew), and XQuartz,
+             which displays the X11/Motif windows:
+               brew install gmt gdal proj netcdf fftw openmotif libx11 libxt mesa mesa-glu
+               brew install --cask xquartz
+             Log out and back in once after installing XQuartz.
+
+          2. Unpack this archive into /usr/local:
+               sudo mkdir -p /usr/local
+               sudo tar -xzf mbsystem-macos-gui-arm64.tar.gz -C /usr/local
+             If macOS blocks the programs as downloaded from the internet:
+               sudo xattr -dr com.apple.quarantine /usr/local/bin /usr/local/lib
+
+          3. Run a graphical tool, e.g.:
+               mbgrdviz
+               mbedit
+          TXT
+          tar -czf mbsystem-macos-gui-arm64.tar.gz -C stage/usr/local .
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mbsystem-macos-gui-arm64
+          path: mbsystem-macos-gui-arm64.tar.gz
+          if-no-files-found: error
