@@ -34,6 +34,7 @@ class MbGridTest(unittest.TestCase):
     self.assertIn('curvature algorithm', output)
     self.assertIn('usage:', output)
     self.assertIn('-Xextend', output)
+    self.assertIn('--cube-method', output)
 
   def testHelpVerbose2(self):
     cmd = [self.cmd, '-h', '-V', '-V']

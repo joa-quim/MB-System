@@ -39,6 +39,70 @@
 #define MAX_OPTIONS                 100
 #define SECONDARY_FILE_COLUMNS_MAX  20
 
+/* ---- GMT IO: the listing handed back to the caller --------------------------------------------
+   Called through the API (Julia, MATLAB, Python: API->external), with no -X file and no NetCDF, mblist
+   writes its listing with GMT's own IO -- one GMT record per output line (GMT_Put_Record), its fields
+   the numeric values the listing's binary form already emits (each field as a double), a file name
+   field as the record's text -- so the caller gets a GMT dataset back. From the command line, and to
+   a -X file, the listing is written exactly as before. */
+#define MBL_MAXCOL 4096
+static struct GMTAPI_CTRL *mbl_api = NULL;      /* non-NULL: the listing goes out through GMT IO */
+static struct GMT_OPTION *mbl_options = NULL;
+static struct GMT_RECORD *mbl_out = NULL;
+static double mbl_rec[MBL_MAXCOL];
+static char mbl_text[MB_PATH_MAXLINE];
+static unsigned int mbl_ncol = 0, mbl_ncols = 0;
+static bool mbl_begun = false;
+
+/* one field of the current record (or, not through GMT IO, the binary listing's double) */
+static void mbl_putd(double value, FILE *output) {
+	if (mbl_api) {
+		if (mbl_ncol < MBL_MAXCOL) mbl_rec[mbl_ncol++] = value;
+	} else
+		fwrite(&value, sizeof(double), 1, output);
+}
+
+/* a text field of the current record (a file name) */
+static void mbl_puttext(const char *text) {
+	strncpy(mbl_text, text, MB_PATH_MAXLINE - 1);
+	mbl_text[MB_PATH_MAXLINE - 1] = '\0';
+}
+
+/* the current record is complete: out through GMT IO (opened with the first one, which sets the columns) */
+static int mbl_endrec(void) {
+	if (!mbl_api || (mbl_ncol == 0 && mbl_text[0] == '\0')) return GMT_NOERROR;
+	if (!mbl_begun) {
+		mbl_ncols = mbl_ncol;
+		if (GMT_Set_Columns(mbl_api, GMT_OUT, mbl_ncols, mbl_text[0] ? GMT_COL_FIX : GMT_COL_FIX_NO_TEXT) != GMT_NOERROR)
+			return mbl_api->error;
+		if (GMT_Init_IO(mbl_api, GMT_IS_DATASET, GMT_IS_POINT, GMT_OUT, GMT_ADD_DEFAULT, 0, mbl_options) != GMT_NOERROR)
+			return mbl_api->error;
+		if (GMT_Begin_IO(mbl_api, GMT_IS_DATASET, GMT_OUT, GMT_HEADER_OFF) != GMT_NOERROR)
+			return mbl_api->error;
+		mbl_out = gmt_new_record(mbl_api->GMT, mbl_rec, mbl_text[0] ? mbl_text : NULL);
+		mbl_begun = true;
+	}
+	for (unsigned int c = mbl_ncol; c < mbl_ncols; c++) mbl_rec[c] = NAN;   /* a short record: the rest NaN */
+	GMT_Put_Record(mbl_api, GMT_WRITE_DATA, mbl_out);
+	mbl_ncol = 0;
+	mbl_text[0] = '\0';
+	return GMT_NOERROR;
+}
+
+/* the listing is done: GMT IO closed, the state reset for the next call */
+static void mbl_endio(void) {
+	if (mbl_api && mbl_begun) {
+		GMT_End_IO(mbl_api, GMT_OUT, 0);
+		gmt_M_free(mbl_api->GMT, mbl_out);
+	}
+	mbl_api = NULL;
+	mbl_options = NULL;
+	mbl_out = NULL;
+	mbl_ncol = mbl_ncols = 0;
+	mbl_text[0] = '\0';
+	mbl_begun = false;
+}
+
 typedef enum {
 	DUMP_MODE_LIST = 1,
 	DUMP_MODE_BATH = 2,
@@ -330,7 +394,7 @@ static int printsimplevalue(int verbose, FILE *output, double value, int width, 
 	if (*invert)   { *invert = false; if (value != 0.0) value = 1.0 / value; }
 	if (*flipsign) { *flipsign = false; value = -value; }
 	if (ascii) fprintf(output, format, value);
-	else       fwrite(&value, sizeof(double), 1, output);
+	else       mbl_putd(value, output);
 
 	const int status = MB_SUCCESS;
 
@@ -361,7 +425,7 @@ static int printNaN(int verbose, FILE *output, bool ascii, bool *invert, bool *f
 	if (ascii) fprintf(output, "NaN");
 	else {
 		const double NaN = (double)NAN;
-		fwrite(&NaN, sizeof(double), 1, output);
+		mbl_putd(NaN, output);
 	}
 
 	const int status = MB_SUCCESS;
@@ -841,7 +905,7 @@ static int parse(struct GMT_CTRL *GMT, struct MBLIST_CTRL *Ctrl, struct GMT_OPTI
 }
 
 #define bailout(code)  { gmt_M_free_options(mode); return (code); }
-#define Return(code)   { Free_mblist_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code)   { mbl_endio(); Free_mblist_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 
 /* netcdf CDL header emit helper: standard "float/long/etc var(data);" pattern.
  * Matches the per-letter pattern from mblist.cc that emits:
@@ -1177,6 +1241,14 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 
 	FILE *outfile;
 	if (!netcdf) {
+		if (0 == strncmp("-", output_file, 2) && API->external) {
+			/* called through the API: the listing goes out with GMT IO (mbl_*), each field as the double
+			   the binary listing emits */
+			mbl_api = API;
+			mbl_options = options;
+			ascii = false;
+			segment = false;
+		}
 		if (0 == strncmp("-", output_file, 2)) outfile = stdout;
 		else outfile = fopen(output_file, "w");
 		if (outfile == NULL) {
@@ -1888,7 +1960,7 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 								break;
 							case 'F':
 								if (ascii) fprintf(output[i], "%d", beamflag[k]);
-								else { b = beamflag[k]; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = beamflag[k]; mbl_putd(b, outfile); }
 								break;
 							case 'f':
 								if (ascii) {
@@ -1903,7 +1975,7 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 										else if (mb_beam_check_flag_interpolate(beamflag[k])) fprintf(output[i], "I");
 										else if (mb_beam_check_flag_sonar(beamflag[k])) fprintf(output[i], "S");
 									}
-								} else { b = beamflag[k]; fwrite(&b, sizeof(double), 1, outfile); }
+								} else { b = beamflag[k]; mbl_putd(b, outfile); }
 								break;
 							case 'G':
 								if (beamflag[k] == MB_FLAG_NULL && (check_values == MBLIST_CHECK_OFF_NAN || check_values == MBLIST_CHECK_OFF_FLAGNAN))
@@ -1933,12 +2005,12 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 									if (netcdf) fprintf(output[i], "%d, %d, %d, %d, %d, %d", time_j[0], time_j[1], time_i[3], time_i[4], time_i[5], time_i[6]);
 									else        fprintf(output[i], "%.4d %.3d %.2d %.2d %9.6f", time_j[0], time_j[1], time_i[3], time_i[4], seconds);
 								} else {
-									b = time_j[0]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_j[1]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[3]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[4]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[5]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[6]; fwrite(&b, sizeof(double), 1, outfile);
+									b = time_j[0]; mbl_putd(b, outfile);
+									b = time_j[1]; mbl_putd(b, outfile);
+									b = time_i[3]; mbl_putd(b, outfile);
+									b = time_i[4]; mbl_putd(b, outfile);
+									b = time_i[5]; mbl_putd(b, outfile);
+									b = time_i[6]; mbl_putd(b, outfile);
 								}
 								break;
 							case 'j':
@@ -1948,11 +2020,11 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 									if (netcdf) fprintf(output[i], "%d, %d, %d, %d, %d", time_j[0], time_j[1], time_j[2], time_j[3], time_j[4]);
 									else        fprintf(output[i], "%.4d %.3d %.4d %9.6f", time_j[0], time_j[1], time_j[2], seconds);
 								} else {
-									b = time_j[0]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_j[1]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_j[2]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_j[3]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_j[4]; fwrite(&b, sizeof(double), 1, outfile);
+									b = time_j[0]; mbl_putd(b, outfile);
+									b = time_j[1]; mbl_putd(b, outfile);
+									b = time_j[2]; mbl_putd(b, outfile);
+									b = time_j[3]; mbl_putd(b, outfile);
+									b = time_j[4]; mbl_putd(b, outfile);
 								}
 								break;
 							case 'K':
@@ -1971,8 +2043,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 								b = time_d - time_d_ref;
 								printsimplevalue(verbose, output[i], b, 0, 6, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
-							case 'N': if (ascii) fprintf(output[i], "%6u", pingnumber); else { b = pingnumber; fwrite(&b, sizeof(double), 1, outfile); } break;
-							case 'n': if (ascii) fprintf(output[i], "%6u", linenumber); else { b = linenumber; fwrite(&b, sizeof(double), 1, outfile); } break;
+							case 'N': if (ascii) fprintf(output[i], "%6u", pingnumber); else { b = pingnumber; mbl_putd(b, outfile); } break;
+							case 'n': if (ascii) fprintf(output[i], "%6u", linenumber); else { b = linenumber; mbl_putd(b, outfile); } break;
 							case 'P': printsimplevalue(verbose, output[i], pitch, 6, 3, ascii, &invert_next_value, &signflip_next_value, &error); break;
 							case 'p': printsimplevalue(verbose, output[i], draft, 7, 4, ascii, &invert_next_value, &signflip_next_value, &error); break;
 							case 'q':
@@ -1980,7 +2052,7 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 									if (netcdf) fprintf(output[i], "\"");
 									fprintf(output[i], "%d", detect[k]);
 									if (netcdf) fprintf(output[i], "\"");
-								} else { b = detect[k]; fwrite(&b, sizeof(double), 1, outfile); }
+								} else { b = detect[k]; mbl_putd(b, outfile); }
 								break;
 							case 'Q':
 								if (ascii) {
@@ -1990,7 +2062,7 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 										else if (detect[k] == MB_DETECT_PHASE) fprintf(output[i], "P");
 										else fprintf(output[i], "U");
 									}
-								} else { b = detect[k]; fwrite(&b, sizeof(double), 1, outfile); }
+								} else { b = detect[k]; mbl_putd(b, outfile); }
 								break;
 							case 'R': printsimplevalue(verbose, output[i], roll, 6, 3, ascii, &invert_next_value, &signflip_next_value, &error); break;
 							case 'r': printsimplevalue(verbose, output[i], heave, 7, 4, ascii, &invert_next_value, &signflip_next_value, &error); break;
@@ -2003,12 +2075,12 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 									fprintf(output[i], "%.4d/%.2d/%.2d/%.2d/%.2d/%09.6f", time_i[0], time_i[1], time_i[2], time_i[3], time_i[4], seconds);
 									if (netcdf) fprintf(output[i], "\"");
 								} else {
-									b = time_i[0]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[1]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[2]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[3]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[4]; fwrite(&b, sizeof(double), 1, outfile);
-									b = seconds; fwrite(&b, sizeof(double), 1, outfile);
+									b = time_i[0]; mbl_putd(b, outfile);
+									b = time_i[1]; mbl_putd(b, outfile);
+									b = time_i[2]; mbl_putd(b, outfile);
+									b = time_i[3]; mbl_putd(b, outfile);
+									b = time_i[4]; mbl_putd(b, outfile);
+									b = seconds; mbl_putd(b, outfile);
 								}
 								break;
 							case 't':
@@ -2017,30 +2089,30 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 									if (netcdf) fprintf(output[i], "%d, %d, %d, %d, %d, %d, %d", time_i[0], time_i[1], time_i[2], time_i[3], time_i[4], time_i[5], time_i[6]);
 									else fprintf(output[i], "%.4d %.2d %.2d %.2d %.2d %09.6f", time_i[0], time_i[1], time_i[2], time_i[3], time_i[4], seconds);
 								} else {
-									b = time_i[0]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[1]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[2]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[3]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[4]; fwrite(&b, sizeof(double), 1, outfile);
-									b = seconds; fwrite(&b, sizeof(double), 1, outfile);
+									b = time_i[0]; mbl_putd(b, outfile);
+									b = time_i[1]; mbl_putd(b, outfile);
+									b = time_i[2]; mbl_putd(b, outfile);
+									b = time_i[3]; mbl_putd(b, outfile);
+									b = time_i[4]; mbl_putd(b, outfile);
+									b = seconds; mbl_putd(b, outfile);
 								}
 								break;
 							case 'U':
 								time_u = (time_t)time_d;
 								if (ascii) fprintf(output[i], "%lld", (long long)time_u);
-								else { b = time_u; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = time_u; mbl_putd(b, outfile); }
 								break;
 							case 'u':
 								time_u = (time_t)time_d;
 								if (first_u) { time_u_ref = time_u; first_u = false; }
 								if (ascii) fprintf(output[i], "%lld", (long long)(time_u - time_u_ref));
-								else { b = time_u - time_u_ref; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = time_u - time_u_ref; mbl_putd(b, outfile); }
 								break;
 							case 'V': case 'v':
 								if (ascii) {
 									if (fabs(time_interval) > 100.) fprintf(output[i], "%g", time_interval);
 									else fprintf(output[i], "%10.6f", time_interval);
-								} else fwrite(&time_interval, sizeof(double), 1, outfile);
+								} else mbl_putd(time_interval, outfile);
 								break;
 							case 'X':
 								if (!projectednav_next_value) {
@@ -2067,8 +2139,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 									fprintf(output[i], "%3d %11.8f%c", degrees, minutes, hemi);
 									if (netcdf) fprintf(output[i], "\"");
 								} else {
-									b = degrees; if (hemi == 'W') b = -b; fwrite(&b, sizeof(double), 1, outfile);
-									b = minutes; fwrite(&b, sizeof(double), 1, outfile);
+									b = degrees; if (hemi == 'W') b = -b; mbl_putd(b, outfile);
+									b = minutes; mbl_putd(b, outfile);
 								}
 								sensornav_next_value = false;
 								break;
@@ -2097,8 +2169,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 									fprintf(output[i], "%3d %11.8f%c", degrees, minutes, hemi);
 									if (netcdf) fprintf(output[i], "\"");
 								} else {
-									b = degrees; if (hemi == 'S') b = -b; fwrite(&b, sizeof(double), 1, outfile);
-									b = minutes; fwrite(&b, sizeof(double), 1, outfile);
+									b = degrees; if (hemi == 'S') b = -b; mbl_putd(b, outfile);
+									b = minutes; mbl_putd(b, outfile);
 								}
 								sensornav_next_value = false;
 								break;
@@ -2128,7 +2200,7 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 								break;
 							case '#':
 								if (ascii) fprintf(output[i], "%6d", k);
-								else { b = k; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = k; mbl_putd(b, outfile); }
 								break;
 							default: if (ascii) fprintf(output[i], "<Invalid Option: %c>", list[i]); break;
 							}
@@ -2255,35 +2327,38 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 								else printsimplevalue(verbose, output[i], depression[k], 5, 2, ascii, &invert_next_value, &signflip_next_value, &error);
 								raw_next_value = false; break;
 							case 'F':
-								if (netcdf) fprintf(output[i], "\"");
-								fprintf(output[i], "%s", file);
-								if (netcdf) fprintf(output[i], "\"");
-								if (!ascii) for (k = (int)strlen(file); k < MB_PATH_MAXLINE; k++) fwrite(&file[strlen(file)], sizeof(char), 1, outfile);
+								if (mbl_api) mbl_puttext(file);   /* GMT IO: the record's text */
+								else {
+									if (netcdf) fprintf(output[i], "\"");
+									fprintf(output[i], "%s", file);
+									if (netcdf) fprintf(output[i], "\"");
+									if (!ascii) for (k = (int)strlen(file); k < MB_PATH_MAXLINE; k++) fwrite(&file[strlen(file)], sizeof(char), 1, outfile);
+								}
 								raw_next_value = false; break;
 							case 'f':
 								if (ascii) fprintf(output[i], "%6d", format);
-								else { b = format; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = format; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'G':
 								if (ascii) fprintf(output[i], "%6d", tvg_start);
-								else { b = tvg_start; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = tvg_start; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'g':
 								if (ascii) fprintf(output[i], "%6d", tvg_stop);
-								else { b = tvg_stop; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = tvg_stop; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'L':
 								if (ascii) fprintf(output[i], "%6d", ipulse_length);
-								else { b = ipulse_length; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = ipulse_length; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'l': printsimplevalue(verbose, output[i], pulse_length, 9, 6, ascii, &invert_next_value, &signflip_next_value, &error); raw_next_value = false; break;
 							case 'M':
 								if (ascii) fprintf(output[i], "%4d", mode_v);
-								else { b = mode_v; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = mode_v; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'N':
 								if (ascii) fprintf(output[i], "%6d", png_count);
-								else { b = png_count; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = png_count; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'p':
 								invert = invert_next_value; flip = signflip_next_value;
@@ -2305,19 +2380,19 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 								raw_next_value = false; break;
 							case 'R':
 								if (ascii) fprintf(output[i], "%6d", range[k]);
-								else { b = range[k]; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = range[k]; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'r':
 								if (ascii) fprintf(output[i], "%6d", sample_rate);
-								else { b = sample_rate; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = sample_rate; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'S':
 								if (ascii) fprintf(output[i], "%6d", npixels);
-								else { b = npixels; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = npixels; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 's':
 								if (ascii) fprintf(output[i], "%6d", beam_samples[k]);
-								else { b = beam_samples[k]; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = beam_samples[k]; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'T': printsimplevalue(verbose, output[i], transmit_gain, 5, 1, ascii, &invert_next_value, &signflip_next_value, &error); raw_next_value = false; break;
 							case 't': printsimplevalue(verbose, output[i], receive_gain, 5, 1, ascii, &invert_next_value, &signflip_next_value, &error); raw_next_value = false; break;
@@ -2330,6 +2405,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 								else special_character = false;
 							} else fprintf(output[lcount++ % n_list], "\n");
 						}
+						else if (mbl_api && i == n_list - 1)   /* GMT IO: the line is a record */
+							mbl_endrec();
 					}
 				}
 			}
@@ -2404,12 +2481,12 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 									if (netcdf) fprintf(output[i], "%d, %d, %d, %d, %d, %d", time_j[0], time_j[1], time_i[3], time_i[4], time_i[5], time_i[6]);
 									else        fprintf(output[i], "%.4d %.3d %.2d %.2d %9.6f", time_j[0], time_j[1], time_i[3], time_i[4], seconds);
 								} else {
-									b = time_j[0]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_j[1]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[3]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[4]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[5]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[6]; fwrite(&b, sizeof(double), 1, outfile);
+									b = time_j[0]; mbl_putd(b, outfile);
+									b = time_j[1]; mbl_putd(b, outfile);
+									b = time_i[3]; mbl_putd(b, outfile);
+									b = time_i[4]; mbl_putd(b, outfile);
+									b = time_i[5]; mbl_putd(b, outfile);
+									b = time_i[6]; mbl_putd(b, outfile);
 								}
 								break;
 							case 'j':
@@ -2419,11 +2496,11 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 									if (netcdf) fprintf(output[i], "%d, %d, %d, %d, %d", time_j[0], time_j[1], time_j[2], time_j[3], time_j[4]);
 									else        fprintf(output[i], "%.4d %.3d %.4d %9.6f", time_j[0], time_j[1], time_j[2], seconds);
 								} else {
-									b = time_j[0]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_j[1]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_j[2]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_j[3]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_j[4]; fwrite(&b, sizeof(double), 1, outfile);
+									b = time_j[0]; mbl_putd(b, outfile);
+									b = time_j[1]; mbl_putd(b, outfile);
+									b = time_j[2]; mbl_putd(b, outfile);
+									b = time_j[3]; mbl_putd(b, outfile);
+									b = time_j[4]; mbl_putd(b, outfile);
 								}
 								break;
 							case 'K':
@@ -2442,8 +2519,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 								b = time_d - time_d_ref;
 								printsimplevalue(verbose, output[i], b, 0, 6, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
-							case 'N': if (ascii) fprintf(output[i], "%6u", pingnumber); else { b = pingnumber; fwrite(&b, sizeof(double), 1, outfile); } break;
-							case 'n': if (ascii) fprintf(output[i], "%6u", linenumber); else { b = linenumber; fwrite(&b, sizeof(double), 1, outfile); } break;
+							case 'N': if (ascii) fprintf(output[i], "%6u", pingnumber); else { b = pingnumber; mbl_putd(b, outfile); } break;
+							case 'n': if (ascii) fprintf(output[i], "%6u", linenumber); else { b = linenumber; mbl_putd(b, outfile); } break;
 							case 'P': printsimplevalue(verbose, output[i], pitch, 6, 3, ascii, &invert_next_value, &signflip_next_value, &error); break;
 							case 'p': printsimplevalue(verbose, output[i], draft, 7, 4, ascii, &invert_next_value, &signflip_next_value, &error); break;
 							case 'Q':
@@ -2451,7 +2528,7 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 									if (netcdf) fprintf(output[i], "\"");
 									fprintf(output[i], "%d", MB_DETECT_UNKNOWN);
 									if (netcdf) fprintf(output[i], "\"");
-								} else { b = MB_DETECT_UNKNOWN; fwrite(&b, sizeof(double), 1, outfile); }
+								} else { b = MB_DETECT_UNKNOWN; mbl_putd(b, outfile); }
 								break;
 							case 'R': printsimplevalue(verbose, output[i], roll, 6, 3, ascii, &invert_next_value, &signflip_next_value, &error); break;
 							case 'r': printsimplevalue(verbose, output[i], heave, 7, 4, ascii, &invert_next_value, &signflip_next_value, &error); break;
@@ -2464,12 +2541,12 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 									fprintf(output[i], "%.4d/%.2d/%.2d/%.2d/%.2d/%09.6f", time_i[0], time_i[1], time_i[2], time_i[3], time_i[4], seconds);
 									if (netcdf) fprintf(output[i], "\"");
 								} else {
-									b = time_i[0]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[1]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[2]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[3]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[4]; fwrite(&b, sizeof(double), 1, outfile);
-									b = seconds; fwrite(&b, sizeof(double), 1, outfile);
+									b = time_i[0]; mbl_putd(b, outfile);
+									b = time_i[1]; mbl_putd(b, outfile);
+									b = time_i[2]; mbl_putd(b, outfile);
+									b = time_i[3]; mbl_putd(b, outfile);
+									b = time_i[4]; mbl_putd(b, outfile);
+									b = seconds; mbl_putd(b, outfile);
 								}
 								break;
 							case 't':
@@ -2478,30 +2555,30 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 									if (netcdf) fprintf(output[i], "%d, %d, %d, %d, %d, %d, %d", time_i[0], time_i[1], time_i[2], time_i[3], time_i[4], time_i[5], time_i[6]);
 									else fprintf(output[i], "%.4d %.2d %.2d %.2d %.2d %09.6f", time_i[0], time_i[1], time_i[2], time_i[3], time_i[4], seconds);
 								} else {
-									b = time_i[0]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[1]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[2]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[3]; fwrite(&b, sizeof(double), 1, outfile);
-									b = time_i[4]; fwrite(&b, sizeof(double), 1, outfile);
-									b = seconds; fwrite(&b, sizeof(double), 1, outfile);
+									b = time_i[0]; mbl_putd(b, outfile);
+									b = time_i[1]; mbl_putd(b, outfile);
+									b = time_i[2]; mbl_putd(b, outfile);
+									b = time_i[3]; mbl_putd(b, outfile);
+									b = time_i[4]; mbl_putd(b, outfile);
+									b = seconds; mbl_putd(b, outfile);
 								}
 								break;
 							case 'U':
 								time_u = (time_t)time_d;
 								if (ascii) fprintf(output[i], "%lld", (long long)time_u);
-								else { b = time_u; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = time_u; mbl_putd(b, outfile); }
 								break;
 							case 'u':
 								time_u = (time_t)time_d;
 								if (first_u) { time_u_ref = time_u; first_u = false; }
 								if (ascii) fprintf(output[i], "%lld", (long long)(time_u - time_u_ref));
-								else { b = time_u - time_u_ref; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = time_u - time_u_ref; mbl_putd(b, outfile); }
 								break;
 							case 'V': case 'v':
 								if (ascii) {
 									if (fabs(time_interval) > 100.) fprintf(output[i], "%g", time_interval);
 									else fprintf(output[i], "%10.6f", time_interval);
-								} else fwrite(&time_interval, sizeof(double), 1, outfile);
+								} else mbl_putd(time_interval, outfile);
 								break;
 							case 'X':
 								if (!projectednav_next_value) {
@@ -2528,8 +2605,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 									fprintf(output[i], "%3d %11.8f%c", degrees, minutes, hemi);
 									if (netcdf) fprintf(output[i], "\"");
 								} else {
-									b = degrees; if (hemi == 'W') b = -b; fwrite(&b, sizeof(double), 1, outfile);
-									b = minutes; fwrite(&b, sizeof(double), 1, outfile);
+									b = degrees; if (hemi == 'W') b = -b; mbl_putd(b, outfile);
+									b = minutes; mbl_putd(b, outfile);
 								}
 								sensornav_next_value = false;
 								break;
@@ -2558,8 +2635,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 									fprintf(output[i], "%3d %11.8f%c", degrees, minutes, hemi);
 									if (netcdf) fprintf(output[i], "\"");
 								} else {
-									b = degrees; if (hemi == 'S') b = -b; fwrite(&b, sizeof(double), 1, outfile);
-									b = minutes; fwrite(&b, sizeof(double), 1, outfile);
+									b = degrees; if (hemi == 'S') b = -b; mbl_putd(b, outfile);
+									b = minutes; mbl_putd(b, outfile);
 								}
 								sensornav_next_value = false;
 								break;
@@ -2589,7 +2666,7 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 								break;
 							case '#':
 								if (ascii) fprintf(output[i], "%6d", k);
-								else { b = k; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = k; mbl_putd(b, outfile); }
 								break;
 							default: fprintf(output[i], "<Invalid Option: %c>", list[i]); break;
 							}
@@ -2657,35 +2734,38 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 								printsimplevalue(verbose, output[i], depression[beam_vertical], 5, 2, ascii, &invert_next_value, &signflip_next_value, &error);
 								raw_next_value = false; break;
 							case 'F':
-								if (netcdf) fprintf(output[i], "\"");
-								fprintf(output[i], "%s", file);
-								if (netcdf) fprintf(output[i], "\"");
-								if (!ascii) for (k = (int)strlen(file); k < MB_PATH_MAXLINE; k++) fwrite(&file[strlen(file)], sizeof(char), 1, outfile);
+								if (mbl_api) mbl_puttext(file);   /* GMT IO: the record's text */
+								else {
+									if (netcdf) fprintf(output[i], "\"");
+									fprintf(output[i], "%s", file);
+									if (netcdf) fprintf(output[i], "\"");
+									if (!ascii) for (k = (int)strlen(file); k < MB_PATH_MAXLINE; k++) fwrite(&file[strlen(file)], sizeof(char), 1, outfile);
+								}
 								raw_next_value = false; break;
 							case 'f':
 								if (ascii) fprintf(output[i], "%6d", format);
-								else { b = format; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = format; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'G':
 								if (ascii) fprintf(output[i], "%6d", tvg_start);
-								else { b = tvg_start; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = tvg_start; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'g':
 								if (ascii) fprintf(output[i], "%6d", tvg_stop);
-								else { b = tvg_stop; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = tvg_stop; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'L':
 								if (ascii) fprintf(output[i], "%6d", ipulse_length);
-								else { b = ipulse_length; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = ipulse_length; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'l': printsimplevalue(verbose, output[i], pulse_length, 9, 6, ascii, &invert_next_value, &signflip_next_value, &error); raw_next_value = false; break;
 							case 'M':
 								if (ascii) fprintf(output[i], "%4d", mode_v);
-								else { b = mode_v; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = mode_v; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'N':
 								if (ascii) fprintf(output[i], "%6d", png_count);
-								else { b = png_count; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = png_count; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'p':
 								invert = invert_next_value; flip = signflip_next_value;
@@ -2707,19 +2787,19 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 								raw_next_value = false; break;
 							case 'R':
 								if (ascii) fprintf(output[i], "%6d", range[beam_vertical]);
-								else { b = range[beam_vertical]; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = range[beam_vertical]; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'r':
 								if (ascii) fprintf(output[i], "%6d", sample_rate);
-								else { b = sample_rate; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = sample_rate; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'S':
 								if (ascii) fprintf(output[i], "%6d", npixels);
-								else { b = npixels; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = npixels; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 's':
 								if (ascii) fprintf(output[i], "%6d", beam_samples[beam_vertical]);
-								else { b = beam_samples[beam_vertical]; fwrite(&b, sizeof(double), 1, outfile); }
+								else { b = beam_samples[beam_vertical]; mbl_putd(b, outfile); }
 								raw_next_value = false; break;
 							case 'T': printsimplevalue(verbose, output[i], transmit_gain, 5, 1, ascii, &invert_next_value, &signflip_next_value, &error); raw_next_value = false; break;
 							case 't': printsimplevalue(verbose, output[i], receive_gain, 5, 1, ascii, &invert_next_value, &signflip_next_value, &error); raw_next_value = false; break;
@@ -2732,6 +2812,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 								else special_character = false;
 							} else fprintf(output[lcount++ % n_list], "\n");
 						}
+						else if (mbl_api && i == n_list - 1)   /* GMT IO: the line is a record */
+							mbl_endrec();
 					}
 				}
 			}
@@ -2777,7 +2859,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 				system(output_file_temp);
 			}
 		}
-	} else fclose(outfile);
+	} else if (!mbl_api)
+		fclose(outfile);                 /* (GMT IO is closed by Return: the dataset is the caller's) */
 
 	if (num_secondary_alloc > 0) {
 		mb_freed(verbose, __FILE__, __LINE__, (void **)&secondary_time_d, &error);

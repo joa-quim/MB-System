@@ -20,6 +20,18 @@ Version 5.0
 .br
 --clip=clip[/mode] {-Cclip[/mode]}
 .br
+--cube-iho-order=order
+.br
+--cube-method=method
+.br
+--cube-no-queue
+.br
+--cube-parameters=paramfile
+.br
+--cube-uncertainty=tvu_a/tvu_b/thu_a/thu_b
+.br
+--cube-variance=variance
+.br
 --dimensions=xdim/ydim {-Dxdim/ydim}
 .br
 --spacing=dx/dy/units[!] {-Edx/dy/units[!]}
@@ -66,13 +78,14 @@ Version 5.0
 .SH DESCRIPTION
 \fBmbgrid\fP is a utility used to grid bathymetry, amplitude, or sidescan
 data contained in a set of swath sonar data files. This program uses
-one of eight algorithms to grid regions covered by swath sonar
+one of nine algorithms to grid regions covered by swath sonar
 swaths and then can fill in gaps between the swaths (to the degree
 specified by the user) using a thin plate spline interpolation.
 The gridding algorithms include gaussian weighted mean,
 median filter, minimum filter, maximum filter, beam footprint considering local
-slope, beam footprint ignoring local slope, weighted mean near the minimum, and
-weighted mean near the maximum. The specifics of these algorithms are explained
+slope, beam footprint ignoring local slope, weighted mean near the minimum,
+weighted mean near the maximum, and CUBE (Combined Uncertainty and Bathymetry
+Estimator). The specifics of these algorithms are explained
 below.
 
 The user must specify a file containing a list of the data files to
@@ -235,6 +248,31 @@ allows for sensible gridding when the soundings include three dimensional featur
 such as overhangs or vertical walls, and the desired result is to represent the
 maximum or deepest surface.
 
+The CUBE algorithm (\fB\-F\fP\fI9\fP) is the Combined Uncertainty and Bathymetry
+Estimator of Calder and Mayer (Center for Coastal and Ocean Mapping, University
+of New Hampshire; Geochem. Geophys. Geosyst., 4(6), 2003), as implemented
+in Python by NOAA OCS Hydrography (bathycube) and ported to C in
+\fBMB-System\fP. CUBE grids bathymetry or topography only. Each sounding
+carries an a priori vertical and horizontal uncertainty and is offered to every
+grid node within a radius derived from those uncertainties and the IHO S-44
+survey order; at each node the soundings pass through a median pre-filter queue
+and then a Kalman filter with Bayesian monitoring that tracks one or more depth
+hypotheses. Soundings that do not fit an existing hypothesis (blunders, or the
+two sides of a vertical offset between overlapping swaths) start a new one
+instead of being averaged in. The reported depth is the hypothesis chosen
+by the selection method (\fB\-\-cube\-method\fP), and the reported
+uncertainty is CUBE's posterior uncertainty at 95% confidence. Because the
+hypotheses resolve overlapping swaths, the \fB\-U\fP option does not apply.
+CUBE works in meters: geographic grids are converted to local meters at the
+grid center, and projected grids are assumed to be in meters.
+
+\fBMB-System\fP data carry no per-beam uncertainty, so the a priori sounding
+uncertainty is modeled in the IHO S-44 form at 95% confidence,
+TVU = sqrt(\fItvu_a\fP^2 + (\fItvu_b\fP * depth)^2) and
+THU = \fIthu_a\fP + \fIthu_b\fP * depth. By default the coefficients are the
+limits of the chosen IHO order (\fB\-\-cube\-iho\-order\fP); set them to the
+expected performance of the survey system with \fB\-\-cube\-uncertainty\fP.
+
 Normally, all of the data which falls into the region of interest
 is used to construct the gridded data set. This means that the
 data from overlapping swaths will be "averaged" in the region of
@@ -324,7 +362,13 @@ data points located within each bin.  Plotting shellscripts
 called "root_num.grd.cmd" and "root_sd.grd.cmd" are also output
 if the grids are in a \fBGMT\fP grid format. The \fB\-M\fP
 option is ignored when the minimum or maximum filter gridding
-algorithms are used.
+algorithms are used. With the CUBE algorithm the "root_num.grd" grid
+holds the number of soundings in the reported hypothesis, "root_sd.grd"
+holds the CUBE uncertainty at 95% confidence, and two more grids are
+written: "root_hyp.grd", the number of depth hypotheses at each node,
+and "root_ratio.grd", the hypothesis strength ratio (0 where a single
+hypothesis exists; larger values mean CUBE is less certain that the
+reported hypothesis is the right one).
 
 .SH MB-SYSTEM AUTHORSHIP
 David W. Caress
@@ -410,9 +454,47 @@ Sets the gridding algorithm to be used.
  	\fImode\fP = 6:               Weighted Sonar Footprint
  	\fImode\fP = 3 + \fIthreshold\fP: Minimum Weighted Mean
  	\fImode\fP = 4 + \fIthreshold\fP: Maximum Weighted Mean
+ 	\fImode\fP = 9:               CUBE
 .br
 When used, the \fIthreshold\fP value is defined in meters. The default gridding
-algorithm is \fImode\fP = 1 (Gaussian Weighted Mean).
+algorithm is \fImode\fP = 1 (Gaussian Weighted Mean). The CUBE algorithm is
+controlled by the \fB\-\-cube\-\fP options below.
+.TP
+.B \-\-cube\-iho\-order=order
+Sets the IHO S-44 survey order used by CUBE (\fB\-F\fP\fI9\fP) to bound the
+radius over which a sounding is spread, and as the default sounding
+uncertainty: one of \fIexclusive\fP, \fIspecial\fP, \fIorder1a\fP,
+\fIorder1b\fP, or \fIorder2\fP. Default: \fIorder1a\fP.
+.TP
+.B \-\-cube\-method=method
+Sets how CUBE chooses among the depth hypotheses of a node:
+\fIlocal\fP uses the closest node in the neighborhood that has a single
+hypothesis and reports the hypothesis nearest to its depth; \fIprior\fP
+reports the hypothesis with the most soundings; \fIposterior\fP combines the
+two into an approximate Bayesian posterior; \fIpredicted\fP reports the
+hypothesis closest to the node's predicted depth. Default: \fIlocal\fP.
+.TP
+.B \-\-cube\-no\-queue
+Skips CUBE's median pre-filter queue (the "reordering" step of the CUBE
+User Manual), feeding soundings to the estimator in the order they are read.
+.TP
+.B \-\-cube\-parameters=paramfile
+Reads CUBE parameters from \fIparamfile\fP, a JSON object in the form
+written by bathycube's CubeParameters.write_parameter_file() (for instance
+{"capture_dist_scale": 0.1, "median_length": 7}). Keys that are not CUBE
+parameters are ignored. The command line options override the file.
+.TP
+.B \-\-cube\-uncertainty=tvu_a/tvu_b/thu_a/thu_b
+Sets the a priori sounding uncertainty used by CUBE, at 95% confidence:
+TVU = sqrt(\fItvu_a\fP^2 + (\fItvu_b\fP * depth)^2) and
+THU = \fIthu_a\fP + \fIthu_b\fP * depth, in meters (\fItvu_b\fP and
+\fIthu_b\fP are fractions of depth, e.g. 0.013 for 1.3%).
+Default: the limits of the IHO order set with \fB\-\-cube\-iho\-order\fP.
+.TP
+.B \-\-cube\-variance=variance
+Sets the uncertainty CUBE reports: \fIcube\fP for CUBE's posterior
+estimate, \fIinput\fP for the variance of the soundings in the reported
+hypothesis, or \fImax\fP for the greater of the two. Default: \fIcube\fP.
 .TP
 .B \-\-output\-format=gridkind \-Ggridkind
 This option sets the format of the output grid file.
