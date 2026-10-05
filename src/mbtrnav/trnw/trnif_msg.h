@@ -236,7 +236,7 @@ typedef pt_cdata_t trn_mmse_t;
 
 /* TRNW_STATIC is defined by the TRN CMakeLists on Windows, where these
  * libraries are built static; dllimport/dllexport would then be wrong. */
-#if (defined(_WIN32) || defined(__CYGWIN__)) && !defined(TRNW_STATIC)
+#if defined(_MSC_VER) && !defined(TRNW_STATIC)
 #  ifdef trnw_EXPORTS
 #    define TRNW_API __declspec(dllexport)
 #  else

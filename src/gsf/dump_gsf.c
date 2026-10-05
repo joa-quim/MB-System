@@ -33,7 +33,7 @@
 #include "gsf.h"
 
 /* global external data required by this module */
-#if defined(_WIN32) && !defined(mbgsf_EXPORTS)
+#if defined(_MSC_VER) && !defined(mbgsf_EXPORTS)
 __declspec(dllimport)
 #endif
 extern int gsfError;

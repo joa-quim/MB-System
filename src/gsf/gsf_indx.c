@@ -94,7 +94,7 @@
 #if defined(OS2) || defined(WIN32) || defined(WIN64)
     #include <process.h>
     #if defined (__MINGW32__) || defined (__MINGW64__)
-        #ifdef _WIN32
+        #ifdef _MSC_VER
         #include "unistd_w.h"
         #else
         #include <unistd.h>
@@ -103,7 +103,7 @@
     #if defined (__BORLANDC__)
         #define _getpid getpid
     #endif
-    #ifdef _WIN32
+    #ifdef _MSC_VER
     #include "unistd_w.h"
     #endif
 #else

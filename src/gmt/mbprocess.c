@@ -77,19 +77,16 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <process.h>
-#include "unistd_w.h"
 #else
 #include <pthread.h>
+#endif
+#ifdef _MSC_VER
+#include "unistd_w.h"
+#else
 #include <unistd.h>
 #endif
 #include "mb_aux.h"
 #include "mb_define.h"
-
-/* MSVC has no fseeko/ftello; use the native 64-bit file APIs instead. */
-#ifdef _WIN32
-#define ftello _ftelli64
-#define fseeko(fp, off, whence) _fseeki64((fp), (off), (whence))
-#endif
 
 #include "mb_format.h"
 #include "mb_process.h"

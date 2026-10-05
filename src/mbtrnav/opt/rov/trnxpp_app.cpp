@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>

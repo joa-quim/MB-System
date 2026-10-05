@@ -56,6 +56,8 @@
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
+#endif
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>

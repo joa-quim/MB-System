@@ -8,22 +8,9 @@
 #include <string>
 #include <system_error>
 #include <utility>
-#include <sys/stat.h>
-#ifdef _WIN32
-#include "unistd_w.h"
-#else
-#include <unistd.h>
-#endif
 #include <vector>
 
 #include "settings.h"
-/* POSIX S_ISDIR — MSVC has only the _S_IFMT/_S_IFDIR bit constants. */
-#ifdef _WIN32
-#ifndef S_ISDIR
-#define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
-#endif
-#endif
-
 
 #include "io/xyz_writer.h"
 #include "io/glb_writer.h"

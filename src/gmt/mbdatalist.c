@@ -49,14 +49,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>
 #endif
 
 #include <sys/stat.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "dirent_w.h"
 #else
 #include <dirent.h>

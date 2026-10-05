@@ -16,7 +16,7 @@
 #include "Octree.hpp"
 #include <iostream>
 #include <iomanip>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>

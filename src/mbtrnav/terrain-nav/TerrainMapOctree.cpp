@@ -17,13 +17,13 @@
 
 #include <libgen.h>
 #include <cmath>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "dirent_w.h"
 #else
 #include <dirent.h>
 #endif
 #include <fcntl.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>

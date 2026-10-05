@@ -48,7 +48,7 @@
 #include <cstring>
 #include <ctime>
 #include <getopt.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>

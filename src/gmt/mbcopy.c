@@ -52,7 +52,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>
@@ -63,10 +63,6 @@
 
 #include "mb_define.h"
 
-/* POSIX sleep(seconds) - Windows has Sleep(milliseconds). */
-#ifdef _WIN32
-#define sleep(s) Sleep((s) * 1000)
-#endif
 #include "mb_format.h"
 #include "mb_io.h"
 #include "mb_status.h"

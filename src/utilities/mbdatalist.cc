@@ -35,13 +35,13 @@
 #include <cstdlib>
 #include <cstring>
 #include <getopt.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>
 #endif
 #include <sys/stat.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "dirent_w.h"
 #else
 #include <dirent.h>

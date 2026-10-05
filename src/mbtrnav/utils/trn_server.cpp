@@ -27,7 +27,7 @@
 #include <stdlib.h>           // For atoi()
 #include <string.h>
 #include <stdio.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>

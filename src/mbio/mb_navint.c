@@ -40,13 +40,6 @@
 #include "mb_process.h"
 #include "mb_status.h"
 
-/* MSVC has no off_t/fseeko/ftello; use the native 64-bit file APIs instead. */
-#ifdef _WIN32
-typedef __int64 off_t;
-#define ftello _ftelli64
-#define fseeko(fp, off, whence) _fseeki64((fp), (off), (whence))
-#endif
-
 //    #define MB_NAVINT_DEBUG 1
 //    #define MB_ATTINT_DEBUG 1
 //    #define MB_HEDINT_DEBUG 1
@@ -1255,7 +1248,7 @@ int mb_loadnavdata(int verbose, char *merge_nav_file, int merge_nav_format, int 
 		FILE *bfp;
 		if ((bfp = fopen(merge_nav_file, "rb")) != NULL) {
 			fseeko(bfp, 0, SEEK_END);
-			off_t filesize = ftello(bfp);
+			int64_t filesize = ftello(bfp);
 			fclose(bfp);
 			nrecord = (int)(filesize / (21 * sizeof(double)));
 		}
@@ -1749,7 +1742,7 @@ int mb_loadsensordepthdata(int verbose, char *merge_sensordepth_file, int merge_
 		FILE *bfp;
 		if ((bfp = fopen(merge_sensordepth_file, "rb")) != NULL) {
 			fseeko(bfp, 0, SEEK_END);
-			off_t filesize = ftello(bfp);
+			int64_t filesize = ftello(bfp);
 			fclose(bfp);
 			nrecord = (int)(filesize / (21 * sizeof(double)));
 		}
@@ -2186,7 +2179,7 @@ int mb_loadheadingdata(int verbose, char *merge_heading_file, int merge_heading_
 		FILE *bfp;
 		if ((bfp = fopen(merge_heading_file, "rb")) != NULL) {
 			fseeko(bfp, 0, SEEK_END);
-			off_t filesize = ftello(bfp);
+			int64_t filesize = ftello(bfp);
 			fclose(bfp);
 			nrecord = (int)(filesize / (21 * sizeof(double)));
 		}
@@ -2457,7 +2450,7 @@ int mb_loadattitudedata(int verbose, char *merge_attitude_file, int merge_attitu
 		FILE *bfp;
 		if ((bfp = fopen(merge_attitude_file, "rb")) != NULL) {
 			fseeko(bfp, 0, SEEK_END);
-			off_t filesize = ftello(bfp);
+			int64_t filesize = ftello(bfp);
 			fclose(bfp);
 			nrecord = (int)(filesize / (21 * sizeof(double)));
 		}

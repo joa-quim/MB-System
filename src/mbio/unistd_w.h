@@ -1,18 +1,19 @@
 /*--------------------------------------------------------------------
  *    The MB-system:  unistd_w.h
  *
- *    Windows / MSVC substitute for POSIX <unistd.h>. MSVC ships no
- *    <unistd.h>; this provides the small subset MB-System sources rely on.
- *    Selected at each call site:
+ *    MSVC substitute for POSIX <unistd.h>. MSVC ships no <unistd.h>;
+ *    this provides the small subset MB-System sources rely on. MinGW-w64
+ *    has a real <unistd.h>, so it is selected at each call site with
+ *    _MSC_VER, never _WIN32:
  *
- *        #ifdef _WIN32
+ *        #ifdef _MSC_VER
  *        #include "unistd_w.h"
  *        #else
  *        #include <unistd.h>
  *        #endif
  *
- *    The broader POSIX compatibility shim (clock_gettime, strcasecmp, sockets,
- *    sigaction, getopt, etc.) lives in mb_define.h under #ifdef _WIN32.
+ *    The other POSIX names MSVC lacks (strtok_r, popen, sleep, fseeko,
+ *    S_ISDIR, ...) are mapped in mb_define.h under #ifdef _MSC_VER.
  *--------------------------------------------------------------------*/
 #ifndef UNISTD_W_H
 #define UNISTD_W_H
@@ -34,7 +35,7 @@
 #  define PATH_MAX 1024
 #endif
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 #  ifndef R_OK
 #    define R_OK 04
 #    define W_OK 02

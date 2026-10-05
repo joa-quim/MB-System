@@ -143,7 +143,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>
@@ -161,7 +161,7 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netdb.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "dirent_w.h"
 #else
 #include <dirent.h>
@@ -189,7 +189,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>
@@ -204,7 +204,7 @@
 #include <sys/queue.h>
 #include <fcntl.h>
 #include <netdb.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "dirent_w.h"
 #else
 #include <dirent.h>
@@ -215,7 +215,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <float.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>
@@ -260,7 +260,7 @@
 #include <signal.h>
 #include <float.h>
 #include <assert.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "dirent_w.h"
 #else
 #include <dirent.h>
@@ -295,7 +295,7 @@
 // Macros
 /////////////////////////
 
-#if defined(_WIN32) || defined(__CYGWIN__)
+#if defined(_MSC_VER)
 #  ifdef mbtrnframe_EXPORTS
 #    define MF_EXPORT __declspec(dllexport)
 #  else

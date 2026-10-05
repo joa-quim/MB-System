@@ -18,14 +18,14 @@
 #define _TRN_CLIENT_H_
 
 #include <sys/stat.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "dirent_w.h"
 #else
 #include <dirent.h>
 #endif
 #include <sys/types.h>
 #include <sys/socket.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>

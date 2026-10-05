@@ -183,9 +183,9 @@ typedef unsigned short mode_t;
 #define mkdir(path, mode) _mkdir(path)
 #endif
 
-/* POSIX sleep() takes seconds; Win32 Sleep() takes milliseconds. mb_define.h
- * also defines sleep, but only inside its #ifndef CMAKE_BUILD_SYSTEM Autotools
- * section, which this build does not compile. */
+/* POSIX sleep() takes seconds; Win32 Sleep() takes milliseconds. On MSVC the
+ * force-included mb_define.h already maps sleep and strtok_r the same way, so
+ * these #ifndef guards then keep its definitions. */
 #ifndef sleep
 #define sleep(seconds) Sleep((DWORD)(seconds) * 1000)
 #endif

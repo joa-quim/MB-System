@@ -59,7 +59,7 @@
    macro is empty there.  A host that compiles mb_cube.c into its own shared library and exports
    only what it marks (InteractiveGMT's gmtvtk.dll) defines MB_CUBE_BUILD_DLL for that file. */
 #ifndef MB_CUBE_API
-#  if defined(MB_CUBE_BUILD_DLL) && defined(_WIN32)
+#  if defined(MB_CUBE_BUILD_DLL) && defined(_MSC_VER)
 #    define MB_CUBE_API __declspec(dllexport)
 #  elif defined(MB_CUBE_BUILD_DLL) && defined(__GNUC__)
 #    define MB_CUBE_API __attribute__((visibility("default")))

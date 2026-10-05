@@ -216,19 +216,17 @@ target_include_directories(mbio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 if(buildGSF)
   target_link_libraries(mbio PRIVATE mbgsf)
 endif()
-if(WIN32)
-  target_link_libraries(
-    mbio
-    PRIVATE NetCDF::NetCDF mbbitpack mbbsio mbsapi LibPROJ::LibPROJ
-    PUBLIC TIRPC::TIRPC)  # libm is built into MSVC CRT
-else()
-  target_link_libraries(
-    mbio
-    PRIVATE NetCDF::NetCDF mbbitpack mbbsio mbsapi LibPROJ::LibPROJ
-    PUBLIC TIRPC::TIRPC m)
-endif()
+target_link_libraries(
+  mbio
+  PRIVATE NetCDF::NetCDF mbbitpack mbbsio mbsapi LibPROJ::LibPROJ
+  PUBLIC TIRPC::TIRPC ${MB_SYSLIBS})
 if(WIN32)
   target_link_libraries(mbio PRIVATE mb_xdr_win32)
+endif()
+# mb_io.h marks exported data with __declspec(dllexport/dllimport) for MSVC
+# DLL builds; a static mbio library must not get those markers.
+if(MSVC AND NOT BUILD_SHARED_LIBS)
+  target_compile_definitions(mbio PUBLIC MBIO_STATIC)
 endif()
 if (buildTRN)
   target_link_libraries(

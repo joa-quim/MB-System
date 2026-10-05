@@ -103,21 +103,23 @@ endif (${srcdir} STREQUAL ${bindir})
 
 add_compile_definitions(CMAKE_BUILD_SYSTEM=1)
 
-# Platform system libs commonly tacked onto utility executables. On POSIX:
-# libm (math) and pthread are external; on MSVC they're built into the CRT
-# and pthreads-win32 is already linked globally.
-if(WIN32)
+# Platform system libraries linked by MB-System libraries and programs.
+# libm and pthreads are separate libraries on POSIX systems and on MinGW,
+# but MSVC has the math functions built into its C runtime and has no
+# libm or libpthread to link against (pthreads-win32 is linked globally).
+if(MSVC)
   set(MB_SYSLIBS "")
 else()
   set(MB_SYSLIBS m pthread)
 endif()
+
 if (CMAKE_C_BYTE_ORDER STREQUAL "LITTLE_ENDIAN")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DBYTESWAPPED")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBYTESWAPPED")
 endif()
 
-# MSVC has no <unistd.h>; the substitute lives in src/mbio/unistd_w.h, pulled in
-# by src/mbio/mb_define.h (force-included below) under #ifdef _WIN32.
+# MSVC has no <unistd.h>; the substitute is src/mbio/unistd_w.h, which sources
+# include under #ifdef _MSC_VER (MinGW-w64 has a real <unistd.h>).
 if(MSVC)
   # Most project libraries have no __declspec(dllexport) markers, so building
   # them as SHARED produces a .dll with no .lib import library and downstream
@@ -125,8 +127,8 @@ if(MSVC)
   # the import lib automatically. Equivalent to MinGW's --export-all-symbols.
   set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
-  # src/mbio holds mb_define.h + unistd_w.h; make resolvable from every TU so the
-  # force-included mb_define.h can pull "unistd_w.h" regardless of the includer.
+  # src/mbio holds mb_define.h + unistd_w.h; make them resolvable from every TU,
+  # including libraries such as mbgsf that do not link mbio.
   include_directories(${CMAKE_SOURCE_DIR}/src/mbio)
   # mb_define.h also pulls src/mbaux/mb_xdr_win32.h (the shared Windows XDR shim)
   # on every force-included TU, so that path must be global too.
@@ -136,9 +138,9 @@ if(MSVC)
   # NOMINMAX prevents Windows.h from defining min/max macros that clobber
   # std::numeric_limits<>::max(), std::min(), etc.
   add_compile_definitions(_CRT_NONSTDC_NO_DEPRECATE _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN NOGDI)
-  # Force-include mb_define.h on every translation unit. It carries the Windows
-  # POSIX compatibility shim under #ifdef _WIN32 (clock_gettime, strcasecmp,
-  # sockets, getopt, S_IS*, etc.) plus the <unistd.h> selector. Its XDR shim
+  # Force-include mb_define.h on every translation unit. Its #ifdef _MSC_VER
+  # section maps the POSIX names MSVC lacks (strtok_r, popen/pclose, sleep,
+  # fseeko/ftello, S_ISDIR/S_ISREG) to their MSVC equivalents. Its XDR shim
   # has identical XdrOp/XDR types to src/surf/xdr_win32.h, which is guarded with
   # _MB_WIN_XDR_DEFINED so the two do not collide.
   # /FI<file> = "include this header at the top of every translation unit".

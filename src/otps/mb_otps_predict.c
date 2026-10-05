@@ -55,7 +55,7 @@
  * Date:    September 2, 2026
  */
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "dirent_w.h"
 #else
 #include <dirent.h>
@@ -68,15 +68,6 @@
 
 #include "mb_define.h"
 #include "mb_status.h"
-
-/* MSVC has no off_t/fseeko/ftello; use the native 64-bit file APIs instead. */
-#ifdef _WIN32
-typedef __int64 off_t;
-#undef ftello
-#undef fseeko
-#define ftello _ftelli64
-#define fseeko(fp, off, whence) _fseeki64((fp), (off), (whence))
-#endif
 
 #include "mb_otps_predict.h"
 
@@ -159,7 +150,7 @@ static const char *const mbotps_minor_name[MBOTPS_MINOR_N] = {
    as big-endian" behavior wanted here (see mb_get_value.c). */
 static int mbotps_read_be_int(FILE *fp, long long offset, int *value) {
   unsigned char buf[4];
-  if (fseeko(fp, (off_t)offset, SEEK_SET) != 0)
+  if (fseeko(fp, (int64_t)offset, SEEK_SET) != 0)
     return MB_FAILURE;
   if (fread(buf, 1, 4, fp) != 4)
     return MB_FAILURE;
@@ -169,7 +160,7 @@ static int mbotps_read_be_int(FILE *fp, long long offset, int *value) {
 
 static int mbotps_read_be_float(FILE *fp, long long offset, float *value) {
   unsigned char buf[4];
-  if (fseeko(fp, (off_t)offset, SEEK_SET) != 0)
+  if (fseeko(fp, (int64_t)offset, SEEK_SET) != 0)
     return MB_FAILURE;
   if (fread(buf, 1, 4, fp) != 4)
     return MB_FAILURE;

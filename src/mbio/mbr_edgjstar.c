@@ -45,11 +45,6 @@
 
 #include "mb_define.h"
 
-/* POSIX strtok_r — MSVC has strtok_s with the same signature. */
-#ifdef _WIN32
-#define strtok_r(str, delim, saveptr) strtok_s((str), (delim), (saveptr))
-#endif
-
 #include "mb_format.h"
 #include "mb_io.h"
 #include "mb_status.h"

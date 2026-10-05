@@ -211,7 +211,7 @@ static GSF_FILE_TABLE gsfFileTable[GSF_MAX_OPEN_FILES];
 /* Global external data defined in this module */
 /* CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS only auto-exports functions, not data;
    this variable needs an explicit dllexport to cross the mbgsf.dll boundary. */
-#if defined(_WIN32) && defined(mbgsf_EXPORTS)
+#if defined(_MSC_VER) && defined(mbgsf_EXPORTS)
 __declspec(dllexport)
 #endif
 int             gsfError;       /* used to report most recent error */

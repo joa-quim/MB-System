@@ -14,7 +14,7 @@
 /* Modification History:                                                    */
 /****************************************************************************/
 #include <stdlib.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>

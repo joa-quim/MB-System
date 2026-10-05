@@ -58,26 +58,19 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "dirent_w.h"
 #else
 #include <dirent.h>
 #endif
 #include <getopt.h>
 #include <sys/stat.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>
 #endif
 #include "mb_define.h"
-
-/* POSIX S_ISREG — MSVC has only the _S_IFMT/_S_IFREG bit constants. */
-#ifdef _WIN32
-#ifndef S_ISREG
-#define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
-#endif
-#endif
 
 #include "mb_format.h"
 #include "mb_status.h"

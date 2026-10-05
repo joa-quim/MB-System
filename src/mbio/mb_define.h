@@ -36,8 +36,8 @@
 #include <stdint.h>
 
 /* Define version and date for this release */
-#define MB_VERSION "5.8.3beta22"
-#define MB_VERSION_DATE "15 September 2026"
+#define MB_VERSION "5.8.3beta24"
+#define MB_VERSION_DATE "5 October 2026"
 
 /* CMake supports current OS's and so there is only one form of RPC and XDR and no mb_config.h file */
 #ifdef CMAKE_BUILD_SYSTEM
@@ -53,6 +53,24 @@
 #  include <rpc/types.h>
 #  include <rpc/xdr.h>
 #endif // end _WIN32
+
+/* MSVC lacks these POSIX functions and macros. MinGW-w64 has its own, so this is
+   _MSC_VER only, never _WIN32. On MSVC this header is force-included (/FI) into
+   every source file, so these reach the whole build from this one place. */
+#ifdef _MSC_VER
+#  define strtok_r(str, delim, saveptr) strtok_s((str), (delim), (saveptr))
+#  define popen _popen
+#  define pclose _pclose
+#  define sleep(s) Sleep((s) * 1000)
+#  define fseeko(fp, off, whence) _fseeki64((fp), (off), (whence))
+#  define ftello _ftelli64
+#  ifndef S_ISDIR
+#    define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+#  endif
+#  ifndef S_ISREG
+#    define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
+#  endif
+#endif // end _MSC_VER
 
 #else // End CMAKE_BUILD_SYSTEM, Begin Autotools section supporting legacy OS's
 
@@ -661,6 +679,15 @@ int mb_platform_set_sensor_offset(int verbose, void *platform_ptr, int isensor, 
                                   double position_offset_z,
                                   double attitude_offset_azimuth, double attitude_offset_roll,
                                   double attitude_offset_pitch, int *error);
+void mb_platform_displacement_to_lonlat(double lat, double heading, double acrosstrack, double alongtrack, double *dlon,
+                                        double *dlat);
+void mb_platform_lever_rotate(double xx, double yy, double zz, double heading, double roll, double pitch, double *lever_x,
+                              double *lever_y, double *lever_z);
+int mb_platform_lever_origin(int verbose, void *platform_ptr, int targetsensor, int targetsensoroffset, double heading,
+                             double roll, double pitch, double *lever_x, double *lever_y, double *lever_z, int *error);
+int mb_platform_position_platform(int verbose, void *platform_ptr, int targetsensor, int targetsensoroffset, double navlon,
+                                  double navlat, double sensordepth, double heading, double roll, double pitch,
+                                  double *targetlon, double *targetlat, double *targetdepth, int *error);
 int mb_platform_set_sensor_timelatency(int verbose, void *platform_ptr, int isensor, int time_latency_mode,
                                        double time_latency_static, int num_time_latency, double *time_latency_time_d,
                                        double *time_latency_value, int *error);

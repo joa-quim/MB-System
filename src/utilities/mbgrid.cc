@@ -59,7 +59,7 @@
 #include <getopt.h>
 #include <limits>
 #include <vector>
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include "unistd_w.h"
 #else
 #include <unistd.h>
@@ -67,12 +67,6 @@
 #include "mb_aux.h"
 #include "mb_cube.h"
 #include "mb_define.h"
-
-/* POSIX popen/pclose — MSVC has _popen/_pclose with the same signatures. */
-#ifdef _WIN32
-#define popen _popen
-#define pclose _pclose
-#endif
 
 #include "mb_format.h"
 #include "mb_io.h"
