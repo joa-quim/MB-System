@@ -653,7 +653,7 @@ jobs:
   # it was built for: every Fedora release ships different library versions.
   fedora-gui:
     name: Linux with GUIs (GCC, Fedora 44)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: fedora:44
     defaults:
       run:
