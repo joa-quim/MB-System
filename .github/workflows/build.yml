@@ -433,7 +433,7 @@ jobs:
           tar -xzf "mbsystem-${{ matrix.name }}.tar.gz" -C "$probe"
           if [[ $RUNNER_OS == Linux ]]; then lib="$probe/mbsystem/lib/mbsystem.so"; else lib="$probe/mbsystem/lib/mbsystem.dylib"; fi
           test -f "$lib"
-          export MBLIB="$lib"
+          export MBLIB="$lib" PROBEDIR="$probe/mbsystem/lib"
           cd "$probe"
           julia --project="$RUNNER_TEMP/jllenv" -e '
             using GMT
@@ -450,10 +450,16 @@ jobs:
             ok = GMT.GMT_Call_Module(api, "mbdefaults", GMT.GMT_MODULE_EXIST, C_NULL) == 0
             println("new session reading ./gmt.conf: mbdefaults found = ", ok)
             ok || error("GMT did not load the MB-System supplement")
-            gmt("mbdefaults")
-            mbio = filter(l -> occursin("libmbio", l), Libdl.dllist())
-            println("MBIO in process: ", mbio)
-            isempty(mbio) && error("libmbio not loaded")
+            # Straight through GMT_Call_Module: GMT.jl gmt() appends its own output options
+            # (->@G...), which the MB modules reject.
+            a = "-V"
+            st = GC.@preserve a GMT.GMT_Call_Module(api, "mbdefaults", GMT.GMT_MODULE_CMD, pointer(a))
+            println("mbdefaults -V status = ", st)
+            st == 0 || error("mbdefaults failed")
+            ours = filter(l -> occursin(ENV["PROBEDIR"], l), Libdl.dllist())
+            println("loaded from the archive: ", ours)
+            any(l -> occursin("mbsystem", basename(l)), ours) || error("the plugin loaded is not the one in the archive")
+            any(l -> occursin("libmbio", basename(l)), ours) || error("libmbio not loaded from the archive")
           '
 
       # Manual runs only, and only when the run asks for it. One fixed tag whose files are
