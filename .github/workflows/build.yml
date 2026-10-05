@@ -320,6 +320,7 @@ jobs:
                 println(io, "JLL_LIBDIRS=", join(libdirs, ":"))
                 println(io, "GMT_PREFIX=", GMT_jll.artifact_dir)
                 println(io, "FFTW_PREFIX=", owner("libfftw3."))
+                println(io, "NETCDF_PREFIX=", owner("libnetcdf."))
             end
             println("GMT_jll ", pkgversion(GMT_jll), " at ", GMT_jll.artifact_dir)
             foreach(println, libdirs)
@@ -327,6 +328,8 @@ jobs:
 
       # pkg-config would hand netCDF (and anything else it knows) from the SYSTEM, ahead of the
       # jll prefixes, so it is fenced to a directory holding only libtirpc.pc (Linux), or nothing.
+      # GMT's gmt_shore.h includes <netcdf.h>; only the MSVC branch of CMakeLists.txt adds that
+      # path, so it is passed here.
       - name: Configure
         run: |
           set -euo pipefail
@@ -346,6 +349,7 @@ jobs:
             -DCMAKE_PREFIX_PATH="$JLL_PREFIXES" \
             -DGMT_DIR="$GMT_PREFIX" -DGMT_CONFIG=/usr/bin/true \
             -DFFTW_ROOT="$FFTW_PREFIX" \
+            -DCMAKE_C_FLAGS="-I$NETCDF_PREFIX/include" -DCMAKE_CXX_FLAGS="-I$NETCDF_PREFIX/include" \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
             -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_INSTALL_RPATH="$RPATH" \
             "${EXTRA[@]}"
