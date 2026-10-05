@@ -663,8 +663,8 @@ jobs:
       - name: Install dependencies
         run: |
           dnf install -y --setopt=install_weak_deps=False \
-            git tar gzip gcc gcc-c++ cmake ninja-build \
-            GMT GMT-devel gdal-devel proj-devel netcdf-devel \
+            git tar gzip gcc gcc-c++ cmake ninja-build pkgconf-pkg-config \
+            GMT GMT-devel glib2-devel gdal-devel proj-devel netcdf-devel \
             fftw-devel libtirpc-devel \
             motif-devel libX11-devel libXt-devel \
             mesa-libGL-devel mesa-libGLU-devel
@@ -675,11 +675,15 @@ jobs:
       # implicit declarations, int conversions) are errors instead of warnings; the legacy Motif
       # GUI code has them. -fpermissive is GCC's switch that makes them warnings again, so this
       # builds the code the way gcc 11 (the Ubuntu 22.04 package) does.
+      # Fedora's GMT is built with glib, so its public header gmt_glib.h includes <glib.h>; that
+      # lives in glib-2.0's own include dirs, which only pkg-config knows.
       - name: Configure
         run: |
+          GLIB_CFLAGS="$(pkg-config --cflags glib-2.0)"
           cmake -S . -B build-ci -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_FLAGS=-fpermissive \
+            -DCMAKE_C_FLAGS="-fpermissive $GLIB_CFLAGS" \
+            -DCMAKE_CXX_FLAGS="$GLIB_CFLAGS" \
             -DbuildGUIs=ON \
             -DbuildOpenCV=OFF \
             -DbuildTRN=ON \
