@@ -408,36 +408,53 @@ jobs:
           fi
           exit $bad
 
-      # The real test: load the relocated plugin into GMT.jl the way InteractiveGMT does, and run
-      # a module.
-      - name: Package + smoke-test through GMT.jl
-        run: |
-          set -euo pipefail
-          tar -C "$RUNNER_TEMP/stage" -czf "mbsystem-${{ matrix.name }}.tar.gz" mbsystem
-          probe="$RUNNER_TEMP/probe"; mkdir -p "$probe"
-          tar -xzf "mbsystem-${{ matrix.name }}.tar.gz" -C "$probe"
-          PROBE="$probe/mbsystem" julia --project="$RUNNER_TEMP/jllenv" -e '
-            using GMT, Libdl
-            lib = joinpath(ENV["PROBE"], "lib", Sys.isapple() ? "mbsystem.dylib" : "mbsystem.so")
-            isfile(lib) || error("missing $lib")
-            api = GMT.G_API[]
-            api == C_NULL && error("GMT.jl has no session")
-            GMT.gmtlib_setparameter(api, "GMT_CUSTOM_LIBS", lib)
-            ok = GMT.GMT_Call_Module(api, "mbdefaults", GMT.GMT_MODULE_EXIST, C_NULL) == 0
-            println("mbdefaults module found: ", ok)
-            ok || error("GMT did not load the MB-System supplement")
-            gmt("mbdefaults")
-            mbio = filter(l -> occursin("libmbio", l), Libdl.dllist())
-            println("MBIO in process: ", mbio)
-            isempty(mbio) && error("libmbio not loaded")
-          '
+      - name: Package
+        run: tar -C "$RUNNER_TEMP/stage" -czf "mbsystem-${{ matrix.name }}.tar.gz" mbsystem
 
+      # Uploaded BEFORE the smoke test, so the archive is there to inspect even if the test fails.
+      # Publishing to the release (below) still happens only after the test passes.
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
           name: mbsystem-${{ matrix.name }}
           path: mbsystem-${{ matrix.name }}.tar.gz
           if-no-files-found: error
+
+      # The real test: load the relocated plugin into GMT.jl and run a module.
+      #
+      # GMT builds its plugin list ONCE, in GMT_Create_Session (gmt_api.c, gmtapi_init_sharedlibs).
+      # gmtlib_setparameter("GMT_CUSTOM_LIBS") on a live session only stores the string, so the
+      # first process just reports what it does, then has GMT write ./gmt.conf with gmtset. The
+      # second process starts a new session in that directory, which reads ./gmt.conf.
+      - name: Smoke-test through GMT.jl
+        run: |
+          set -euo pipefail
+          probe="$RUNNER_TEMP/probe"; mkdir -p "$probe"
+          tar -xzf "mbsystem-${{ matrix.name }}.tar.gz" -C "$probe"
+          if [[ $RUNNER_OS == Linux ]]; then lib="$probe/mbsystem/lib/mbsystem.so"; else lib="$probe/mbsystem/lib/mbsystem.dylib"; fi
+          test -f "$lib"
+          export MBLIB="$lib"
+          cd "$probe"
+          julia --project="$RUNNER_TEMP/jllenv" -e '
+            using GMT
+            api = GMT.G_API[]
+            GMT.gmtlib_setparameter(api, "GMT_CUSTOM_LIBS", ENV["MBLIB"])
+            println("live session + gmtlib_setparameter: mbdefaults found = ",
+                    GMT.GMT_Call_Module(api, "mbdefaults", GMT.GMT_MODULE_EXIST, C_NULL) == 0)
+            gmt("gmtset GMT_CUSTOM_LIBS " * ENV["MBLIB"])
+          '
+          grep GMT_CUSTOM_LIBS gmt.conf
+          julia --project="$RUNNER_TEMP/jllenv" -e '
+            using GMT, Libdl
+            api = GMT.G_API[]
+            ok = GMT.GMT_Call_Module(api, "mbdefaults", GMT.GMT_MODULE_EXIST, C_NULL) == 0
+            println("new session reading ./gmt.conf: mbdefaults found = ", ok)
+            ok || error("GMT did not load the MB-System supplement")
+            gmt("mbdefaults")
+            mbio = filter(l -> occursin("libmbio", l), Libdl.dllist())
+            println("MBIO in process: ", mbio)
+            isempty(mbio) && error("libmbio not loaded")
+          '
 
       # Manual runs only, and only when the run asks for it. One fixed tag whose files are
       # replaced in place (--clobber), never a new tag per build.
