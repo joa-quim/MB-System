@@ -48,9 +48,10 @@ add_library(
   mb_truecont.c
   mb_zgrid.c)
 
-# GMT pulls in GDAL, whose DLL stops the C runtime flushing stdio at exit on
-# Windows; mb_exitflush_win32.c restores that for every program linking mbaux.
-if(WIN32)
+# GMT pulls in GDAL, whose DLL stops the MSVC C runtime flushing stdio at exit;
+# mb_exitflush_win32.c restores that for every program linking mbaux. It uses
+# MSVC runtime internals (_crt_atexit), so it is MSVC only.
+if(MSVC)
   target_sources(mbaux PRIVATE mb_exitflush_win32.c)
 endif()
 

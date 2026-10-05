@@ -526,21 +526,21 @@ int GMT_mbgetdata(void *V_API, int mode, void *args) {
 
 			/* allocate memory for data arrays */
 			if (error == MB_ERROR_NO_ERROR)
-				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(char), &(Ctrl->data.beamflag), &error);
+				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(char), (void **)&(Ctrl->data.beamflag), &error);
 			if (error == MB_ERROR_NO_ERROR)
-				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), &(Ctrl->data.bath), &error);
+				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), (void **)&(Ctrl->data.bath), &error);
 			if (error == MB_ERROR_NO_ERROR)
-				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_AMPLITUDE, sizeof(double), &(Ctrl->data.amp), &error);
+				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_AMPLITUDE, sizeof(double), (void **)&(Ctrl->data.amp), &error);
 			if (error == MB_ERROR_NO_ERROR)
-				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), &(Ctrl->data.bathlon), &error);
+				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), (void **)&(Ctrl->data.bathlon), &error);
 			if (error == MB_ERROR_NO_ERROR)
-				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), &(Ctrl->data.bathlat), &error);
+				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), (void **)&(Ctrl->data.bathlat), &error);
 			if (error == MB_ERROR_NO_ERROR)
-				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_SIDESCAN, sizeof(double), &(Ctrl->data.ss), &error);
+				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_SIDESCAN, sizeof(double), (void **)&(Ctrl->data.ss), &error);
 			if (error == MB_ERROR_NO_ERROR)
-				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_SIDESCAN, sizeof(double), &(Ctrl->data.sslon), &error);
+				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_SIDESCAN, sizeof(double), (void **)&(Ctrl->data.sslon), &error);
 			if (error == MB_ERROR_NO_ERROR)
-				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_SIDESCAN, sizeof(double), &(Ctrl->data.sslat), &error);
+				mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_SIDESCAN, sizeof(double), (void **)&(Ctrl->data.sslat), &error);
 			//if (error == MB_ERROR_NO_ERROR && Ctrl->A.active)
 				//mb_register_array(verbose, Ctrl->mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), &(Ctrl->data.time_d), &error);
 

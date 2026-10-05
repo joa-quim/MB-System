@@ -177,6 +177,111 @@ jobs:
           path: mbsystem
           if-no-files-found: error
 
+  # MinGW-w64 build check. MSYS2 provides only the compiler; GMT and the GDAL, PROJ, netCDF
+  # and FFTW it was built with come from the Windows GMT_jll artifacts (BinaryBuilder builds
+  # them with MinGW-w64). MSVC-only code is guarded by _MSC_VER, never _WIN32, because MinGW
+  # also defines _WIN32 and has its own POSIX headers; this job is what keeps that true.
+  #
+  # TRN is off: its sources have never built with MinGW (they need POSIX names that only the
+  # MSVC compat header, src/mbtrnframe/win32/mbtrn_w32_compat.h, supplies).
+  windows-mingw:
+    name: Windows (MinGW-w64, GMT_jll)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.10'
+
+      # A CMake initial-cache file pointing MB-System's finders at the GMT_jll artifacts.
+      # gmt-config is a bash script a Windows CMake cannot run, so GMT's paths are given
+      # directly. GMT.jl decides which GMT_jll users get, so it is resolved through GMT.jl.
+      - name: CMake cache from GMT_jll
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/jll_cache.jl" <<'EOF'
+          using Pkg
+          Pkg.activate(; temp = true)
+          Pkg.add(["GMT", "GMT_jll"]; io = devnull)
+          using GMT_jll
+          fwd(p) = replace(p, '\\' => '/')
+          gmt = fwd(GMT_jll.artifact_dir)
+          # Julia's own bin directory is in LIBPATH_list too; its libraries must not be found.
+          bindirs = filter(d -> isdir(d) && normpath(d) != normpath(Sys.BINDIR), GMT_jll.LIBPATH_list)
+          prefixes = unique(fwd.(dirname.(bindirs)))
+          function owner(stem)
+              for b in bindirs
+                  any(f -> startswith(f, stem) && endswith(f, ".dll"), readdir(b)) && return fwd(dirname(b))
+              end
+              error("no $stem*.dll in the GMT_jll libraries")
+          end
+          open(ARGS[1], "w") do io
+              println(io, "set(CMAKE_PREFIX_PATH \"", join(prefixes, ';'), "\" CACHE STRING \"\")")
+              println(io, "set(GMT_INCLUDE_DIR \"$gmt/include/gmt\" CACHE PATH \"\")")
+              println(io, "set(GMT_LIBRARY \"$gmt/lib/gmt.dll.a\" CACHE FILEPATH \"\")")
+              println(io, "set(PSL_LIBRARY \"$gmt/lib/postscriptlight.dll.a\" CACHE FILEPATH \"\")")
+              println(io, "set(GMT_CONFIG \"\${CMAKE_COMMAND}\" CACHE FILEPATH \"\")")
+              println(io, "set(FFTW_ROOT \"", owner("libfftw3-"), "\" CACHE PATH \"\")")
+              println(io, "set(NETCDF_PREFIX \"", owner("libnetcdf"), "\" CACHE PATH \"\")")
+          end
+          println("GMT_jll ", pkgversion(GMT_jll))
+          print(read(ARGS[1], String))
+          EOF
+          julia "$RUNNER_TEMP/jll_cache.jl" "$RUNNER_TEMP/jll_cache.cmake"
+
+      # GMT's gmt_shore.h includes <netcdf.h>, and mbgrd2gltf links netCDF by bare name
+      # (-lnetcdf), so netCDF's include and lib directories are passed explicitly.
+      - name: Configure
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          cache="$(cygpath -m "$RUNNER_TEMP")/jll_cache.cmake"
+          nc=$(sed -n 's/^set(NETCDF_PREFIX "\(.*\)" CACHE.*/\1/p' "$cache")
+          cmake -S . -B build-mingw -G Ninja -C "$cache" \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DbuildGUIs=OFF -DbuildOpenCV=OFF -DbuildTRN=OFF -DbuildTests=OFF -DbuildQt=OFF -DbuildPCL=OFF \
+            "-DCMAKE_C_FLAGS=-I$nc/include" "-DCMAKE_CXX_FLAGS=-I$nc/include" \
+            "-DCMAKE_SHARED_LINKER_FLAGS=-L$nc/lib" "-DCMAKE_EXE_LINKER_FLAGS=-L$nc/lib"
+
+      - name: Build
+        shell: msys2 {0}
+        # -k 0: keep going after errors so one run reports every failure.
+        run: cmake --build build-mingw -- -k 0
+
+      # MinGW exports every symbol of a DLL automatically, but only while no __declspec(dllexport)
+      # appears anywhere in it; one stray MSVC marker leaves a DLL exporting almost nothing.
+      - name: Check DLL exports
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          for d in $(find build-mingw/src -name "*.dll" | sort); do
+            n=$(objdump -p "$d" | awk '/\[Ordinal\/Name Pointer\] Table/ {f=1; next} f && /^\t\[/ {c++} f && /^$/ {f=0} END {print c+0}')
+            printf "%-28s exports: %5s\n" "$(basename "$d")" "$n"
+          done
+          bad=0
+          for pair in libmbgsf.dll:gsfError libmbgsf.dll:gsfOpen libmbio.dll:mb_read_init \
+                      libmbio.dll:mb_sensor_type_id libmbaux.dll:mb_contour_init \
+                      mbsystem.dll:mbsystem_module_show_all; do
+            d=${pair%%:*}; sym=${pair##*:}
+            f=$(find build-mingw/src -name "$d" | head -1)
+            if [ -n "$f" ] && objdump -p "$f" | grep -qw "$sym"; then echo "ok       $d exports $sym"
+            else echo "MISSING  $d does not export $sym"; bad=1; fi
+          done
+          exit $bad
+
   linux:
     name: Linux (GCC, Ubuntu 24.04)
     runs-on: ubuntu-24.04

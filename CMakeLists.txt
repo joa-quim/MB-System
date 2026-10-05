@@ -118,6 +118,14 @@ if (CMAKE_C_BYTE_ORDER STREQUAL "LITTLE_ENDIAN")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBYTESWAPPED")
 endif()
 
+# Windows has no SunRPC/TIRPC: mb_define.h includes <mb_xdr_win32.h> (src/mbaux)
+# on every Windows build, also in targets that do not link mb_xdr_win32. Sockets
+# and gethostname() live in ws2_32. The MSVC block below does the same for MSVC.
+if(WIN32 AND NOT MSVC)
+  include_directories(${CMAKE_SOURCE_DIR}/src/mbaux)
+  link_libraries(ws2_32)
+endif()
+
 # MSVC has no <unistd.h>; the substitute is src/mbio/unistd_w.h, which sources
 # include under #ifdef _MSC_VER (MinGW-w64 has a real <unistd.h>).
 if(MSVC)
