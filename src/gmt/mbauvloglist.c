@@ -580,11 +580,12 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 				angles_in_degrees = true;
 				break;
 			case 'X':
-			case 'x':
+			case 'x': {
 				double tmpd;
 				if (sscanf(getopt_state.optarg, "%lf", &tmpd) == 1)
 					scalevalue = tmpd;
 				break;
+			}
 			case '?':
 				errflg = true;
 			}

@@ -329,7 +329,8 @@ jobs:
       # pkg-config would hand netCDF (and anything else it knows) from the SYSTEM, ahead of the
       # jll prefixes, so it is fenced to a directory holding only libtirpc.pc (Linux), or nothing.
       # GMT's gmt_shore.h includes <netcdf.h>; only the MSVC branch of CMakeLists.txt adds that
-      # path, so it is passed here.
+      # path, so it is passed here. mbgrd2gltf links netCDF by bare name (-lnetcdf), so its lib
+      # directory goes on the linker search path.
       - name: Configure
         run: |
           set -euo pipefail
@@ -337,10 +338,10 @@ jobs:
           if [[ $RUNNER_OS == Linux ]]; then
             cp "$(pkg-config --variable=pcfiledir libtirpc)/libtirpc.pc" "$pc/"
             RPATH='$ORIGIN'
-            EXTRA=(-DCMAKE_SHARED_LINKER_FLAGS="-Wl,-rpath-link,$JLL_LIBDIRS")
+            EXTRA=(-DCMAKE_SHARED_LINKER_FLAGS="-L$NETCDF_PREFIX/lib -Wl,-rpath-link,$JLL_LIBDIRS")
           else
             RPATH='@loader_path'
-            EXTRA=(-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0)
+            EXTRA=(-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DCMAKE_SHARED_LINKER_FLAGS="-L$NETCDF_PREFIX/lib")
           fi
           export PKG_CONFIG_LIBDIR="$pc" PKG_CONFIG_PATH=
           cmake -S . -B build-ci -G Ninja \
