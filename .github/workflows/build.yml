@@ -586,10 +586,10 @@ jobs:
 
   # Full Linux build including the Motif/X11 graphical tools (mbedit,
   # mbnavedit, mbvelocitytool, mbgrdviz, mbeditviz, mbnavadjust). Built on
-  # Ubuntu 22.04 to match the WSL2 Ubuntu 22.04 it is meant to run on, so the
-  # system libraries it links against are the same versions.
+  # Ubuntu 22.04 (native, or WSL2 on Windows 11), and only runs there: the
+  # system libraries it links against are that release's versions.
   linux-gui:
-    name: Linux with GUIs (GCC, Ubuntu 22.04, for WSL2)
+    name: Linux with GUIs (GCC, Ubuntu 22.04)
     runs-on: ubuntu-22.04
 
     steps:
@@ -623,9 +623,9 @@ jobs:
         run: |
           DESTDIR="$PWD/stage" cmake --install build-ci
           cat > stage/usr/local/README-wsl.txt <<'TXT'
-          MB-System with graphical tools, built for Ubuntu 22.04 (WSL2 on Windows 11).
+          MB-System with graphical tools, built for Ubuntu 22.04 (native, or WSL2 on Windows 11).
 
-          1. Install the libraries the programs need (inside WSL):
+          1. Install the libraries the programs need (in Ubuntu, or inside WSL):
                sudo apt update
                sudo apt install gmt libgmt6 libgdal30 libproj22 libnetcdf19 \
                  libfftw3-double3 libtirpc3 libxm4 libxt6 libgl1 libglu1-mesa
@@ -646,6 +646,74 @@ jobs:
         with:
           name: mbsystem-linux-gui-ubuntu22.04
           path: mbsystem-linux-gui-ubuntu22.04.tar.gz
+          if-no-files-found: error
+
+  # Full Fedora 44 build including the Motif/X11 graphical tools, against Fedora's own GMT, GDAL,
+  # PROJ, netCDF and FFTW packages. Like the Ubuntu 22.04 package above it only runs on the release
+  # it was built for: every Fedora release ships different library versions.
+  fedora-gui:
+    name: Linux with GUIs (GCC, Fedora 44)
+    runs-on: ubuntu-latest
+    container: fedora:44
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install dependencies
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            git tar gzip gcc gcc-c++ cmake ninja-build \
+            GMT GMT-devel gdal-devel proj-devel netcdf-devel \
+            fftw-devel libtirpc-devel \
+            motif-devel libX11-devel libXt-devel \
+            mesa-libGL-devel mesa-libGLU-devel
+
+      - uses: actions/checkout@v4
+
+      # Fedora 44 ships gcc 16. Since gcc 14 some old C constructs (incompatible pointer types,
+      # implicit declarations, int conversions) are errors instead of warnings; the legacy Motif
+      # GUI code has them. -fpermissive is GCC's switch that makes them warnings again, so this
+      # builds the code the way gcc 11 (the Ubuntu 22.04 package) does.
+      - name: Configure
+        run: |
+          cmake -S . -B build-ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS=-fpermissive \
+            -DbuildGUIs=ON \
+            -DbuildOpenCV=OFF \
+            -DbuildTRN=ON \
+            -DbuildTests=OFF
+
+      - name: Build
+        run: cmake --build build-ci --parallel -- -k 0
+
+      # The binaries have /usr/local compiled in (library RPATH, data file
+      # locations), so the package holds a /usr/local tree.
+      - name: Package
+        run: |
+          DESTDIR="$PWD/stage" cmake --install build-ci
+          cat > stage/usr/local/README-fedora.txt <<'TXT'
+          MB-System with graphical tools, built for Fedora 44.
+
+          1. Install the libraries the programs need:
+               sudo dnf install GMT gdal-libs proj netcdf fftw-libs-double \
+                 libtirpc motif libXt mesa-libGL mesa-libGLU
+
+          2. Unpack this archive into /usr/local:
+               sudo tar -xzf mbsystem-linux-gui-fedora44.tar.gz -C /usr/local
+
+          3. Run a graphical tool, e.g.:
+               mbgrdviz
+               mbedit
+          TXT
+          tar -czf mbsystem-linux-gui-fedora44.tar.gz -C stage/usr/local .
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mbsystem-linux-gui-fedora44
+          path: mbsystem-linux-gui-fedora44.tar.gz
           if-no-files-found: error
 
   # Full macOS build including the Motif/X11 graphical tools, with Motif, X11
