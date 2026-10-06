@@ -754,7 +754,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          probe="$RUNNER_TEMP/probe"; mkdir -p "$probe"
+          # POSIX form: Git-bash's tar reads "D:\a\_temp" as a remote host:path and fails
+          probe="$(cygpath -u "$RUNNER_TEMP")/probe"; mkdir -p "$probe"
           tar -xzf mbsystem-windows-x86_64.tar.gz -C "$probe"
           libdir="$probe/mbsystem/lib"
           test -f "$libdir/mbsystem.dll"

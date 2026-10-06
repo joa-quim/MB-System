@@ -113,6 +113,7 @@
 #define THIS_MODULE_OPTIONS		"->V"
 
 #include "gmt_dev.h"
+#include "mb_gmt_compat.h"
 
 #include <stdio.h>
 #include <stdlib.h>

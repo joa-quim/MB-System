@@ -56,6 +56,7 @@
 
 /* GMT header file */
 #include "gmt_dev.h"
+#include "mb_gmt_compat.h"
 
 /* mbio include files */
 #include "mb_format.h"

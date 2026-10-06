@@ -42,6 +42,7 @@
 #define THIS_MODULE_OPTIONS "->V"
 
 #include "gmt_dev.h"
+#include "mb_gmt_compat.h"
 
 #include <math.h>
 #include <stdbool.h>

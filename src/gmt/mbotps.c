@@ -87,6 +87,7 @@
 #define THIS_MODULE_OPTIONS "->V"
 
 #include "gmt_dev.h"
+#include "mb_gmt_compat.h"
 
 #ifdef _MSC_VER
 #include "dirent_w.h"

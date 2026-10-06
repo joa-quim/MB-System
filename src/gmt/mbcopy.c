@@ -63,6 +63,7 @@ static const char program_name[] = "MBcopy";
 #endif
 
 #include "gmt_dev.h"
+#include "mb_gmt_compat.h"
 
 #include "mb_define.h"
 

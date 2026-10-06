@@ -31,6 +31,7 @@ static const char program_name[] = "MBAREACLEAN";
 #define THIS_MODULE_OPTIONS		"->V"
 
 #include "gmt_dev.h"
+#include "mb_gmt_compat.h"
 
 #include "mb_status.h"
 #include "mb_gmt_opts.h"

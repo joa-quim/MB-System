@@ -45,6 +45,7 @@
 #define THIS_MODULE_OPTIONS "->V"
 
 #include "gmt_dev.h"
+#include "mb_gmt_compat.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -89,7 +90,11 @@ static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
 	{ 0, 'H', "help",                               "", "", "", "", GMT_TP_STANDARD },
 	{ 0, 'I', "input",                              "", "", "", "", GMT_TP_STANDARD },
 	{ 0, 'N', "make-ancillary|make-ancilliary",     "", "", "", "", GMT_TP_STANDARD },
+#ifdef MB_GMT_COMPAT_PRE65	/* GMT < 6.5: long_option holds 30 characters, no room for the misspelling */
+	{ 0, 'O', "update-ancillary",                   "", "", "", "", GMT_TP_STANDARD },
+#else
 	{ 0, 'O', "update-ancillary|update-ancilliary", "", "", "", "", GMT_TP_STANDARD },
+#endif
 	{ 0, 'P', "processed",                          "", "", "", "", GMT_TP_STANDARD },
 	{ 0, 'Q', "problem",                            "", "", "", "", GMT_TP_STANDARD },
 	{ 0, 'R', "bounds",                             "", "", "", "", GMT_TP_STANDARD },
