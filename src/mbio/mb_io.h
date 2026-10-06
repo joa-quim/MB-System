@@ -34,6 +34,7 @@
 
 #ifndef MB_IO_H_
 #define MB_IO_H_
+#include "mbio_export.h"
 
 #include "mb_define.h"
 #include "mb_status.h"
@@ -60,7 +61,7 @@ typedef enum {
 #ifdef __cplusplus
 extern "C" {
 #endif
-const char *mb_platform_type(mb_platform_enum platform);
+MBIO_API const char *mb_platform_type(mb_platform_enum platform);
 #ifdef __cplusplus
 }  /* extern "C" */
 #endif
@@ -138,21 +139,9 @@ const char *mb_platform_type(mb_platform_enum platform);
 #define MB_SENSOR_TYPE_PRESSURE 111
 #define MB_SENSOR_TYPE_SOUNDSPEED 120
 
-/* These arrays are defined in mb_platform.c and extern elsewhere.
-   With MSVC, data (unlike functions) is not exported from a DLL by
-   CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS, so these arrays need explicit
-   dllexport/dllimport markers to cross the mbio.dll boundary. MinGW
-   auto-imports data and must not get the markers, because a single
-   dllexport disables its automatic export of all other symbols. */
-#if defined(_MSC_VER) && !defined(MBIO_STATIC)
-#  ifdef mbio_EXPORTS
-#    define MB_SENSOR_TYPE_API __declspec(dllexport)
-#  else
-#    define MB_SENSOR_TYPE_API __declspec(dllimport)
-#  endif
-#else
-#  define MB_SENSOR_TYPE_API
-#endif
+/* These arrays are defined in mb_platform.c and extern elsewhere: exported from mbio.dll like every
+   other symbol that leaves it, through MBIO_API (mbio_export.h) -- MSVC and MinGW alike. */
+#define MB_SENSOR_TYPE_API MBIO_API
 
 #ifdef __cplusplus
 extern "C" {

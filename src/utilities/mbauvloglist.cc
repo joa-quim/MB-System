@@ -911,6 +911,7 @@ int main(int argc, char **argv) {
 			strcpy(printfields[i].name, fields[i].name);
 			printfields[i].index = i;
 			printfields[i].formatset = false;
+			printfields[i].scale = scalevalue;
 			strcpy(printfields[i].format, fields[i].format);
 		}
 	}

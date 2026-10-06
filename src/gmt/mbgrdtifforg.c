@@ -509,7 +509,7 @@ int GMT_mbgrdtiff_usage(struct GMTAPI_CTRL *API, int level) {
 #endif
 
 	if (level == GMT_SYNOPSIS)
-		return (EXIT_FAILURE);
+		return (GMT_MODULE_SYNOPSIS);
 
 	GMT_Message(API, GMT_TIME_NONE, "\t<grd_z> is data set to be plotted.  Its z-values are in user units and will be\n");
 	GMT_Message(API, GMT_TIME_NONE, "\t  converted to rgb colors via the cpt file.  Alternatively, give three separate\n");
@@ -534,7 +534,7 @@ int GMT_mbgrdtiff_usage(struct GMTAPI_CTRL *API, int level) {
 	GMT_Option(API, "R");
 	GMT_Option(API, "U,V,X,c,n,t,.");
 
-	return (EXIT_FAILURE);
+	return (GMT_MODULE_USAGE);
 }
 /*--------------------------------------------------------------------*/
 
@@ -861,7 +861,7 @@ int GMT_mbgrdtiff(void *V_API, int mode, void *args) {
 			error++;
 		if (error) {
 			GMT_Report(API, GMT_MSG_NORMAL, "The r, g, and b grids are not congruent\n");
-			Return(EXIT_FAILURE);
+			Return(GMT_RUNTIME_ERROR);
 		}
 	}
 
@@ -901,7 +901,7 @@ int GMT_mbgrdtiff(void *V_API, int mode, void *args) {
 		gmt_map_basemap(GMT);
 		gmt_plane_perspective(GMT, -1, 0.0);
 		gmt_plotend(GMT);
-		Return(EXIT_SUCCESS);
+		Return(GMT_NOERROR);
 	}
 
 	unsigned int nx = 0;
@@ -934,7 +934,7 @@ int GMT_mbgrdtiff(void *V_API, int mode, void *args) {
 		if (n_grids && (Intens_orig->header->n_columns != Grid_orig[0]->header->n_columns ||
 		                Intens_orig->header->n_rows != Grid_orig[0]->header->n_rows)) {
 			GMT_Report(API, GMT_MSG_NORMAL, "Intensity file has improper dimensions!\n");
-			Return(EXIT_FAILURE);
+			Return(GMT_RUNTIME_ERROR);
 		}
 	}
 
@@ -1738,5 +1738,5 @@ int GMT_mbgrdtiff(void *V_API, int mode, void *args) {
 	if (!Ctrl->C.active && GMT_Destroy_Data(API, &P) != GMT_OK) {
 		Return(API->error);
 	}
-	Return(EXIT_SUCCESS);
+	Return(GMT_NOERROR);
 }

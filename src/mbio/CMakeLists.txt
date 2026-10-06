@@ -200,7 +200,8 @@ set(HEADERS
     mb_process.h
     mb_segy.h
     mb_status.h
-    mb_swap.h)
+    mb_swap.h
+    mbio_export.h)
 
 add_library(mbio ${SRC})
 set_target_properties(mbio PROPERTIES VERSION "0" SOVERSION "0")
@@ -223,11 +224,8 @@ target_link_libraries(
 if(WIN32)
   target_link_libraries(mbio PRIVATE mb_xdr_win32)
 endif()
-# mb_io.h marks exported data with __declspec(dllexport/dllimport) for MSVC
-# DLL builds; a static mbio library must not get those markers.
-if(MSVC AND NOT BUILD_SHARED_LIBS)
-  target_compile_definitions(mbio PUBLIC MBIO_STATIC)
-endif()
+# A static mbio gets MBIO_STATIC (which empties MBIO_API, mbio_export.h) from the top
+# CMakeLists.txt, which does the same for every core library.
 if (buildTRN)
   target_link_libraries(
     mbio

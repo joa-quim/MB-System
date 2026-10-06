@@ -33,9 +33,9 @@
  * Date:	January 24, 2001
  *
  * GMT-module port of src/utilities/mbgetesf.cc: the getopt_long loop
- * is replaced by the GMT option parser (long options are rewritten onto
- * their short forms before GMT sees them) and main() becomes
- * GMT_mbgetesf(), with every exit() turned into Return().
+ * is replaced by the GMT option parser (long options through module_kw,
+ * lower-case aliases kept) and main() becomes
+ * GMT_mbgetesf(), with every exit() a Return() with a GMT error code.
  */
 
 #define THIS_MODULE_NAME "mbgetesf"
@@ -102,6 +102,7 @@ static const char usage_message[] =
 /* --- Control structure ---------------------------------------------- */
 
 struct MBGETESF_CTRL {
+	int verbose;	/* the program's -V/-v count */
 	struct mbge_B { bool active; char value[MB_PATH_MAXLINE]; } B;
 	struct mbge_E { bool active; char value[MB_PATH_MAXLINE]; } E;
 	struct mbge_F { bool active; int format; } F;
@@ -122,11 +123,26 @@ static void Free_mbgetesf_Ctrl(struct GMT_CTRL *GMT, struct MBGETESF_CTRL *Ctrl)
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'B', "begin-time", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'E', "end-time",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'K', "kluge",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'M', "mode",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n\n", help_message);
 	GMT_Message(API, GMT_TIME_NONE,
 	            "\t-B Begin time as year/month/day/hour/minute/second.\n"
@@ -136,9 +152,10 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	            "\t-K Select a processing kluge (1: shift EM300/EM3000 HDCS beam flags).\n"
 	            "\t-M Edit extraction mode (1-6).\n"
 	            "\t-O Output edit save file [binary stdout].\n"
-	            "\t-H Print help and exit.\n");
-	GMT_Option(API, "V");
-	return GMT_PARSE_ERROR;
+	            "\t-H Print help and exit.\n"
+	            "\tEvery option also has the program's lower-case and long forms.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse_mbgetesf(struct GMT_CTRL *GMT, struct MBGETESF_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -146,7 +163,10 @@ static int parse_mbgetesf(struct GMT_CTRL *GMT, struct MBGETESF_CTRL *Ctrl, stru
 	struct GMT_OPTION *opt;
 	for (opt = options; opt; opt = opt->next) {
 		switch (opt->option) {
-		case 'A': case 'B': case 'b':	/* -B arrives as -A, see preparse_long_options() */
+		case 'V': case 'v':
+			Ctrl->verbose++;
+			break;
+		case 'B': case 'b':
 			if (opt->arg && opt->arg[0]) {
 				snprintf(Ctrl->B.value, sizeof(Ctrl->B.value), "%s", opt->arg);
 				Ctrl->B.active = true;
@@ -190,72 +210,11 @@ static int parse_mbgetesf(struct GMT_CTRL *GMT, struct MBGETESF_CTRL *Ctrl, stru
 			else n_errors++;
 			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
-}
-
-static char *join_args(int mode, void *args) {
-	char **argv = (char **)args, *joined;
-	size_t total = 1;
-	int i;
-	if (mode <= 0 || !args) return NULL;
-	for (i = 0; i < mode; i++) total += strlen(argv[i]) + 1;
-	joined = (char *)calloc(total, 1);
-	if (!joined) return NULL;
-	for (i = 0; i < mode; i++) { if (i) strcat(joined, " "); strcat(joined, argv[i]); }
-	return joined;
-}
-
-/* Rewrite the getopt_long options of mbgetesf.cc onto short options.
- * GMT reserves -B, so the begin time is carried as -A. */
-static char *preparse_long_options(bool *help, const char *args) {
-	size_t length = args ? strlen(args) : 0, out = 0;
-	char *copy = (char *)calloc(length + 2, 1), *result = (char *)calloc(2 * length + 8, 1);
-	char *token, *saveptr = NULL, pending = '\0';
-	if (!copy || !result) { free(copy); free(result); return NULL; }
-	memcpy(copy, args, length);
-	for (token = strtok_r(copy, " \t", &saveptr); token; token = strtok_r(NULL, " \t", &saveptr)) {
-		char emit = '\0', *equals;
-		const char *value = NULL;
-		if (pending) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = pending;
-			memcpy(result + out, token, strlen(token)); out += strlen(token); pending = '\0'; continue;
-		}
-		if (strncmp(token, "--", 2) != 0) {
-			if (token[0] == '-' && (token[1] == 'B' || token[1] == 'b')) token[1] = 'A';
-			if (out) result[out++] = ' ';
-			memcpy(result + out, token, strlen(token)); out += strlen(token); continue;
-		}
-		equals = strchr(token + 2, '=');
-		if (equals) { *equals = '\0'; value = equals + 1; }
-		if (!strcmp(token + 2, "help")) { *help = true; continue; }
-		if (!strcmp(token + 2, "verbose")) emit = 'V';
-		else if (!strcmp(token + 2, "begin-time")) emit = 'A';
-		else if (!strcmp(token + 2, "end-time")) emit = 'E';
-		else if (!strcmp(token + 2, "format")) emit = 'F';
-		else if (!strcmp(token + 2, "input")) emit = 'I';
-		else if (!strcmp(token + 2, "kluge")) emit = 'K';
-		else if (!strcmp(token + 2, "mode")) emit = 'M';
-		else if (!strcmp(token + 2, "output")) emit = 'O';
-		if (!emit) {
-			if (equals) *equals = '=';
-			if (out) result[out++] = ' ';
-			memcpy(result + out, token, strlen(token)); out += strlen(token);
-		} else if (emit == 'V') {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = emit;
-		} else if (value) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = emit;
-			memcpy(result + out, value, strlen(value)); out += strlen(value);
-		} else pending = emit;
-	}
-	free(copy);
-	return result;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 /*--------------------------------------------------------------------*/
@@ -305,7 +264,7 @@ static int mbgetesf_save_edit(int verbose, FILE *sofp, double time_d, int beam, 
 }
 
 #define bailout(code) { gmt_M_free_options(mode); return (code); }
-#define Return(code) { free(remaining_args); Free_mbgetesf_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code) { Free_mbgetesf_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 EXTERN_MSC int GMT_mbgetesf(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
@@ -315,30 +274,22 @@ int GMT_mbgetesf(void *V_API, int mode, void *args) {
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION *options = NULL;
 	struct MBGETESF_CTRL *Ctrl = NULL;
-	char *remaining_args = NULL;
-	bool staged_help = false;
 	int parse_error;
 
 	if (!API) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-	{
-		char *joined = join_args(mode, args);
-		const char *text = joined ? joined : (mode == GMT_MODULE_CMD ? (const char *)args : NULL);
-		if (text) remaining_args = preparse_long_options(&staged_help, text);
-		free(joined);
-	}
-	options = GMT_Create_Options(API, remaining_args ? GMT_MODULE_CMD : mode, remaining_args ? (void *)remaining_args : args);
-	if (API->error) { free(remaining_args); return API->error; }
-	if (!options || options->option == GMT_OPT_USAGE) { free(remaining_args); bailout(usage(API, GMT_USAGE)); }
-	if (options->option == GMT_OPT_SYNOPSIS) { free(remaining_args); bailout(usage(API, GMT_SYNOPSIS)); }
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a run of the program (it reads stdin) */
+	if ((parse_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(parse_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) { free(remaining_args); bailout(API->error); }
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 	Ctrl = (struct MBGETESF_CTRL *)New_mbgetesf_Ctrl(GMT);
-	Ctrl->H.active = staged_help;
-	if ((parse_error = parse_mbgetesf(GMT, Ctrl, options)) != GMT_OK) Return(parse_error);
+	if ((parse_error = parse_mbgetesf(GMT, Ctrl, options)) != GMT_NOERROR) Return(parse_error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
-	int verbose = GMT->common.V.active;
+	int verbose = Ctrl->verbose;
 	int format;
 	int pings;
 	int lonflip;
@@ -379,7 +330,6 @@ int GMT_mbgetesf(void *V_API, int mode, void *args) {
 	mb_path sofile = "";
 
 	{
-		bool help = Ctrl->H.active;
 
 		if (Ctrl->B.active) {
 			sscanf(Ctrl->B.value, "%d/%d/%d/%d/%d/%d", &btime_i[0], &btime_i[1], &btime_i[2], &btime_i[3], &btime_i[4], &btime_i[5]);
@@ -402,7 +352,7 @@ int GMT_mbgetesf(void *V_API, int mode, void *args) {
 			sofile_set = true;
 		}
 
-		if (verbose == 1 || help) {
+		if (verbose == 1) {
 			fprintf(stderr, "\nProgram %s\n", program_name);
 			fprintf(stderr, "MB-system Version %s\n", MB_VERSION);
 		}
@@ -412,7 +362,6 @@ int GMT_mbgetesf(void *V_API, int mode, void *args) {
 			fprintf(stderr, "dbg2  MB-system Version %s\n", MB_VERSION);
 			fprintf(stderr, "dbg2  Control Parameters:\n");
 			fprintf(stderr, "dbg2       verbose:        %d\n", verbose);
-			fprintf(stderr, "dbg2       help:           %d\n", help);
 			fprintf(stderr, "dbg2       data format:    %d\n", format);
 			fprintf(stderr, "dbg2       pings:          %d\n", pings);
 			fprintf(stderr, "dbg2       lonflip:        %d\n", lonflip);
@@ -441,11 +390,6 @@ int GMT_mbgetesf(void *V_API, int mode, void *args) {
 			fprintf(stderr, "dbg2       kluge:	   %d\n", kluge);
 		}
 
-		if (help) {
-			fprintf(stderr, "\n%s\n", help_message);
-			fprintf(stderr, "\nusage: %s\n", usage_message);
-			Return(MB_ERROR_NO_ERROR);
-		}
 	}
 
 	int error = MB_ERROR_NO_ERROR;
@@ -467,7 +411,7 @@ int GMT_mbgetesf(void *V_API, int mode, void *args) {
 		fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 		fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", ifile);
 		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-		Return(error);
+		Return(GMT_RUNTIME_ERROR);
 	}
 
 	/* allocate memory for data arrays */
@@ -503,7 +447,7 @@ int GMT_mbgetesf(void *V_API, int mode, void *args) {
 		fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
 		mb_close(verbose, &imbio_ptr, &error);
-		Return(error);
+		Return(GMT_MEMORY_ERROR);
 	}
 
 	/* save file control variables */
@@ -526,7 +470,7 @@ int GMT_mbgetesf(void *V_API, int mode, void *args) {
 			fprintf(stderr, "\nEdit Save File <%s> not initialized for writing\n", sofile);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
 			mb_close(verbose, &imbio_ptr, &error);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 	}
 
@@ -736,6 +680,14 @@ int GMT_mbgetesf(void *V_API, int mode, void *args) {
 		fprintf(stderr, "\t\t%d beams flagged by sonar\n", beam_flag_sonar);
 	}
 
-	Return(error);
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+	   The end of the data (EOF) is how every read finishes, not an error. */
+	if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

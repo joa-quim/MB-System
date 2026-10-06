@@ -35,16 +35,13 @@
  *
  * GMT module port of utilities/mbmosaic.cc.
  *
- * The option letters are those of the original program, and the long
- * options of its getopt_long() table are rewritten onto them in
- * preparse_long_options() before GMT_Create_Options() sees the command
- * line: GMT translates long options only for modules that carry a
- * GMT_KEYWORD_DICTIONARY, which an out-of-tree supplement cannot have.
+ * The option letters are those of the original program, lower case
+ * included, and the long options of its getopt_long() table are
+ * translated onto them by GMT through the module_kw dictionary.
  *
- * Progress and diagnostic output keeps the original's outfp stream
- * (stdout, or stderr once verbose >= 2) rather than being routed through
- * GMT_Report(), which renders at GMT_MSG_NORMAL as "[ERROR]" on stderr
- * and would therefore turn a redirected run into an empty file.
+ * Progress and diagnostic output keeps the original's outfp stream text,
+ * written to stderr: a module's stdout is data, and GMT_Report() would
+ * render each line at GMT_MSG_NORMAL as "[ERROR]".
  */
 
 #define THIS_MODULE_NAME    "mbmosaic"
@@ -73,6 +70,7 @@
 #include "mb_io.h"
 #include "mb_process.h"
 #include "mb_status.h"
+#include "mb_gmt_opts.h"
 
 /* gridding algorithms */
 typedef enum {
@@ -1106,6 +1104,7 @@ struct MBMOSAIC_CTRL {
 	struct mbmosaic_Y { bool active; int priority_source; char pfile[MB_PATH_MAXLINE];
 	                    int n_priority_angle; double *priority_angle_angle; double *priority_angle_priority; } Y;
 	struct mbmosaic_Z { bool active; double altitude_default; } Z;
+	int verbose;	/* the program's -V/-v count */
 };
 
 /*--------------------------------------------------------------------*/
@@ -1136,12 +1135,42 @@ static void Free_mbmosaic_Ctrl(struct GMT_CTRL *GMT, struct MBMOSAIC_CTRL *Ctrl)
 }
 
 /*--------------------------------------------------------------------*/
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'Z', "altitude-default",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'B', "border",               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "bounds",               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'A', "data-type",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'U', "directional-priority", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'X', "extend",               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'M', "extra-grids",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "grid-dimensions",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'G', "grid-format",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'E', "grid-spacing",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",                 "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "longitude-domain",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "pings",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "priority-range",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Y', "priority-source",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'J', "projection",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "speed-minimum",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "spline-interpolation", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "topography-grid",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "use-nan",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'v', "verbose",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'W', "weighting-scale",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n\n", help_message);
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return EXIT_FAILURE;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "\n\tOPTIONS:\n");
 	GMT_Message(API, GMT_TIME_NONE, "\t-A<datatype>[f]\n");
 	GMT_Message(API, GMT_TIME_NONE, "\t-B<border>\n");
@@ -1166,7 +1195,14 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	GMT_Message(API, GMT_TIME_NONE, "\t-X<extend>\n");
 	GMT_Message(API, GMT_TIME_NONE, "\t-Y<priority_source>\n");
 	GMT_Message(API, GMT_TIME_NONE, "\t-Z<altitude_default>\n");
-	return EXIT_FAILURE;
+	GMT_Message(API, GMT_TIME_NONE, "\t-V\n");
+	GMT_Message(API, GMT_TIME_NONE,
+		"\n\tThe program's long options are kept: --altitude-default --border --bounds --data-type\n"
+		"\t--directional-priority --extend --extra-grids --grid-dimensions --grid-format --grid-spacing --help\n"
+		"\t--input --longitude-domain --output --pings --priority-range --priority-source --projection\n"
+		"\t--speed-minimum --spline-interpolation --topography-grid --use-nan --verbose --weighting-scale.\n\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 /*--------------------------------------------------------------------*/
@@ -1223,149 +1259,8 @@ static void mbmosaic_set_priority_source(struct MBMOSAIC_CTRL *Ctrl, const char 
 }
 
 /*--------------------------------------------------------------------*/
-/* Joins the argv[] form of a module's arguments into the single string that
- * preparse_long_options() works on. Returns NULL for the shapes that are not
- * an argv[] array, so the caller can fall back to them. */
-static char *join_args(int mode, void *args) {
-	char **argv = (char **)args;
-	size_t total = 1;
-	int i;
-	char *joined = NULL;
-
-	if (mode <= 0 || args == NULL) return NULL;
-	for (i = 0; i < mode; i++) total += strlen(argv[i]) + 1;
-	joined = (char *)calloc(total, sizeof(char));
-	if (joined == NULL) return NULL;
-	for (i = 0; i < mode; i++) {
-		if (i > 0) strcat(joined, " ");
-		strcat(joined, argv[i]);
-	}
-	return joined;
-}
-
-/*--------------------------------------------------------------------*/
-/* Rewrites the long options of the original getopt_long() table onto the
- * matching short options before GMT_Create_Options() parses the command
- * line. A long option whose value is a separate token ("--input file")
- * is joined to its short form, matching getopt_long()'s behaviour.
- * Anything not ours is passed through untouched, so GMT's own options
- * still work. */
-static char *preparse_long_options(const char *args) {
-	const size_t length = (args != NULL) ? strlen(args) : 0;
-	/* Worst case each token gains a leading "-x", so allow two extra bytes
-	 * per token plus the separator and the terminator. */
-	char *rewritten = (char *)calloc(3 * length + 8, sizeof(char));
-	char *copy = (char *)calloc(length + 2, sizeof(char));
-	size_t out = 0;
-	char *token = NULL;
-	char *saveptr = NULL;
-	char pending_short = '\0';   /* long form awaiting its value in the next token */
-
-	if (rewritten == NULL || copy == NULL) {
-		free(rewritten);
-		free(copy);
-		return NULL;
-	}
-	if (length == 0) {
-		free(copy);
-		return rewritten;
-	}
-	memcpy(copy, args, length);
-
-	for (token = strtok_r(copy, " \t", &saveptr); token != NULL; token = strtok_r(NULL, " \t", &saveptr)) {
-		const char *name = NULL;
-		char name_buffer[128];
-		const char *value = NULL;
-		char *equals = NULL;
-
-		/* A long option that took its value from the following token. */
-		if (pending_short != '\0') {
-			if (out > 0) rewritten[out++] = ' ';
-			rewritten[out++] = '-';
-			rewritten[out++] = pending_short;
-			memcpy(rewritten + out, token, strlen(token));
-			out += strlen(token);
-			pending_short = '\0';
-			continue;
-		}
-
-		if (token[0] == '-' && token[1] == '-' && token[2] != '\0')
-			name = token + 2;
-
-		if (name != NULL) {
-			char short_option = '\0';
-
-			strncpy(name_buffer, name, sizeof(name_buffer) - 1);
-			name_buffer[sizeof(name_buffer) - 1] = '\0';
-			equals = strchr(name_buffer, '=');
-			if (equals != NULL) {
-				*equals = '\0';
-				value = equals + 1;
-			}
-
-			if (strcmp(name_buffer, "altitude-default") == 0)           short_option = 'Z';
-			else if (strcmp(name_buffer, "border") == 0)                short_option = 'B';
-			else if (strcmp(name_buffer, "bounds") == 0)                short_option = 'R';
-			else if (strcmp(name_buffer, "data-type") == 0)             short_option = 'A';
-			else if (strcmp(name_buffer, "directional-priority") == 0)  short_option = 'U';
-			else if (strcmp(name_buffer, "extend") == 0)                short_option = 'X';
-			else if (strcmp(name_buffer, "extra-grids") == 0)           short_option = 'M';
-			else if (strcmp(name_buffer, "grid-dimensions") == 0)       short_option = 'D';
-			else if (strcmp(name_buffer, "grid-format") == 0)           short_option = 'G';
-			else if (strcmp(name_buffer, "grid-spacing") == 0)          short_option = 'E';
-			else if (strcmp(name_buffer, "help") == 0)                  short_option = 'H';
-			else if (strcmp(name_buffer, "input") == 0)                 short_option = 'I';
-			else if (strcmp(name_buffer, "longitude-domain") == 0)      short_option = 'L';
-			else if (strcmp(name_buffer, "output") == 0)                short_option = 'O';
-			else if (strcmp(name_buffer, "pings") == 0)                 short_option = 'P';
-			else if (strcmp(name_buffer, "priority-range") == 0)        short_option = 'F';
-			else if (strcmp(name_buffer, "priority-source") == 0)       short_option = 'Y';
-			else if (strcmp(name_buffer, "projection") == 0)            short_option = 'J';
-			else if (strcmp(name_buffer, "speed-minimum") == 0)         short_option = 'S';
-			else if (strcmp(name_buffer, "spline-interpolation") == 0)  short_option = 'C';
-			else if (strcmp(name_buffer, "topography-grid") == 0)       short_option = 'T';
-			else if (strcmp(name_buffer, "use-nan") == 0)               short_option = 'N';
-			else if (strcmp(name_buffer, "verbose") == 0)               short_option = 'V';
-			else if (strcmp(name_buffer, "weighting-scale") == 0)       short_option = 'W';
-
-			if (short_option != '\0') {
-				/* The four switches of the original table take no value. */
-				const bool is_switch = (short_option == 'H' || short_option == 'M' ||
-				                        short_option == 'N' || short_option == 'V');
-				if (is_switch) {
-					if (out > 0) rewritten[out++] = ' ';
-					rewritten[out++] = '-';
-					rewritten[out++] = short_option;
-				}
-				else if (value != NULL) {
-					if (out > 0) rewritten[out++] = ' ';
-					rewritten[out++] = '-';
-					rewritten[out++] = short_option;
-					memcpy(rewritten + out, value, strlen(value));
-					out += strlen(value);
-				}
-				else {
-					pending_short = short_option;
-				}
-				continue;
-			}
-		}
-
-		/* Not ours: hand it to GMT unchanged. */
-		if (out > 0) rewritten[out++] = ' ';
-		memcpy(rewritten + out, token, strlen(token));
-		out += strlen(token);
-	}
-
-	rewritten[out] = '\0';
-	free(copy);
-	return rewritten;
-}
-
-/*--------------------------------------------------------------------*/
 static int parse_mbmosaic(struct GMT_CTRL *GMT, struct MBMOSAIC_CTRL *Ctrl, struct GMT_OPTION *options) {
 	unsigned int n_errors = 0;
-	unsigned int n_files = 0;
 	struct GMT_OPTION *opt = NULL;
 	struct GMTAPI_CTRL *API = GMT->parent;
 
@@ -1375,9 +1270,9 @@ static int parse_mbmosaic(struct GMT_CTRL *GMT, struct MBMOSAIC_CTRL *Ctrl, stru
 			case '<':
 				Ctrl->I.active = true;
 				strncpy(Ctrl->I.filelist, opt->arg, MB_PATH_MAXLINE - 1);
-				n_files = 1;
 				break;
 
+			case 'a':
 			case 'A': {
 				int tmp;
 				n = sscanf(opt->arg, "%d", &tmp);
@@ -1390,12 +1285,14 @@ static int parse_mbmosaic(struct GMT_CTRL *GMT, struct MBMOSAIC_CTRL *Ctrl, stru
 				break;
 			}
 
+			case 'b':
 			case 'B':
 				n = sscanf(opt->arg, "%lf", &Ctrl->B.border);
 				if (n > 0) Ctrl->B.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -B option\n"); n_errors++; }
 				break;
 
+			case 'c':
 			case 'C':
 				Ctrl->C.active = true;
 				n = sscanf(opt->arg, "%d/%d/%lf", &Ctrl->C.clip, &Ctrl->C.clipmode, &Ctrl->C.tension);
@@ -1413,6 +1310,7 @@ static int parse_mbmosaic(struct GMT_CTRL *GMT, struct MBMOSAIC_CTRL *Ctrl, stru
 					Ctrl->C.tension = 0.0;
 				break;
 
+			case 'd':
 			case 'D':
 				n = sscanf(opt->arg, "%d/%d", &Ctrl->D.xdim, &Ctrl->D.ydim);
 				if (n > 0) {
@@ -1421,6 +1319,7 @@ static int parse_mbmosaic(struct GMT_CTRL *GMT, struct MBMOSAIC_CTRL *Ctrl, stru
 				} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -D option\n"); n_errors++; }
 				break;
 
+			case 'e':
 			case 'E':
 				if (opt->arg[strlen(opt->arg) - 1] == '!') {
 					Ctrl->E.spacing_priority = true;
@@ -1434,6 +1333,7 @@ static int parse_mbmosaic(struct GMT_CTRL *GMT, struct MBMOSAIC_CTRL *Ctrl, stru
 				} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -E option\n"); n_errors++; }
 				break;
 
+			case 'f':
 			case 'F':
 				n = sscanf(opt->arg, "%lf/%d", &Ctrl->F.priority_range, &Ctrl->F.weight_priorities);
 				if (n > 0) {
@@ -1442,6 +1342,7 @@ static int parse_mbmosaic(struct GMT_CTRL *GMT, struct MBMOSAIC_CTRL *Ctrl, stru
 				} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -F option\n"); n_errors++; }
 				break;
 
+			case 'g':
 			case 'G':
 				Ctrl->G.active = true;
 				if (opt->arg[0] == '=') {
@@ -1470,55 +1371,63 @@ static int parse_mbmosaic(struct GMT_CTRL *GMT, struct MBMOSAIC_CTRL *Ctrl, stru
 				}
 				break;
 
+			case 'h':
 			case 'H':
 				Ctrl->H.active = true;
 				break;
 
+			case 'i':
 			case 'I':
 				if (!gmt_access(GMT, opt->arg, R_OK)) {
 					strncpy(Ctrl->I.filelist, opt->arg, MB_PATH_MAXLINE - 1);
 					Ctrl->I.active = true;
-					n_files = 1;
 				} else {
 					GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -I option: cannot access file %s\n", opt->arg);
 					n_errors++;
 				}
 				break;
 
+			case 'j':
 			case 'J':
 				n = sscanf(opt->arg, "%1023s", Ctrl->J.projection_pars);
 				if (n > 0) Ctrl->J.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -J option\n"); n_errors++; }
 				break;
 
+			case 'l':
 			case 'L':
 				n = sscanf(opt->arg, "%d", &Ctrl->L.lonflip);
 				if (n > 0) Ctrl->L.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -L option\n"); n_errors++; }
 				break;
 
+			case 'm':
 			case 'M':
 				Ctrl->M.active = true;
 				Ctrl->M.more = true;
 				break;
 
+			case 'n':
 			case 'N':
 				Ctrl->N.active = true;
 				Ctrl->N.use_NaN = true;
 				break;
 
+			case 'o':
 			case 'O':
 				n = sscanf(opt->arg, "%1023s", Ctrl->O.fileroot);
 				if (n > 0) Ctrl->O.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -O option\n"); n_errors++; }
 				break;
 
+			case 'p':
 			case 'P':
 				n = sscanf(opt->arg, "%d", &Ctrl->P.pings);
 				if (n > 0) Ctrl->P.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -P option\n"); n_errors++; }
 				break;
 
+			case 'r':
 			case 'R':
 				Ctrl->R.active = true;
 				if (strchr(opt->arg, '/') == NULL) {
@@ -1534,12 +1443,14 @@ static int parse_mbmosaic(struct GMT_CTRL *GMT, struct MBMOSAIC_CTRL *Ctrl, stru
 				}
 				break;
 
+			case 's':
 			case 'S':
 				n = sscanf(opt->arg, "%lf", &Ctrl->S.speedmin);
 				if (n > 0) Ctrl->S.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -S option\n"); n_errors++; }
 				break;
 
+			case 't':
 			case 'T':
 				n = sscanf(opt->arg, "%1023s", Ctrl->T.topogridfile);
 				if (n > 0) {
@@ -1548,6 +1459,7 @@ static int parse_mbmosaic(struct GMT_CTRL *GMT, struct MBMOSAIC_CTRL *Ctrl, stru
 				} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -T option\n"); n_errors++; }
 				break;
 
+			case 'u':
 			case 'U': {
 				double t1;   /* bearing */
 				double t2;   /* factor */
@@ -1578,18 +1490,21 @@ static int parse_mbmosaic(struct GMT_CTRL *GMT, struct MBMOSAIC_CTRL *Ctrl, stru
 				break;
 			}
 
+			case 'w':
 			case 'W':
 				n = sscanf(opt->arg, "%lf", &Ctrl->W.scale);
 				if (n > 0) Ctrl->W.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -W option\n"); n_errors++; }
 				break;
 
+			case 'x':
 			case 'X':
 				n = sscanf(opt->arg, "%lf", &Ctrl->X.extend);
 				if (n > 0) Ctrl->X.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -X option\n"); n_errors++; }
 				break;
 
+			case 'y':
 			case 'Y': {
 				int tmp = MBMOSAIC_PRIORITYTABLE_FILE;
 				Ctrl->Y.active = true;
@@ -1606,78 +1521,52 @@ static int parse_mbmosaic(struct GMT_CTRL *GMT, struct MBMOSAIC_CTRL *Ctrl, stru
 				break;
 			}
 
+			case 'z':
 			case 'Z':
 				n = sscanf(opt->arg, "%lf", &Ctrl->Z.altitude_default);
 				if (n > 0) Ctrl->Z.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -Z option\n"); n_errors++; }
 				break;
 
+			case 'v':
+			case 'V':
+				Ctrl->verbose++;
+				break;
+
 			default:
-				n_errors += gmt_default_error(GMT, opt->option);
+				n_errors += gmt_default_option_error(GMT, opt);
 				break;
 		}
 	}
 
-	n_errors += gmt_M_check_condition(GMT, n_files != 1, "Syntax error: Must specify one input file\n");
 	return (n_errors ? GMT_PARSE_ERROR : GMT_OK);
 }
 
 #define bailout(code) {gmt_M_free_options(mode); return (code);}
-#define Return(code) {Free_mbmosaic_Ctrl (GMT, Ctrl); gmt_end_module (GMT, GMT_cpy); free(remaining_args); bailout (code);}
+#define Return(code) {mb_gmt_history_free(API, hist_argc, hist_argv); Free_mbmosaic_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code);}
 
 /*--------------------------------------------------------------------*/
+EXTERN_MSC int GMT_mbmosaic(void *V_API, int mode, void *args);
+
 int GMT_mbmosaic(void *V_API, int mode, void *args) {
 	struct MBMOSAIC_CTRL *Ctrl = NULL;
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION *options = NULL;
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
-	char *remaining_args = NULL;
+	char **hist_argv = NULL;	/* the command line, for the grids' history (the program's argc/argv) */
+	int hist_argc = 0;
 	int parse_status;
 
 	if (API == NULL) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-
-	/* The long options are resolved before GMT_Create_Options() sees the
-	 * command line, because GMT has no keyword dictionary for this module
-	 * and would reject every one of them.
-	 *
-	 * GMT hands a module its arguments in one of three shapes: an argv[]
-	 * array of mode entries (mode > 0, which is what the gmt executable
-	 * does), a single command string (mode == GMT_MODULE_CMD, which is
-	 * what the C API and the external interfaces do), or a ready-made
-	 * option list (mode < 0). Only the first two carry text that can still
-	 * hold long options, so the argv[] form is joined into one string and
-	 * preparsed like the others; an option list is passed through
-	 * untouched. */
-	{
-		char *joined = join_args(mode, args);
-		const char *text = (joined != NULL) ? joined
-		                                    : ((mode == GMT_MODULE_CMD) ? (const char *)args : NULL);
-		if (text != NULL) remaining_args = preparse_long_options(text);
-		free(joined);
-	}
-
-	options = GMT_Create_Options(API, (remaining_args != NULL) ? GMT_MODULE_CMD : mode,
-	                             (remaining_args != NULL) ? (void *)remaining_args : args);
-	if (API->error) {
-		free(remaining_args);
-		return API->error;
-	}
-
-	if (!options || options->option == GMT_OPT_USAGE) {
-		free(remaining_args);
-		bailout(usage(API, GMT_USAGE));
-	}
-	if (options->option == GMT_OPT_SYNOPSIS) {
-		free(remaining_args);
-		bailout(usage(API, GMT_SYNOPSIS));
-	}
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a run of the program (on datalist.mb-1) */
+	if ((parse_status = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(parse_status);
 
 #if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) {
-		free(remaining_args);
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL)
 		bailout(API->error);
-	}
 #else
 	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
 #endif
@@ -1685,9 +1574,11 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 
 	Ctrl = (struct MBMOSAIC_CTRL *)New_mbmosaic_Ctrl(GMT);
 	if ((parse_status = parse_mbmosaic(GMT, Ctrl, options))) Return(parse_status);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
+	hist_argc = mb_gmt_history_args(API, options, program_name, &hist_argv);
 
 	/* MBIO status variables */
-	int verbose = GMT->common.V.active ? GMT->current.setting.verbose : 0;
+	int verbose = Ctrl->verbose;
 
 	/* MBIO read control parameters from defaults */
 	int format;
@@ -1762,23 +1653,14 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 	if (Ctrl->P.active) pings = Ctrl->P.pings;
 	if (Ctrl->S.active) speedmin = Ctrl->S.speedmin;
 
-	/* output stream for basic stuff (stdout if verbose <= 1,
-	    stderr if verbose > 1) */
-	FILE *outfp = (verbose >= 2) ? stderr : stdout;
+	/* The program's messages: on stdout below -V2 in the program, but as a module stdout is
+	   data, and these are diagnostics. The results are the program's own grid files. */
+	FILE *outfp = stderr;
 
 	/* The original declared this for option "u" and then reused it as a
 	   scratch index in the interpolation loops; only the second use is
 	   left here, since the option itself is parsed into Ctrl. */
 	int k_mode;
-
-	/* mb_write_gmt_grd() puts argv[0] in the grid's remark, and that is the
-	   only element it reads. The module has no argv, so hand it the program
-	   name the original would have passed. */
-	char argv0[MB_PATH_MAXLINE];
-	char *argv[1];
-	const int argc = 1;
-	strcpy(argv0, program_name);
-	argv[0] = argv0;
 
 	if (verbose == 1 || help) {
 		fprintf(outfp, "\nProgram %s\n", program_name);
@@ -1846,12 +1728,6 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 		fprintf(stderr, "dbg2      topogridfile:         %s\n", topogridfile);
 	}
 
-	if (help) {
-		fprintf(outfp, "\n%s\n", help_message);
-		fprintf(outfp, "\nusage: %s\n", usage_message);
-		Return(GMT_NOERROR);
-	}
-
 	int error = MB_ERROR_NO_ERROR;
 
 	/* if bounds not set get bounds of input data */
@@ -1859,6 +1735,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 		int formatread = -1;
 		int formatmakeinf = formatread;
 		struct mb_info_struct mb_info;
+		if (!mb_gmt_datalist_opens(API, verbose, filelist, formatmakeinf)) Return(GMT_RUNTIME_ERROR);
 		mb_make_info_datalist(verbose, false, filelist, &formatmakeinf, &error);
 		status = mb_get_info_datalist(verbose, filelist, &formatread, &mb_info, lonflip, &error);
 
@@ -1890,7 +1767,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 	if (gbnd[0] >= gbnd[1] || gbnd[2] >= gbnd[3]) {
 		fprintf(outfp, "\nGrid bounds not properly specified:\n\t%f %f %f %f\n", gbnd[0], gbnd[1], gbnd[2], gbnd[3]);
 		fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
-		Return(MB_ERROR_BAD_PARAMETER);
+		Return(GMT_RUNTIME_ERROR);
 	}
 
 	/* use bathymetry/amplitude beams for types other than sidescan */
@@ -1973,7 +1850,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 			fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
 			error = MB_ERROR_BAD_PARAMETER;
 			mb_memory_clear(verbose, &error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		/* translate lon lat bounds from UTM if required */
@@ -2277,7 +2154,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 			fprintf(stderr, "\nUnable to Open Angle Weights File <%s> for reading\n", pfile);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
 			mb_memory_clear(verbose, &error);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		n_priority_angle = 0;
 		mb_path buffer = "";
@@ -2301,7 +2178,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 			fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
 			mb_memory_clear(verbose, &error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		/* read in angle priorities */
@@ -2311,7 +2188,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 			fprintf(stderr, "\nUnable to Open Angle Weights File <%s> for reading\n", pfile);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
 			mb_memory_clear(verbose, &error);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		n_priority_angle = 0;
 		while ((/* result = */ fgets(buffer, MB_PATH_MAXLINE, fp)) == buffer) {
@@ -2335,7 +2212,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 			fprintf(stderr, "\nMBIO Error loading topography grid: %s\n%s\n", topogridfile, message);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
 			mb_memory_clear(verbose, &error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 	}
 
@@ -2521,7 +2398,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 		fprintf(outfp, "\nMBIO Error allocating data arrays:\n%s\n", message);
 		fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
 		mb_memory_clear(verbose, &error);
-		Return(error);
+		Return(GMT_RUNTIME_ERROR);
 	}
 
 	/* initialize arrays */
@@ -2614,7 +2491,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 			fprintf(outfp, "\nUnable to open data list file: %s\n", filelist);
 			fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
 			mb_memory_clear(verbose, &error);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		int pstatus;
   		int astatus = MB_ALTNAV_NONE;
@@ -2655,7 +2532,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 							fprintf(stderr, "Requested filtered amplitude file missing\n");
 							fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", file);
 							fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-							Return(error);
+							Return(GMT_RUNTIME_ERROR);
 						}
 					}
 					else if (usefiltered && datatype == MBMOSAIC_DATA_SIDESCAN) {
@@ -2666,7 +2543,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 							fprintf(stderr, "Requested filtered sidescan file missing\n");
 							fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", file);
 							fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-							Return(error);
+							Return(GMT_RUNTIME_ERROR);
 						}
 					}
 
@@ -2681,7 +2558,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 						fprintf(outfp, "\nMultibeam File <%s> not initialized for reading\n", file);
 						fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
 						mb_memory_clear(verbose, &error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					/* get pointers to data storage */
@@ -2763,7 +2640,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 						fprintf(outfp, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
 						mb_memory_clear(verbose, &error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					/* loop over reading */
@@ -3176,7 +3053,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 			fprintf(outfp, "\nUnable to open data list file: %s\n", filelist);
 			fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
 			mb_memory_clear(verbose, &error);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		int pstatus;
 		int astatus;
@@ -3217,7 +3094,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 							fprintf(stderr, "Requested filtered amplitude file missing\n");
 							fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", file);
 							fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-							Return(error);
+							Return(GMT_RUNTIME_ERROR);
 						}
 					}
 					else if (usefiltered && datatype == MBMOSAIC_DATA_SIDESCAN) {
@@ -3228,7 +3105,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 							fprintf(stderr, "Requested filtered sidescan file missing\n");
 							fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", file);
 							fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-							Return(error);
+							Return(GMT_RUNTIME_ERROR);
 						}
 					}
 
@@ -3243,7 +3120,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 						fprintf(outfp, "\nMultibeam File <%s> not initialized for reading\n", file);
 						fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
 						mb_memory_clear(verbose, &error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					/* get pointers to data storage */
@@ -3325,7 +3202,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 						fprintf(outfp, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
 						mb_memory_clear(verbose, &error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					/* loop over reading */
@@ -3773,7 +3650,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 			fprintf(outfp, "\nMBIO Error allocating interpolation work arrays:\n%s\n", message);
 			fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
 			mb_memory_clear(verbose, &error);
-			Return(MB_ERROR_MEMORY_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		memset((char *)sgrid, 0, gxdim * gydim * sizeof(float));
 
@@ -4178,12 +4055,12 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 		strcpy(ofile, fileroot);
 		strcat(ofile, ".grd");
 		status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin,
-		                          zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, argc, argv, &error);
+		                          zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, hist_argc, hist_argv, &error);
 	}
 	else if (gridkind == MBMOSAIC_GMTGRD) {
 		snprintf(ofile, sizeof(ofile), "%s.grd%s", fileroot, gridkindstring);
 		status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin,
-		                          zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, argc, argv, &error);
+		                          zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, hist_argc, hist_argv, &error);
 	}
 	if (status != MB_SUCCESS) {
 		char *message = NULL;
@@ -4191,7 +4068,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 		fprintf(stderr, "\nError writing output file: %s\n%s\n", ofile, message);
 		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
 		mb_memory_clear(verbose, &error);
-		Return(error);
+		Return(GMT_RUNTIME_ERROR);
 	}
 
 	/* write second output file */
@@ -4226,12 +4103,12 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 			strcpy(ofile, fileroot);
 			strcat(ofile, "_num.grd");
 			status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin,
-			                          zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, argc, argv, &error);
+			                          zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, hist_argc, hist_argv, &error);
 		}
 		else if (gridkind == MBMOSAIC_GMTGRD) {
 			snprintf(ofile, sizeof(ofile), "%s_num.grd%s", fileroot, gridkindstring);
 			status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin,
-			                          zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, argc, argv, &error);
+			                          zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, hist_argc, hist_argv, &error);
 		}
 		if (status != MB_SUCCESS) {
 			char *message = NULL;
@@ -4239,7 +4116,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 			fprintf(stderr, "\nError writing output file: %s\n%s\n", ofile, message);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
 			mb_memory_clear(verbose, &error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		/* write third output file */
@@ -4273,12 +4150,12 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 			strcpy(ofile, fileroot);
 			strcat(ofile, "_sd.grd");
 			status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin,
-			                          zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, argc, argv, &error);
+			                          zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, hist_argc, hist_argv, &error);
 		}
 		else if (gridkind == MBMOSAIC_GMTGRD) {
 			snprintf(ofile, sizeof(ofile), "%s_sd.grd%s", fileroot, gridkindstring);
 			status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin,
-			                          zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, argc, argv, &error);
+			                          zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, hist_argc, hist_argv, &error);
 		}
 		if (status != MB_SUCCESS) {
 			char *message = NULL;
@@ -4286,7 +4163,7 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 			fprintf(stderr, "\nError writing output file: %s\n%s\n", ofile, message);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
 			mb_memory_clear(verbose, &error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 	}
 
@@ -4367,6 +4244,12 @@ int GMT_mbmosaic(void *V_API, int mode, void *args) {
 		fprintf(stderr, "dbg2       status:  %d\n", status);
 	}
 
+	if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
 	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

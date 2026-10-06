@@ -36,7 +36,7 @@
 /* Primary input is the swath file or datalist given with -I; edits .esf edit-save files in place; nothing is returned. */
 #define THIS_MODULE_KEYS    "ID{"
 #define THIS_MODULE_NEEDS		""
-#define THIS_MODULE_OPTIONS		"-:>Vh"
+#define THIS_MODULE_OPTIONS		"->V"
 
 #include "gmt_dev.h"
 
@@ -96,6 +96,8 @@ EXTERN_MSC int GMT_mbclean(void *API, int mode, void *args);
 /* --- Control structure ----------------------------------------------- */
 
 struct MBCLEAN_CTRL {
+	int verbose;	/* the program's -V/-v count */
+	struct mbc_H { bool active; } H;
 
 	struct mbcln_A { bool active; double deviation_max; } A;
 	struct mbcln_B { bool active; double depth_low, depth_high; } B;
@@ -179,6 +181,36 @@ static void Free_mbclean_Ctrl(struct GMT_CTRL *GMT, struct MBCLEAN_CTRL *Ctrl) {
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",                  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",                     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'W', "bounds",                   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'B', "depth-range",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'A', "deviation-max",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "distance-range",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Y', "flag-distance-angle",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",                   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'G', "fraction-range",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",                    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "lonflip",                  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'E', "max-acrosstrack",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "max-heading-rate",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "max-slope",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'U', "min-good-beams",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'M', "mode",                     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "ping-deviation-tolerance", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'K', "range-min",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "speed-range",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "spike-max",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "timestamp-tolerance",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'X', "zap-beams",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Q', "zap-rails",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Z', "zero-position",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
@@ -191,11 +223,13 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 		"\t[-Sspike/mode/form] [-Ttolerance] [-Unum_good_min]\n"
 		"\t[-Wwest/east/south/north] [-Xleft[/right]] [-Yleft/right[/mode]] [-Z]\n"
 		"\t[-V -H]\n\n");
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 
 	GMT_Message(API, GMT_TIME_NONE,
-		"\t<inputfile> is an MB-System datalist referencing the swath data.\n\n");
-	return GMT_PARSE_ERROR;
+		"\t<inputfile> is an MB-System datalist referencing the swath data [datalist.mb-1].\n"
+		"\tEvery option also has the program's lower-case and long forms.\n\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 /* --- parse ----------------------------------------------------------- */
@@ -221,18 +255,21 @@ static int parse(struct GMT_CTRL *GMT, struct MBCLEAN_CTRL *Ctrl, struct GMT_OPT
 			break;
 
 		case 'A':
+		case 'a':
 			n = sscanf(opt->arg, "%lf", &Ctrl->A.deviation_max);
 			if (n > 0) { Ctrl->A.active = true; Ctrl->transf.check_deviation = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -A option\n"); n_errors++; }
 			break;
 
 		case 'B':
+		case 'b':
 			n = sscanf(opt->arg, "%lf/%lf", &Ctrl->B.depth_low, &Ctrl->B.depth_high);
 			if (n > 1) { Ctrl->B.active = true; Ctrl->transf.check_range = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -B option\n"); n_errors++; }
 			break;
 
 		case 'C':
+		case 'c':
 			Ctrl->C.slope_form = 0;
 			n = sscanf(opt->arg, "%lf/%d", &Ctrl->C.slopemax, &Ctrl->C.slope_form);
 			if (n > 0) {
@@ -244,30 +281,35 @@ static int parse(struct GMT_CTRL *GMT, struct MBCLEAN_CTRL *Ctrl, struct GMT_OPT
 			break;
 
 		case 'D':
+		case 'd':
 			n = sscanf(opt->arg, "%lf/%lf", &Ctrl->D.distancemin, &Ctrl->D.distancemax);
 			if (n > 1) Ctrl->D.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -D option\n"); n_errors++; }
 			break;
 
 		case 'E':
+		case 'e':
 			n = sscanf(opt->arg, "%lf", &Ctrl->E.max_acrosstrack);
 			if (n > 0) { Ctrl->E.active = true; Ctrl->transf.zap_long_across = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -E option\n"); n_errors++; }
 			break;
 
 		case 'F':
+		case 'f':
 			n = sscanf(opt->arg, "%d", &Ctrl->F.format);
 			if (n > 0) Ctrl->F.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -F option\n"); n_errors++; }
 			break;
 
 		case 'G':
+		case 'g':
 			n = sscanf(opt->arg, "%lf/%lf", &Ctrl->G.fraction_low, &Ctrl->G.fraction_high);
 			if (n > 1) { Ctrl->G.active = true; Ctrl->transf.check_fraction = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -G option\n"); n_errors++; }
 			break;
 
 		case 'I':
+		case 'i':
 			if (!gmt_access(GMT, opt->arg, R_OK)) {
 				Ctrl->I.inputfile = strdup(opt->arg);
 				Ctrl->I.active = true;
@@ -276,36 +318,42 @@ static int parse(struct GMT_CTRL *GMT, struct MBCLEAN_CTRL *Ctrl, struct GMT_OPT
 			break;
 
 		case 'K':
+		case 'k':
 			n = sscanf(opt->arg, "%lf", &Ctrl->K.range_min);
 			if (n > 0) { Ctrl->K.active = true; Ctrl->transf.check_range_min = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -K option\n"); n_errors++; }
 			break;
 
 		case 'L':
+		case 'l':
 			n = sscanf(opt->arg, "%d", &Ctrl->L.lonflip);
 			if (n > 0) Ctrl->L.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -L option\n"); n_errors++; }
 			break;
 
 		case 'M':
+		case 'm':
 			n = sscanf(opt->arg, "%d", &Ctrl->M.mode);
 			if (n > 0) Ctrl->M.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -M option\n"); n_errors++; }
 			break;
 
 		case 'N':
+		case 'n':
 			n = sscanf(opt->arg, "%lf", &Ctrl->N.ping_deviation_tolerance);
 			if (n > 0) { Ctrl->N.active = true; Ctrl->transf.check_ping_deviation = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -N option\n"); n_errors++; }
 			break;
 
 		case 'P':
+		case 'p':
 			n = sscanf(opt->arg, "%lf/%lf", &Ctrl->P.speed_low, &Ctrl->P.speed_high);
 			if (n > 0) { Ctrl->P.active = true; Ctrl->transf.check_speed_good = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -P option\n"); n_errors++; }
 			break;
 
 		case 'Q':
+		case 'q':
 			Ctrl->Q.backup_dist = 0.0;
 			sscanf(opt->arg, "%lf", &Ctrl->Q.backup_dist);
 			Ctrl->Q.active = true;
@@ -313,12 +361,14 @@ static int parse(struct GMT_CTRL *GMT, struct MBCLEAN_CTRL *Ctrl, struct GMT_OPT
 			break;
 
 		case 'R':
+		case 'r':
 			n = sscanf(opt->arg, "%lf", &Ctrl->R.max_heading_rate);
 			if (n > 0) { Ctrl->R.active = true; Ctrl->transf.zap_max_heading_rate = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -R option\n"); n_errors++; }
 			break;
 
 		case 'S':
+		case 's':
 			Ctrl->S.slope_form = 0;
 			n = sscanf(opt->arg, "%lf/%d/%d",
 					   &Ctrl->S.spikemax, &Ctrl->S.spike_mode, &Ctrl->S.slope_form);
@@ -331,25 +381,29 @@ static int parse(struct GMT_CTRL *GMT, struct MBCLEAN_CTRL *Ctrl, struct GMT_OPT
 			break;
 
 		case 'T':
+		case 't':
 			sscanf(opt->arg, "%lf", &Ctrl->T.tolerance);
 			Ctrl->T.active = true;
 			Ctrl->transf.fix_edit_timestamps = true;
 			break;
 
 		case 'U':
+		case 'u':
 			n = sscanf(opt->arg, "%d", &Ctrl->U.num_good_min);
 			if (n > 0) { Ctrl->U.active = true; Ctrl->transf.check_num_good_min = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -U option\n"); n_errors++; }
 			break;
 
 		case 'W':
+		case 'w':
 			n = sscanf(opt->arg, "%lf/%lf/%lf/%lf",
 					   &Ctrl->W.west, &Ctrl->W.east, &Ctrl->W.south, &Ctrl->W.north);
 			if (n == 4) { Ctrl->W.active = true; Ctrl->transf.check_position_bounds = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -W option\n"); n_errors++; }
 			break;
 
-		case 'X': {
+		case 'X':
+		case 'x': {
 			int left = 0, right = 0;
 			n = sscanf(opt->arg, "%d/%d", &left, &right);
 			if (n == 1) right = left;
@@ -360,7 +414,8 @@ static int parse(struct GMT_CTRL *GMT, struct MBCLEAN_CTRL *Ctrl, struct GMT_OPT
 			break;
 		}
 
-		case 'Y': {
+		case 'Y':
+		case 'y': {
 			double left = 0.0, right = 0.0;
 			int    y_mode_tmp = 0;
 			n = sscanf(opt->arg, "%lf/%lf/%d", &left, &right, &y_mode_tmp);
@@ -399,20 +454,31 @@ static int parse(struct GMT_CTRL *GMT, struct MBCLEAN_CTRL *Ctrl, struct GMT_OPT
 		}
 
 		case 'Z':
+		case 'z':
 			Ctrl->Z.active = true;
 			Ctrl->transf.check_zero_position = true;
 			break;
 
+		case 'V':
+		case 'v':
+			Ctrl->verbose++;
+			break;
+
+		case 'H':
+		case 'h':
+			Ctrl->H.active = true;
+			break;
+
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 
-	n_errors += gmt_M_check_condition(GMT, n_files != 1,
-									  "Syntax error: Must specify one input file\n");
+	/* no input file is the program's datalist.mb-1, as in the program */
+	(void)n_files;
 
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code)  { gmt_M_free_options(mode); return (code); }
@@ -435,18 +501,15 @@ int GMT_mbclean(void *V_API, int mode, void *args) {
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
-	if (!options || options->option == GMT_OPT_USAGE)    bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS)             bailout(usage(API, GMT_SYNOPSIS));
+	/* 1: no options is a run of the program (on datalist.mb-1) */
+	if ((error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(error);
 
-#if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
-#else
-	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
-#endif
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = New_mbclean_Ctrl(GMT);
 	if ((error = parse(GMT, Ctrl, options)) != 0) Return (error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
 	/* ------- pull parsed control values into locals ---------------- */
 	bool   check_deviation       = Ctrl->transf.check_deviation;
@@ -471,7 +534,7 @@ int GMT_mbclean(void *V_API, int mode, void *args) {
 	bool   flag_angle            = Ctrl->Y.flag_angle;
 	bool   unflag_angle          = Ctrl->Y.unflag_angle;
 
-	int    verbose = GMT->common.V.active;
+	int    verbose = Ctrl->verbose;
 	int    status;
 
 	/* ------- MBIO defaults + reset ---------------------------------- */
@@ -561,7 +624,7 @@ int GMT_mbclean(void *V_API, int mode, void *args) {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open data list file: %s\n", read_file);
 			GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		read_data = (mb_datalist_read(verbose, datalist, swathfile, dfile, &format, &file_weight, &error) == MB_SUCCESS);
 	} else {
@@ -663,7 +726,7 @@ int GMT_mbclean(void *V_API, int mode, void *args) {
 				mb_error(verbose, error, &message);
 				GMT_Report(API, GMT_MSG_NORMAL, "mb_read_init failed: %s\n", message);
 				GMT_Report(API, GMT_MSG_NORMAL, "Multibeam File <%s> not initialized\n", swathfile);
-				Return(error);
+				Return(GMT_RUNTIME_ERROR);
 			}
 
 			/* per-file counters */
@@ -726,7 +789,7 @@ int GMT_mbclean(void *V_API, int mode, void *args) {
 				char *message = NULL;
 				mb_error(verbose, error, &message);
 				GMT_Report(API, GMT_MSG_NORMAL, "MBIO error allocating data arrays: %s\n", message);
-				Return(error);
+				Return(GMT_MEMORY_ERROR);
 			}
 
 			/* edit save file */
@@ -1383,18 +1446,36 @@ int GMT_mbclean(void *V_API, int mode, void *args) {
 
 	if (read_datalist) mb_datalist_close(verbose, &datalist, &error);
 
-	GMT_Report(API, GMT_MSG_NORMAL,
-		"\nMBclean Totals: files:%d records:%d esf_flag:%d esf_unflag:%d "
-		"esf_zero:%d outer:%d dist:%d innerdist:%d angle:%d innerangle:%d "
-		"rails:%d long:%d hdgrate:%d nfew:%d depth:%d minrange:%d frac:%d "
-		"devmedian:%d slopes:%d spikes:%d pingdev:%d flagged:%d unflagged:%d\n",
-		nfiletot, ndatatot, nflagesftot, nunflagesftot, nzeroesftot,
-		nouterbeamstot, nouterdistancetot, ninnerdistancetot, nouterangletot,
-		ninnerangletot, nrailtot, nlong_acrosstot, nmax_heading_ratetot,
-		nmintot, ndepthrangetot, nminrangetot, nfractiontot,
-		ndeviationtot, nbadtot, nspiketot, npingdeviationtot,
-		nflagtot, nunflagtot);
-
+	/* give the total statistics, as the program does */
+	fprintf(stderr, "\nMBclean Processing Totals:\n");
+	fprintf(stderr, "-------------------------\n");
+	fprintf(stderr, "%d total swath data files processed\n", nfiletot);
+	fprintf(stderr, "%d total bathymetry data records processed\n", ndatatot);
+	fprintf(stderr, "%d total beams flagged in old esf files\n", nflagesftot);
+	fprintf(stderr, "%d total beams unflagged in old esf files\n", nunflagesftot);
+	fprintf(stderr, "%d total beams zeroed in old esf files\n", nzeroesftot);
+	fprintf(stderr, "%d total beams zapped by beam number\n", nouterbeamstot);
+	fprintf(stderr, "%d total beams zapped by distance\n", nouterdistancetot);
+	fprintf(stderr, "%d total beams unzapped by distance\n", ninnerdistancetot);
+	fprintf(stderr, "%d total beams zapped by angle\n", nouterangletot);
+	fprintf(stderr, "%d total beams unzapped by angle\n", ninnerangletot);
+	fprintf(stderr, "%d total beams zapped for too few good beams in ping\n", nmintot);
+	fprintf(stderr, "%d total beams out of acceptable depth range\n", ndepthrangetot);
+	fprintf(stderr, "%d total beams less than minimum range\n", nminrangetot);
+	fprintf(stderr, "%d total beams out of acceptable fractional depth range\n", nfractiontot);
+	// int nspeedtot = 0;
+	// fprintf(stderr, "%d total beams out of acceptable speed range\n", nspeedtot);
+	// int nzeropostot = 0;
+	// fprintf(stderr, "%d total beams zero position (lat/lon)\n", nzeropostot);
+	fprintf(stderr, "%d total beams exceed acceptable deviation from median depth\n", ndeviationtot);
+	fprintf(stderr, "%d total bad rail beams identified\n", nrailtot);
+	fprintf(stderr, "%d total long acrosstrack beams identified\n", nlong_acrosstot);
+	fprintf(stderr, "%d total max heading rate beams identified\n", nmax_heading_ratetot);
+	fprintf(stderr, "%d total excessive spikes identified\n", nspiketot);
+	fprintf(stderr, "%d total excessive slopes identified\n", nbadtot);
+	fprintf(stderr, "%d ping deviations identified\n", npingdeviationtot);
+	fprintf(stderr, "%d total beams flagged\n", nflagtot);
+	fprintf(stderr, "%d total beams unflagged\n", nunflagtot);
 	if (mb_memory_list(verbose, &error) == MB_FAILURE)
 		GMT_Report(API, GMT_MSG_NORMAL,
 				   "Program %s completed but leaked memory\n", THIS_MODULE_NAME);

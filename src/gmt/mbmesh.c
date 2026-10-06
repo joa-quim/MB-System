@@ -12,22 +12,22 @@
  * pipeline itself is reached through the plain C interface in
  * src/mbmesh/mbmesh_capi.h.
  *
- * Option mapping. GMT has no long-option keyword dictionary for an out-of-tree
- * module, so the original driver's getopt_long table and its single-dash alias
- * rewriting both survive the port, in preparse_long_options(): the long forms
- * that have a short equivalent are rewritten into it for GMT to parse, and the
- * long-only output switches are applied directly. Every option the original
- * accepted, including the legacy -html spellings, is still accepted here.
+ * Option mapping. The original driver's getopt_long table is kept whole: the
+ * long forms are recognised by mb_gmt_mark_long_options() and read in parse()
+ * in command-line order, each onto the short letter or the case label it
+ * carried in the original switch. The original's single-dash legacy aliases
+ * (-html, -local-xyz, ...) reach GMT split into a letter and the rest of the
+ * word; mark_single_dash_aliases() puts each back into its long form first.
  */
 
 #define THIS_MODULE_NAME    "mbmesh"
 #define THIS_MODULE_LIB     "mbsystem"
 #define THIS_MODULE_PURPOSE "Generate 3D meshes from swath sonar bathymetry data"
 /* -I carries the input datalist, which is the module's one primary resource, so
- * an external API (Julia, Python, MATLAB) binds its input argument to -I. There
- * is deliberately no output key: mbmesh writes mesh.glb and its optional
- * companions into the -O directory itself and hands nothing back. */
-#define THIS_MODULE_KEYS    "ID{"
+ * an external API (Julia, Python, MATLAB) binds its input argument to -I. The
+ * output key carries the --metadata listing; mbmesh writes mesh.glb and its
+ * optional companions into the -O directory itself. */
+#define THIS_MODULE_KEYS    "ID{,>D}"
 #define THIS_MODULE_NEEDS   ""
 #define THIS_MODULE_OPTIONS "->V"
 
@@ -43,6 +43,8 @@
 #include "mb_status.h"
 
 #include "mbmesh_capi.h"
+#include "mb_gmt_opts.h"
+#include "mb_gmt_text.h"
 
 /* ======================================================================================================== */
 
@@ -51,16 +53,17 @@
 
 /* The original driver writes every stage line to std::cerr as
  *     mbmesh: [stage] message
- * Routed through GMT_Report here so that the module obeys -V like every other
- * GMT module: the stage lines are informational, warnings and fatal errors are
- * not. always_print reproduces the original's ability to emit a line even when
- * verbose is off (used for the startup and completion lines). */
+ * and so does the module: the stage lines follow the program's own -V/--verbose
+ * switch, not GMT's verbosity level, and always_print emits the startup and
+ * completion lines even when verbose is off, as the original does. Warnings and
+ * fatal errors go through GMT_Report. */
 static void log_message(struct GMTAPI_CTRL *API, const char *stage, const char *message, bool verbose,
                         bool always_print) {
+	(void)API;
 	if (!verbose && !always_print) {
 		return;
 	}
-	GMT_Report(API, GMT_MSG_INFORMATION, "[%s] %s\n", stage, message);
+	fprintf(stderr, "mbmesh: [%s] %s\n", stage, message);
 }
 
 static void log_warning(struct GMTAPI_CTRL *API, const char *message) {
@@ -97,7 +100,7 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	GMT_Message(API, GMT_TIME_NONE,
 	            "usage: mbmesh -I datalist [-R west/east/south/north] [-O outputdir] [-L meters] "
 	            "[output options] [-V]\n\n");
-	if (level == GMT_SYNOPSIS) return EXIT_FAILURE;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 
 	GMT_Message(API, GMT_TIME_NONE, "Required:\n");
 	GMT_Message(API, GMT_TIME_NONE, "  -I, --input <datalist>       Input MB-System datalist file\n\n");
@@ -124,77 +127,13 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	GMT_Message(API, GMT_TIME_NONE, "The default output is mesh.glb.\n");
 	GMT_Message(API, GMT_TIME_NONE,
 	            "Single-dash long output options such as -html are accepted for legacy compatibility.\n");
-	return EXIT_FAILURE;
+	return GMT_MODULE_USAGE;
 }
 
 /* ======================================================================================================== */
 
-/* Port of parse_options() proper: the switch over the short options, which GMT
- * hands over already split into a letter and its argument. The long options
- * reach this switch through preparse_long_options() above. */
-static int parse_mbmesh(struct GMT_CTRL *GMT, struct MBMESH_CTRL *Ctrl, struct GMT_OPTION *options) {
-	unsigned int n_errors = 0;
-	struct GMT_OPTION *opt = NULL;
-	struct GMTAPI_CTRL *API = GMT->parent;
-	struct mbmesh_options *o = &Ctrl->options;
-
-	for (opt = options; opt; opt = opt->next) {
-		switch (opt->option) {
-
-		case '<':
-			/* The original falls back to the first positional argument when no
-			 * -I was given: "if (options.input_datalist.empty() && optind < argc)". */
-			if (o->input_datalist[0] == '\0') {
-				strncpy(o->input_datalist, opt->arg, MBMESH_PATH_MAXLINE - 1);
-			}
-			break;
-
-		case 'I':
-			strncpy(o->input_datalist, opt->arg, MBMESH_PATH_MAXLINE - 1);
-			break;
-
-		case 'O':
-			strncpy(o->output_directory, opt->arg, MBMESH_PATH_MAXLINE - 1);
-			break;
-
-		case 'R': {
-			double west = 0.0, east = 0.0, south = 0.0, north = 0.0;
-			if (sscanf(opt->arg, "%lf/%lf/%lf/%lf", &west, &east, &south, &north) == 4) {
-				o->degrees_W = west;
-				o->degrees_E = east;
-				o->degrees_S = south;
-				o->degrees_N = north;
-				o->use_bounds = true;
-			}
-			else {
-				char message[MBMESH_MESSAGE_MAXLINE];
-				snprintf(message, sizeof(message), "invalid bounds argument: %s", opt->arg);
-				log_warning(API, message);
-			}
-			break;
-		}
-
-		case 'L':
-			o->level_of_detail = strtod(opt->arg, NULL);
-			o->level_of_detail_requested = true;
-			break;
-
-		case 'H':
-		case 'h':
-			o->help_requested = true;
-			break;
-
-		default:
-			n_errors += gmt_default_error(GMT, opt->option);
-			break;
-		}
-	}
-
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
-}
-
 /* The long-only switches of the original driver have no short equivalent, so
- * they are matched by name before GMT sees them. Each entry is the long option
+ * parse_mbmesh() applies them by name through this function. Each entry is the long option
  * and the case label it carried in the original getopt_long switch. */
 static bool parse_long_only_option(struct mbmesh_options *o, const char *name) {
 	if (strcmp(name, "metadata") == 0 || strcmp(name, "info") == 0) {
@@ -260,183 +199,148 @@ static bool parse_long_only_option_with_argument(struct mbmesh_options *o, const
 	return false;
 }
 
-/* GMT does not know this module's long options, so the command line is
- * pre-parsed here. This is the port of the original driver's long_options
- * table together with its single_dash_long_options rewriting loop: the long
- * forms that have a short equivalent are rewritten into that short form for
- * GMT to parse, the long-only switches are applied to the options directly,
- * and anything else is passed through untouched.
- *
- * Returns a newly allocated argument string for GMT_Create_Options(); the
- * caller frees it. Recognises "--name", "--name=value" and "--name value",
- * and accepts the single-dash legacy spellings such as -html for the same
- * reason the original driver does. */
-/*--------------------------------------------------------------------*/
-/* Joins the argv[] form of a module's arguments into the single string that
- * preparse_long_options() works on. GMT hands a module its arguments either
- * as an argv[] array of mode entries (mode > 0, which is what the gmt
- * executable does), as a single command string (mode == GMT_MODULE_CMD,
- * which is what the C API and the external interfaces do), or as a
- * ready-made option list (mode < 0). Returns NULL for the shapes that are
- * not an argv[] array, so the caller can fall back to them. */
-static char *join_args(int mode, void *args) {
-	char **argv = (char **)args;
-	size_t total = 1;
-	int i;
-	char *joined = NULL;
 
-	if (mode <= 0 || args == NULL) return NULL;
-	for (i = 0; i < mode; i++) total += strlen(argv[i]) + 1;
-	joined = (char *)calloc(total, sizeof(char));
-	if (joined == NULL) return NULL;
-	for (i = 0; i < mode; i++) {
-		if (i > 0) strcat(joined, " ");
-		strcat(joined, argv[i]);
-	}
-	return joined;
-}
+/* The original driver's getopt_long table, in its order, and what each entry is:
+ * the short letter it returned, or 0 for the long-only switches (cases 1000-1012),
+ * which parse_long_only_option() and parse_long_only_option_with_argument() apply. */
+static const struct MB_GMT_LONGOPT_DEF long_options[] = {
+	{"input", true},
+	{"output", true},
+	{"bounds", true},
+	{"lod", true},
+	{"level-of-detail", true},
+	{"metadata", false},
+	{"info", false},
+	{"html", false},
+	{"local-xyz", false},
+	{"ecef-xyz", false},
+	{"xyz", false},
+	{"oriented-ply", false},
+	{"pointcloud-glb", false},
+	{"normal-glb", false},
+	{"origin-glb", false},
+	{"raw-mesh-glb", false},
+	{"decimate", true},
+	{"diagnostics", false},
+	{"all-outputs", false},
+	{"verbose", false},
+	{"help", false},
+	{NULL, false}};
+static const char long_letter[] = {'I', 'O', 'R', 'L', 'L', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'V', 'H'};
 
-static char *preparse_long_options(struct mbmesh_options *o, const char *args) {
-	const size_t length = (args != NULL) ? strlen(args) : 0;
-	/* Worst case each token gains a leading "-", so allow one extra byte per
-	 * token plus the terminator. */
-	char *rewritten = (char *)calloc(2 * length + 4, sizeof(char));
-	char *copy = (char *)calloc(length + 2, sizeof(char));
-	size_t out = 0;
-	char *token = NULL;
-	char *saveptr = NULL;
-	char pending_short = '\0';   /* long form awaiting its value in the next token */
-	char pending_long[128] = "";
-
-	/* The single-dash legacy aliases of the original driver. Each is accepted
-	 * as the double-dash form of the same name. */
+/* The original's single_dash_long_options: each word is accepted as the
+ * double-dash form of the same name. GMT has split "-html" into option 'h' with
+ * argument "tml"; put such an option back as the long option "html" so that
+ * mb_gmt_mark_long_options() takes it, together with the value that follows
+ * -decimate. Called before mb_gmt_mark_long_options(). */
+static void mark_single_dash_aliases(struct GMT_OPTION *options) {
 	static const char *single_dash_long_options[] = {
 	    "html", "local-xyz", "ecef-xyz", "xyz", "oriented-ply", "pointcloud-glb",
 	    "normal-glb", "origin-glb", "raw-mesh-glb", "decimate", "diagnostics", "all-outputs"};
+	struct GMT_OPTION *opt;
+	size_t i;
 
-	if (rewritten == NULL || copy == NULL) {
-		free(rewritten);
-		free(copy);
-		return NULL;
-	}
-	if (length == 0) {
-		free(copy);
-		return rewritten;
-	}
-	memcpy(copy, args, length);
-
-	for (token = strtok_r(copy, " \t", &saveptr); token != NULL; token = strtok_r(NULL, " \t", &saveptr)) {
-		const char *name = NULL;
-		char name_buffer[128];
-		const char *value = NULL;
-		char *equals = NULL;
-		size_t i;
-
-		/* A long option that took its value from the following token. */
-		if (pending_short != '\0') {
-			if (out > 0) rewritten[out++] = ' ';
-			rewritten[out++] = '-';
-			rewritten[out++] = pending_short;
-			memcpy(rewritten + out, token, strlen(token));
-			out += strlen(token);
-			pending_short = '\0';
-			continue;
-		}
-		if (pending_long[0] != '\0') {
-			(void)parse_long_only_option_with_argument(o, pending_long, token);
-			pending_long[0] = '\0';
-			continue;
-		}
-
-		if (token[0] == '-' && token[1] == '-' && token[2] != '\0') {
-			name = token + 2;
-		}
-		else if (token[0] == '-' && token[1] != '-' && token[1] != '\0') {
-			/* Single-dash legacy spelling, accepted only for the names the
-			 * original driver rewrote. */
-			for (i = 0; i < sizeof(single_dash_long_options) / sizeof(single_dash_long_options[0]); i++) {
-				const size_t alias_length = strlen(single_dash_long_options[i]);
-				if (strncmp(token + 1, single_dash_long_options[i], alias_length) == 0 &&
-				    (token[1 + alias_length] == '\0' || token[1 + alias_length] == '=')) {
-					name = token + 1;
-					break;
-				}
+	for (opt = options; opt; opt = opt->next) {
+		if (opt->option == GMT_OPT_PARAMETER || opt->option == GMT_OPT_INFILE || opt->arg == NULL) continue;
+		for (i = 0; i < sizeof(single_dash_long_options) / sizeof(single_dash_long_options[0]); i++) {
+			const char *name = single_dash_long_options[i];
+			if (name[0] == opt->option && strcmp(name + 1, opt->arg) == 0) {
+				char *arg = strdup(name);
+				if (arg == NULL) break;
+				free(opt->arg);
+				opt->arg = arg;
+				opt->option = GMT_OPT_PARAMETER;
+				break;
 			}
 		}
+	}
+}
 
-		if (name != NULL) {
-			strncpy(name_buffer, name, sizeof(name_buffer) - 1);
-			name_buffer[sizeof(name_buffer) - 1] = '\0';
-			equals = strchr(name_buffer, '=');
-			if (equals != NULL) {
-				*equals = '\0';
-				value = equals + 1;
-			}
+/* Port of parse_options(): the original's switch, over the short options and the
+ * long options in command-line order. */
+static int parse_mbmesh(struct GMT_CTRL *GMT, struct MBMESH_CTRL *Ctrl, struct GMT_OPTION *options) {
+	unsigned int n_errors = 0;
+	struct GMT_OPTION *opt = NULL;
+	struct GMTAPI_CTRL *API = GMT->parent;
+	struct mbmesh_options *o = &Ctrl->options;
 
-			/* The long-only switches of the original table. */
-			if (parse_long_only_option(o, name_buffer)) {
+	for (opt = options; opt; opt = opt->next) {
+		char option = opt->option;
+		const char *arg = opt->arg;
+		if (option == MB_GMT_LONGOPT) {	/* a program long option: the letter it is */
+			const char *value;
+			const int k = mb_gmt_long_option(opt, long_options, &value);
+			if (k < 0) {
+				GMT_Report(API, GMT_MSG_ERROR, "Option --%s %s\n", opt->arg, k == -2 ? "requires an argument" : "is not recognized");
+				n_errors++;
 				continue;
 			}
-			if (strcmp(name_buffer, "decimate") == 0) {
-				if (value != NULL) {
-					(void)parse_long_only_option_with_argument(o, name_buffer, value);
-				}
-				else {
-					strncpy(pending_long, name_buffer, sizeof(pending_long) - 1);
-					pending_long[sizeof(pending_long) - 1] = '\0';
-				}
+			if (long_letter[k] == 0) {
+				if (long_options[k].has_arg)
+					(void)parse_long_only_option_with_argument(o, long_options[k].name, value);
+				else
+					(void)parse_long_only_option(o, long_options[k].name);
 				continue;
 			}
+			option = long_letter[k];
+			arg = value;
+		}
+		switch (option) {
 
-			/* --help is acted on here rather than rewritten, because -h is a GMT
-			 * common option and would be intercepted before this module sees it. */
-			if (strcmp(name_buffer, "help") == 0) {
-				o->help_requested = true;
-				continue;
+		case '<':
+			/* The original falls back to the first positional argument when no
+			 * -I was given: "if (options.input_datalist.empty() && optind < argc)". */
+			if (o->input_datalist[0] == '\0') {
+				strncpy(o->input_datalist, arg, MBMESH_PATH_MAXLINE - 1);
 			}
+			break;
 
-			/* The long forms that have a short equivalent, rewritten for GMT. */
-			{
-				char short_option = '\0';
-				if (strcmp(name_buffer, "input") == 0)                  short_option = 'I';
-				else if (strcmp(name_buffer, "output") == 0)            short_option = 'O';
-				else if (strcmp(name_buffer, "bounds") == 0)            short_option = 'R';
-				else if (strcmp(name_buffer, "lod") == 0)               short_option = 'L';
-				else if (strcmp(name_buffer, "level-of-detail") == 0)   short_option = 'L';
-				else if (strcmp(name_buffer, "verbose") == 0)           short_option = 'V';
+		case 'I':
+			strncpy(o->input_datalist, arg, MBMESH_PATH_MAXLINE - 1);
+			break;
 
-				if (short_option != '\0') {
-					if (short_option == 'V') {
-						if (out > 0) rewritten[out++] = ' ';
-						rewritten[out++] = '-';
-						rewritten[out++] = 'V';
-					}
-					else if (value != NULL) {
-						if (out > 0) rewritten[out++] = ' ';
-						rewritten[out++] = '-';
-						rewritten[out++] = short_option;
-						memcpy(rewritten + out, value, strlen(value));
-						out += strlen(value);
-					}
-					else {
-						pending_short = short_option;
-					}
-					continue;
-				}
+		case 'O':
+			strncpy(o->output_directory, arg, MBMESH_PATH_MAXLINE - 1);
+			break;
+
+		case 'R': {
+			double west = 0.0, east = 0.0, south = 0.0, north = 0.0;
+			if (sscanf(arg, "%lf/%lf/%lf/%lf", &west, &east, &south, &north) == 4) {
+				o->degrees_W = west;
+				o->degrees_E = east;
+				o->degrees_S = south;
+				o->degrees_N = north;
+				o->use_bounds = true;
 			}
+			else {
+				char message[MBMESH_MESSAGE_MAXLINE];
+				snprintf(message, sizeof(message), "invalid bounds argument: %s", arg);
+				log_warning(API, message);
+			}
+			break;
 		}
 
-		/* Not ours: hand it to GMT unchanged. */
-		if (out > 0) {
-			rewritten[out++] = ' ';
+		case 'L':
+			o->level_of_detail = strtod(arg, NULL);
+			o->level_of_detail_requested = true;
+			break;
+
+		case 'V':
+			o->verbose = true;
+			break;
+
+		case 'H':
+		case 'h':
+			o->help_requested = true;
+			break;
+
+		default:
+			n_errors += gmt_default_option_error(GMT, opt);
+			break;
 		}
-		memcpy(rewritten + out, token, strlen(token));
-		out += strlen(token);
 	}
 
-	rewritten[out] = '\0';
-	free(copy);
-	return rewritten;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 /* ======================================================================================================== */
@@ -587,6 +491,8 @@ static bool launch_html_viewer_server(struct GMTAPI_CTRL *API, const char *direc
 	int server_status;
 	int open_status;
 
+	(void)API;
+
 	if (directory[0] == '\0' || html_filename[0] == '\0') {
 		return false;
 	}
@@ -610,8 +516,8 @@ static bool launch_html_viewer_server(struct GMTAPI_CTRL *API, const char *direc
 		return false;
 	}
 
-	GMT_Report(API, GMT_MSG_INFORMATION, "[output] started Python web server at %s\n", url);
-	GMT_Report(API, GMT_MSG_INFORMATION, "[output] server logs: /tmp/mbmesh_http.log\n");
+	fprintf(stderr, "mbmesh: [output] started Python web server at %s\n", url);
+	fprintf(stderr, "mbmesh: [output] server logs: /tmp/mbmesh_http.log\n");
 	return true;
 }
 
@@ -621,7 +527,7 @@ static bool launch_html_viewer_server(struct GMTAPI_CTRL *API, const char *direc
 #define Return(code)  { mbmesh_mesh_destroy(clean_mesh); mbmesh_mesh_destroy(raw_mesh); \
                         mbmesh_grid_destroy(poisson_surface); mbmesh_oriented_destroy(oriented_points); \
                         mbmesh_collected_destroy(decimated_points); mbmesh_collected_destroy(collected_points); \
-                        mbmesh_preprocessed_destroy(preprocessed); free(remaining_args); \
+                        mbmesh_preprocessed_destroy(preprocessed); \
                         Free_mbmesh_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 
 EXTERN_MSC int GMT_mbmesh(void *V_API, int mode, void *args);
@@ -644,7 +550,6 @@ int GMT_mbmesh(void *V_API, int mode, void *args) {
 	mbmesh_grid_t *poisson_surface = NULL;
 	mbmesh_mesh_t *raw_mesh = NULL;
 	mbmesh_mesh_t *clean_mesh = NULL;
-	char *remaining_args = NULL;
 
 	struct mbmesh_trimming_diagnostics trimming_diagnostics;
 	char error[MBMESH_ERROR_MAXLINE] = "";
@@ -655,73 +560,27 @@ int GMT_mbmesh(void *V_API, int mode, void *args) {
 
 	if (API == NULL) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a run of the program (which then reports the empty datalist) */
+	if ((parse_status = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(parse_status);
 
-	/* The long options are resolved before GMT_Create_Options() sees the command
-	 * line: GMT has no keyword dictionary for this module and would reject them
-	 * all, including --input and --output. */
-	{
-		struct mbmesh_options staged;
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL,
+	                           &options, &GMT_cpy)) == NULL)
+		bailout(API->error);
+	/* getopt's "-I datalist" form, then the program's long options (and their
+	 * single-dash spellings) kept out of GMT's --PAR=value handling */
+	mb_gmt_join_separated_values(API, &options, "IORL");
+	mark_single_dash_aliases(options);
+	mb_gmt_mark_long_options(API, &options, long_options);
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
-		mbmesh_options_defaults(&staged);
-		{
-			char *joined = join_args(mode, args);
-			const char *text = (joined != NULL) ? joined
-			                                    : ((mode == GMT_MODULE_CMD) ? (const char *)args : NULL);
-			if (text != NULL) remaining_args = preparse_long_options(&staged, text);
-			free(joined);
-		}
-
-		options = GMT_Create_Options(API, (remaining_args != NULL) ? GMT_MODULE_CMD : mode,
-		                             (remaining_args != NULL) ? (void *)remaining_args : args);
-		if (API->error) {
-			free(remaining_args);
-			return API->error;
-		}
-
-		if (!options || options->option == GMT_OPT_USAGE) {
-			free(remaining_args);
-			bailout(usage(API, GMT_USAGE));
-		}
-		if (options->option == GMT_OPT_SYNOPSIS) {
-			free(remaining_args);
-			bailout(usage(API, GMT_SYNOPSIS));
-		}
-
-		if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL,
-		                           &options, &GMT_cpy)) == NULL) {
-			free(remaining_args);
-			bailout(API->error);
-		}
-		if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
-
-		Ctrl = (struct MBMESH_CTRL *)New_mbmesh_Ctrl(GMT);
-
-		/* Carry the long-only switches collected above into the control
-		 * structure before the short options are parsed over it. */
-		Ctrl->options.help_requested = staged.help_requested;
-		Ctrl->options.metadata_requested = staged.metadata_requested;
-		Ctrl->options.write_html = staged.write_html;
-		Ctrl->options.write_local_xyz = staged.write_local_xyz;
-		Ctrl->options.write_ecef_xyz = staged.write_ecef_xyz;
-		Ctrl->options.write_oriented_ply = staged.write_oriented_ply;
-		Ctrl->options.write_pointcloud_glb = staged.write_pointcloud_glb;
-		Ctrl->options.write_normal_glb = staged.write_normal_glb;
-		Ctrl->options.write_origin_glb = staged.write_origin_glb;
-		Ctrl->options.write_raw_mesh_glb = staged.write_raw_mesh_glb;
-		Ctrl->options.decimation_decimate = staged.decimation_decimate;
-		Ctrl->options.decimation_cell_size = staged.decimation_cell_size;
-		Ctrl->options.decimation_requested = staged.decimation_requested;
-	}
-
+	Ctrl = (struct MBMESH_CTRL *)New_mbmesh_Ctrl(GMT);
 	if ((parse_status = parse_mbmesh(GMT, Ctrl, options)) != 0) Return(parse_status);
 
 	o = &Ctrl->options;
-	o->verbose = GMT->common.V.active ? true : false;
 
-	if (o->help_requested) {
-		usage(API, GMT_USAGE);
-		Return(GMT_NOERROR);
-	}
+	if (o->help_requested) Return(usage(API, GMT_USAGE));
 
 	snprintf(message, sizeof(message), "input=%s output=%s", o->input_datalist, o->output_directory);
 	log_message(API, "startup", message, o->verbose, true);
@@ -746,7 +605,19 @@ int GMT_mbmesh(void *V_API, int mode, void *args) {
 	log_message(API, "input", message, o->verbose, false);
 
 	if (o->metadata_requested) {
-		mbmesh_print_datalist_metadata(preprocessed, o);
+		char *text = mbmesh_datalist_metadata_text(preprocessed, o);
+		struct MB_GMT_TEXT *T;
+		if (text == NULL) {
+			GMT_Report(API, GMT_MSG_ERROR, "Out of memory\n");
+			Return(GMT_MEMORY_ERROR);
+		}
+		if ((T = mb_gmt_text_begin(GMT, options)) == NULL) {
+			free(text);
+			Return(API->error);
+		}
+		mb_gmt_text_put(T, "%s", text);
+		free(text);
+		if (mb_gmt_text_end(T)) Return(API->error);
 		Return(GMT_NOERROR);
 	}
 

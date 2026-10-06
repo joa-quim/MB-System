@@ -1136,21 +1136,21 @@ int mb_platform_read(int verbose, char *platform_file, void **platform_ptr, int 
           }
           else if (strncmp(buffer, "SENSOR_MODEL", 12) == 0) {
             int isensor;
-            char svalue[MB_PATH_MAXLINE];
+            char svalue[MB_PATH_MAXLINE] = "";  /* an empty field leaves it empty, not the last line's value */
             sscanf(buffer, "%s %d %s", dummy, &isensor, svalue);
             if (isensor >= 0 && isensor < platform->num_sensors)
               strcpy(platform->sensors[isensor].model, svalue);
           }
           else if (strncmp(buffer, "SENSOR_MANUFACTURER", 19) == 0) {
             int isensor;
-            char svalue[MB_PATH_MAXLINE];
+            char svalue[MB_PATH_MAXLINE] = "";
             sscanf(buffer, "%s %d %s", dummy, &isensor, svalue);
             if (isensor >= 0 && isensor < platform->num_sensors)
               strcpy(platform->sensors[isensor].manufacturer, svalue);
           }
           else if (strncmp(buffer, "SENSOR_SERIALNUMBER", 19) == 0) {
             int isensor;
-            char svalue[MB_PATH_MAXLINE];
+            char svalue[MB_PATH_MAXLINE] = "";
             sscanf(buffer, "%s %d %s", dummy, &isensor, svalue);
             if (isensor >= 0 && isensor < platform->num_sensors)
               strcpy(platform->sensors[isensor].serialnumber, svalue);

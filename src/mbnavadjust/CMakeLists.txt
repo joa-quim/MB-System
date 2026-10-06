@@ -36,7 +36,8 @@ add_library(
 
 set(HEADERS
     mbnavadjust_io.h
-    mbnavadjust_core.h)
+    mbnavadjust_core.h
+    mbnavadjust_export.h)
 
 set_target_properties(mbnavadjust_core PROPERTIES VERSION "0" SOVERSION "0")
 target_include_directories(mbnavadjust_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

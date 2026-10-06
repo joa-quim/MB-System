@@ -584,6 +584,229 @@ jobs:
             gh release view mbsystem-latest -R "$REPO" >/dev/null
           gh release upload mbsystem-latest "mbsystem-${{ matrix.name }}.tar.gz" -R "$REPO" --clobber
 
+  # The same supplement for InteractiveGMT on Windows, for a GMT.jl that runs GMT_jll's GMT
+  # (GMT.isJLL; an installed Windows GMT brings its own supplement). GMT_jll is built by BinaryBuilder
+  # with MinGW-w64 against msvcrt.dll, and grids and other memory pass between GMT and the MB modules
+  # (mbgrid writes its grid through GMT), so the plugin uses the same toolchain AND the same C runtime:
+  # MSYS2's MINGW64 environment (msvcrt), never UCRT64 and never MSVC.
+  #
+  # No MinGW runtime DLL may be imported. libgcc and libstdc++ are linked statically, and so is
+  # winpthread: the libwinpthread-1.dll Julia ships in its bin/ -- the one any process running GMT.jl
+  # already has loaded -- is older than MSYS2's and lacks clock_gettime64, so a dynamically linked
+  # build fails to load with "The specified procedure could not be found".
+  plugin-windows:
+    name: GMT plugin for InteractiveGMT (windows-x86_64)
+    runs-on: windows-latest
+    permissions:
+      contents: write        # needed only by the publish step
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkgconf
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.10'
+
+      # GMT_jll resolved through GMT.jl (the version users get), in an environment kept for the smoke
+      # test. Writes the CMake initial cache (as the windows-mingw job does) and the names of every DLL
+      # GMT_jll brings, which the dependency check accepts.
+      - name: CMake cache from GMT_jll
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/jll_cache.jl" <<'EOF'
+          using Pkg
+          Pkg.activate(joinpath(ENV["RUNNER_TEMP"], "jllenv"))
+          Pkg.add(["GMT", "GMT_jll"]; io = devnull)
+          using GMT_jll
+          fwd(p) = replace(p, '\\' => '/')
+          gmt = fwd(GMT_jll.artifact_dir)
+          bindirs = filter(d -> isdir(d) && normpath(d) != normpath(Sys.BINDIR), GMT_jll.LIBPATH_list)
+          prefixes = unique(fwd.(dirname.(bindirs)))
+          function owner(stem)
+              for b in bindirs
+                  any(f -> startswith(f, stem) && endswith(f, ".dll"), readdir(b)) && return fwd(dirname(b))
+              end
+              error("no $stem*.dll in the GMT_jll libraries")
+          end
+          open(ARGS[1], "w") do io
+              println(io, "set(CMAKE_PREFIX_PATH \"", join(prefixes, ';'), "\" CACHE STRING \"\")")
+              println(io, "set(GMT_INCLUDE_DIR \"$gmt/include/gmt\" CACHE PATH \"\")")
+              println(io, "set(GMT_LIBRARY \"$gmt/lib/gmt.dll.a\" CACHE FILEPATH \"\")")
+              println(io, "set(PSL_LIBRARY \"$gmt/lib/postscriptlight.dll.a\" CACHE FILEPATH \"\")")
+              println(io, "set(GMT_CONFIG \"\${CMAKE_COMMAND}\" CACHE FILEPATH \"\")")
+              println(io, "set(FFTW_ROOT \"", owner("libfftw3-"), "\" CACHE PATH \"\")")
+              println(io, "set(NETCDF_PREFIX \"", owner("libnetcdf"), "\" CACHE PATH \"\")")
+          end
+          # Julia's own bin/ too: the process GMT.jl runs in has it.
+          dlls = unique(lowercase.(vcat((filter(f -> endswith(lowercase(f), ".dll"), readdir(d))
+                                        for d in vcat(bindirs, Sys.BINDIR))...)))
+          write(ARGS[2], join(dlls, '\n'))
+          println("GMT_jll ", pkgversion(GMT_jll))
+          print(read(ARGS[1], String))
+          EOF
+          julia "$RUNNER_TEMP/jll_cache.jl" "$RUNNER_TEMP/jll_cache.cmake" "$RUNNER_TEMP/jll_dlls.txt"
+
+      # gmt_shore.h includes <netcdf.h> and mbgrd2gltf links -lnetcdf by bare name: netCDF's include
+      # and lib directories are passed explicitly. The static runtime: see the job's comment.
+      # --exclude-libs keeps winpthread's own functions out of every DLL's export table.
+      - name: Configure
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          cache="$(cygpath -m "$RUNNER_TEMP")/jll_cache.cmake"
+          nc=$(sed -n 's/^set(NETCDF_PREFIX "\(.*\)" CACHE.*/\1/p' "$cache")
+          static="-static-libgcc -static-libstdc++ -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive,-Bdynamic -Wl,--exclude-libs,libwinpthread.a"
+          cmake -S . -B build-plugin -G Ninja -C "$cache" \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DbuildGUIs=OFF -DbuildOpenCV=OFF -DbuildTRN=OFF -DbuildTests=OFF -DbuildQt=OFF -DbuildPCL=OFF \
+            "-DCMAKE_C_FLAGS=-I$nc/include" "-DCMAKE_CXX_FLAGS=-I$nc/include" \
+            "-DCMAKE_SHARED_LINKER_FLAGS=-L$nc/lib $static"
+
+      # Only the supplement and what it links.
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build-plugin --target mbsystem -- -k 0
+
+      - name: Stage
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          stage="$(cygpath -u "$RUNNER_TEMP")/stage/mbsystem"
+          mkdir -p "$stage/lib" "$stage/share/mbsystem"
+          find build-plugin -name "*.dll" -exec cp {} "$stage/lib/" \;
+          cp src/share/LevitusAnnual82.dat src/share/Projections.dat "$stage/share/mbsystem/"
+          echo "${{ github.sha }}" > "$stage/MBSYSTEM_COMMIT"
+          ls -la "$stage/lib"
+
+      # GMT finds a module of a plugin by its exported GMT_<name>. Every module of the plugin's own
+      # table must be exported -- a module without an EXTERN_MSC declaration is not, once any other
+      # one in the DLL has one, and GMT then reports it as unknown (GMT_NOT_A_VALID_MODULE).
+      - name: Check module exports
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          lib="$(cygpath -u "$RUNNER_TEMP")/stage/mbsystem/lib/mbsystem.dll"
+          objdump -p "$lib" | awk '/\[Ordinal\/Name Pointer\] Table/ {f=1; next} f && /^\t\[/ {print $NF}' | sort -u > exports.txt
+          info=$(find build-plugin -name gmt_mbsystem_moduleinfo.h | head -1)
+          bad=0
+          for m in $(grep -o '{"[a-z0-9_]*"' "$info" | tr -d '{"'); do
+            if grep -qx "GMT_$m" exports.txt; then echo "ok       GMT_$m"; else echo "MISSING  GMT_$m"; bad=1; fi
+          done
+          exit $bad
+
+      # Every DLL imported must be our own, one GMT_jll brings (already in the process at run time) or
+      # Windows' own. A UCRT import means the wrong MSYS2 environment; a MinGW runtime DLL means the
+      # static linking did not take.
+      - name: Check dependencies
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          stage="$(cygpath -u "$RUNNER_TEMP")/stage/mbsystem/lib"
+          jll="$(cygpath -u "$RUNNER_TEMP")/jll_dlls.txt"
+          own=$(cd "$stage" && ls | tr 'A-Z' 'a-z')
+          sys='^(kernel32|msvcrt|ws2_32|advapi32|user32|shell32|ole32|oleaut32|shlwapi|bcrypt|crypt32|secur32|iphlpapi|dbghelp|psapi|winmm|gdi32|comdlg32|ntdll)\.dll$'
+          bad=0
+          for f in "$stage"/*.dll; do
+            echo "== $(basename "$f")"
+            for n in $(objdump -p "$f" | sed -n 's/^\s*DLL Name: //p'); do
+              l=$(echo "$n" | tr 'A-Z' 'a-z')
+              if [[ $l =~ ^(api-ms-win-crt|ucrtbase|libwinpthread|libgcc|libstdc) ]]; then w=BAD
+              elif grep -qxF "$l" <<< "$own"; then w=own
+              elif [[ $l =~ $sys ]]; then w=system
+              elif grep -qxF "$l" "$jll"; then w=jll
+              else w=BAD
+              fi
+              [[ $w == BAD ]] && bad=1
+              echo "   $w  $n"
+            done
+          done
+          exit $bad
+
+      - name: Package
+        shell: msys2 {0}
+        run: tar -C "$(cygpath -u "$RUNNER_TEMP")/stage" -czf mbsystem-windows-x86_64.tar.gz mbsystem
+
+      # Uploaded BEFORE the smoke test, so the archive is there to inspect even if the test fails.
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mbsystem-windows-x86_64
+          path: mbsystem-windows-x86_64.tar.gz
+          if-no-files-found: error
+
+      # The real test, as InteractiveGMT loads it: GMT.jl on GMT_jll, the plugin's lib/ on PATH
+      # (GMT loads plugins with a plain LoadLibrary, so Windows finds the plugin's own DLLs only
+      # there), GMT_CUSTOM_LIBS written to ./gmt.conf by gmtset and read by a NEW session (GMT builds
+      # its plugin list only in GMT_Create_Session). Then a grid both ways: mbgrid writes one through
+      # GMT, and GMT reads it back.
+      - name: Smoke-test through GMT.jl
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe="$RUNNER_TEMP/probe"; mkdir -p "$probe"
+          tar -xzf mbsystem-windows-x86_64.tar.gz -C "$probe"
+          libdir="$probe/mbsystem/lib"
+          test -f "$libdir/mbsystem.dll"
+          export MBLIB="$(cygpath -m "$libdir/mbsystem.dll")" PROBEDIR="$(cygpath -w "$libdir")"
+          export PATH="$(cygpath -u "$libdir"):$PATH"
+          cp test/utilities/testdata/mb11/TN136HS.309.snipped.mb11 "$probe/"
+          echo "TN136HS.309.snipped.mb11 11" > "$probe/datalist.mb-1"
+          cd "$probe"
+          julia --project="$RUNNER_TEMP/jllenv" -e '
+            using GMT
+            GMT.isJLL || error("GMT.jl is not running GMT_jll here")
+            gmt("gmtset GMT_CUSTOM_LIBS " * ENV["MBLIB"])
+          '
+          grep GMT_CUSTOM_LIBS gmt.conf
+          julia --project="$RUNNER_TEMP/jllenv" -e '
+            using GMT, Libdl
+            api = GMT.G_API[]
+            ok = GMT.GMT_Call_Module(api, "mbdefaults", GMT.GMT_MODULE_EXIST, C_NULL) == 0
+            println("new session reading ./gmt.conf: mbdefaults found = ", ok)
+            ok || error("GMT did not load the MB-System supplement")
+            # Straight through GMT_Call_Module: GMT.jl gmt() appends its own output options
+            # (->@G...), which the MB modules reject.
+            callm(m, a) = GC.@preserve a GMT.GMT_Call_Module(api, m, GMT.GMT_MODULE_CMD, pointer(a))
+            st = callm("mbdefaults", "-V");  println("mbdefaults -V status = ", st)
+            st == 0 || error("mbdefaults failed")
+            st = callm("mbgrid", "-Idatalist.mb-1 -Ogridtest -E0.0002/0.0002/degrees! -A2 -N")
+            println("mbgrid status = ", st)
+            (st == 0 && isfile("gridtest.grd")) || error("mbgrid did not write its grid")
+            G = gmtread("gridtest.grd")
+            println("grid back in GMT: ", size(G.z), "  z ", extrema(filter(isfinite, G.z)))
+            size(G.z) == (6, 10) || error("the grid does not have the 10 x 6 nodes mbgrid made")
+            ours = filter(l -> occursin(lowercase(ENV["PROBEDIR"]), lowercase(l)), Libdl.dllist())
+            println("loaded from the archive: ", basename.(ours))
+            any(l -> lowercase(basename(l)) == "mbsystem.dll", ours) || error("the plugin loaded is not the one in the archive")
+            any(l -> lowercase(basename(l)) == "libmbio.dll", ours) || error("libmbio not loaded from the archive")
+          '
+
+      - name: Publish to the mbsystem-latest release
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release view mbsystem-latest -R "$REPO" >/dev/null 2>&1 || \
+            gh release create mbsystem-latest -R "$REPO" --prerelease \
+              --title "MB-System GMT plugin for InteractiveGMT (rolling)" \
+              --notes "MB-System GMT supplement for Linux and macOS, built against GMT_jll." || \
+            gh release view mbsystem-latest -R "$REPO" >/dev/null
+          gh release upload mbsystem-latest mbsystem-windows-x86_64.tar.gz -R "$REPO" --clobber
+
   # Full Linux build including the Motif/X11 graphical tools (mbedit,
   # mbnavedit, mbvelocitytool, mbgrdviz, mbeditviz, mbnavadjust). Built on
   # Ubuntu 22.04 (native, or WSL2 on Windows 11), and only runs there: the

@@ -249,7 +249,7 @@ int mb_defaults(int verbose, int *format, int *pings, int *lonflip,
       while (fgets(string, sizeof(string), fp) != NULL) {
         if (strncmp(string, "lonflip:", 8) == 0)
           sscanf(string, "lonflip: %d", lonflip);
-        if (strncmp(string, "speed:", 6) == 0)
+        if (strncmp(string, "timegap:", 8) == 0)
           sscanf(string, "timegap: %lf", timegap);
       }
       fclose(fp);

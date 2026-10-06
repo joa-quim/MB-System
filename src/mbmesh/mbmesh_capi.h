@@ -135,7 +135,10 @@ size_t mbmesh_preprocessed_accepted_points(const mbmesh_preprocessed_t *preproce
 size_t mbmesh_preprocessed_soundings_read(const mbmesh_preprocessed_t *preprocessed);
 size_t mbmesh_preprocessed_files_read(const mbmesh_preprocessed_t *preprocessed);
 
-void mbmesh_print_datalist_metadata(const mbmesh_preprocessed_t *preprocessed, const struct mbmesh_options *options);
+/* The --metadata listing, as print_datalist_metadata() writes it to std::cout,
+ * returned as text (malloc'd; the caller frees it) so the GMT module can hand it
+ * on through the GMT API. NULL when out of memory. */
+char *mbmesh_datalist_metadata_text(const mbmesh_preprocessed_t *preprocessed, const struct mbmesh_options *options);
 
 /* Takes the collected point cloud out of the preprocessed result, leaving the
  * result's own cloud empty (the C++ driver does this with std::move). */

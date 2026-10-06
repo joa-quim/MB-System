@@ -97,7 +97,7 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	            "A GeoOrigin can be specified to improve rendering precision for localized areas.\n\n");
 	GMT_Message(API, GMT_TIME_NONE, "usage: mbgrd2gltf --input FILE [OPTIONS]\n");
 	GMT_Message(API, GMT_TIME_NONE, "       mbgrd2gltf -I FILE [OPTIONS]  (legacy style)\n\n");
-	if (level == GMT_SYNOPSIS) return EXIT_FAILURE;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 
 	GMT_Message(API, GMT_TIME_NONE, "Options:\n");
 	GMT_Message(API, GMT_TIME_NONE, "  --input, -I FILE              Input GMT GRD format bathymetry grid file (required)\n");
@@ -118,7 +118,7 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	GMT_Message(API, GMT_TIME_NONE, "  --html, -W                    Generate HTML viewer with inline glTF/GLB model\n");
 	GMT_Message(API, GMT_TIME_NONE, "  --verbose, -V                 Enable verbose output\n");
 	GMT_Message(API, GMT_TIME_NONE, "  --help, -H                    Print this help message\n\n");
-	return EXIT_FAILURE;
+	return GMT_MODULE_USAGE;
 }
 
 /* ======================================================================================================== */

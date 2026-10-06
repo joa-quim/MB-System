@@ -301,7 +301,7 @@ static int usage (struct GMTAPI_CTRL *API, int level) {
 	GMT_Message (API, GMT_TIME_NONE, "\t[%s] [%s]\n\t[%s]\n [%s]\n\n", 
 									 GMT_X_OPT, GMT_Y_OPT, GMT_n_OPT, GMT_t_OPT);
 
-	if (level == GMT_SYNOPSIS) return (EXIT_FAILURE);
+	if (level == GMT_SYNOPSIS) return (GMT_MODULE_SYNOPSIS);
 
 	GMT_Message (API, GMT_TIME_NONE, "\t<inputfile> is an MB-System datalist referencing the swath data to be plotted.\n");
 	GMT_Option (API, "J-");
@@ -316,7 +316,7 @@ static int usage (struct GMTAPI_CTRL *API, int level) {
 	GMT_Option (API, "R");
 	GMT_Option (API, "U,V,X,c,.");
 
-	return (EXIT_FAILURE);
+	return (GMT_MODULE_USAGE);
 }
 
 static int parse(struct GMT_CTRL *GMT, struct CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -526,6 +526,8 @@ static int parse(struct GMT_CTRL *GMT, struct CTRL *Ctrl, struct GMT_OPTION *opt
 #define bailout(code) {gmt_M_free_options (mode); return (code);}
 #define Return(code) {Free_Ctrl (GMT, Ctrl); gmt_end_module (GMT, GMT_cpy); bailout (code);}
 
+EXTERN_MSC int GMT_mbimport(void *V_API, int mode, void *args);
+
 int GMT_mbimport (void *V_API, int mode, void *args) {
 
 	unsigned int nopad[4] = {0, 0, 0, 0};
@@ -608,7 +610,7 @@ int GMT_mbimport (void *V_API, int mode, void *args) {
 		else {
 			GMT_Report (API, GMT_MSG_NORMAL, "ERROR: no -R<region> provided and no .inf files to get it from.\n"
 			                                 "You must run first 'mbinfo -O' on your datalist file.\n");
-			Return(EXIT_FAILURE);
+			Return(GMT_RUNTIME_ERROR);
 		}
 	}
 
@@ -717,7 +719,7 @@ int GMT_mbimport (void *V_API, int mode, void *args) {
 			error = MB_ERROR_OPEN_FAIL;
 			GMT_Report(API, GMT_MSG_NORMAL,"\nUnable to open data list file: %s\n", Ctrl->I.inputfile);
 			GMT_Report(API, GMT_MSG_NORMAL,"\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(error);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		if ((status = mb_datalist_read(verbose, Ctrl->datalist, file, dfile, &format, &Ctrl->file_weight, &error)) == MB_SUCCESS)
 			read_data = true;
@@ -752,7 +754,7 @@ int GMT_mbimport (void *V_API, int mode, void *args) {
 					GMT_Report(API, GMT_MSG_NORMAL,"Requested filtered amplitude file missing\n");
 					GMT_Report(API, GMT_MSG_NORMAL,"\nMultibeam File <%s> not initialized for reading\n",file);
 					GMT_Report(API, GMT_MSG_NORMAL,"\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-					Return(error);
+					Return(GMT_RUNTIME_ERROR);
 				}
 			}
 			else if (Ctrl->filtermode == MBSWATH_FILTER_SIDESCAN) {
@@ -762,7 +764,7 @@ int GMT_mbimport (void *V_API, int mode, void *args) {
 					GMT_Report(API, GMT_MSG_NORMAL,"Requested filtered sidescan file missing\n");
 					GMT_Report(API, GMT_MSG_NORMAL,"\nMultibeam File <%s> not initialized for reading\n",file);
 					GMT_Report(API, GMT_MSG_NORMAL,"\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-					Return(error);
+					Return(GMT_RUNTIME_ERROR);
 				}
 			}
 
@@ -774,7 +776,7 @@ int GMT_mbimport (void *V_API, int mode, void *args) {
 				GMT_Report(API, GMT_MSG_NORMAL,"\nMBIO Error returned from function <mb_read_init>:\n%s\n",message);
 				GMT_Report(API, GMT_MSG_NORMAL,"\nMultibeam File <%s> not initialized for reading\n",file);
 				GMT_Report(API, GMT_MSG_NORMAL,"\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-				Return(error);
+				Return(GMT_RUNTIME_ERROR);
 			}
 
 			/* get fore-aft beam_width */
@@ -840,7 +842,7 @@ int GMT_mbimport (void *V_API, int mode, void *args) {
 				mb_error(verbose,error,&message);
 				GMT_Report(API, GMT_MSG_NORMAL,"\nMBIO Error allocating data arrays:\n%s\n",message);
 				GMT_Report(API, GMT_MSG_NORMAL,"\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-				Return(error);
+				Return(GMT_MEMORY_ERROR);
 			}
 
 			/* print message */
@@ -1004,7 +1006,7 @@ int GMT_mbimport (void *V_API, int mode, void *args) {
 	if ((I = GMT_Create_Data (API, GMT_IS_IMAGE, GMT_IS_SURFACE, GMT_CONTAINER_ONLY, dim, GMT->common.R.wesn, xy_inc, 0, 0, NULL)) == NULL) {
 		GMT_Report (API, GMT_MSG_NORMAL, "Could not create Image structure\n");
 		gmt_M_free (GMT, Ctrl->bitimage);
-		return EXIT_FAILURE;
+		Return(GMT_MEMORY_ERROR);
 	}
 
 	if (Ctrl->Z.mode == MBSWATH_BATH)               strncpy(Title, "Bathymetry color fill", GMT_LEN32-1);
@@ -1022,14 +1024,14 @@ int GMT_mbimport (void *V_API, int mode, void *args) {
 	gmt_M_memcpy (I->header->mem_layout, "TCBa", 4, char);  /* Signal that data is Band interleaved */
 	gmt_M_grd_setpad (GMT, I->header, nopad);               /* Copy the no pad to the header */
 	if (GMT_Write_Data (API, GMT_IS_IMAGE, GMT_IS_FILE, GMT_IS_SURFACE, GMT_CONTAINER_AND_DATA, NULL, Ctrl->M.file, I) != GMT_OK)
-		return EXIT_FAILURE;
+		Return(GMT_RUNTIME_ERROR);
 
 	if (!Ctrl->C.active && GMT_Destroy_Data (API, &CPTcolor) != GMT_OK)
 		Return (API->error);
 	if (!Ctrl->N.active && GMT_Destroy_Data (API, &CPTshade) != GMT_OK)
 		Return (API->error);
 
-	Return (EXIT_SUCCESS);
+	Return (GMT_NOERROR);
 }
 
 /*--------------------------------------------------------------------*/

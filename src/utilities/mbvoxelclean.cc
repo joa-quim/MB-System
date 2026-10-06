@@ -545,9 +545,12 @@ int main(int argc, char **argv) {
 
     /* proceed if file locked and format ok */
     if (oktoprocess) {
-      /* check for *inf file, create if necessary, and load metadata */
+      /* check for *inf file, create if necessary, and load metadata - the ping array below is
+         sized from the .inf record count, so without the .inf it was sized 0 and the first
+         ping written through a NULL array (segfault) */
       int formatread = format;
       struct mb_info_struct mb_info;
+      mb_make_info_datalist(verbose, false, swathfile, &formatread, &error);
       status = mb_get_info_datalist(verbose, swathfile, &formatread, &mb_info, lonflip, &error);
 
       /* allocate space to store the bathymetry data */

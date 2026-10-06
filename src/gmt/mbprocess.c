@@ -91,6 +91,7 @@
 #include "mb_format.h"
 #include "mb_process.h"
 #include "mb_status.h"
+#include "mb_gmt_opts.h"
 #include "mb_swap.h"
 #include "mbsys_atlas.h"
 #include "mbsys_ldeoih.h"
@@ -5855,6 +5856,7 @@ struct MBPROCESS_CTRL {
 	struct mbpr_P { bool active; } P;
 	struct mbpr_S { bool active; } S;
 	struct mbpr_T { bool active; } T;
+	int verbose;	/* the program's -V/-v count */
 };
 
 static void *New_mbprocess_Ctrl(struct GMT_CTRL *GMT) {
@@ -5867,12 +5869,41 @@ static void Free_mbprocess_Ctrl(struct GMT_CTRL *GMT, struct MBPROCESS_CTRL *Ctr
 	gmt_M_free(GMT, Ctrl);
 }
 
+static const char usage_message[] =
+    "mbprocess -Iinfile [-C -Fformat -N -Ooutfile -P -S -T -V -H]\n"
+    "\t--format=value {-Fvalue}\n"
+    "\t--force {-P}\n"
+    "\t--help {-H}\n"
+    "\t--input=file {-Ifile}\n"
+    "\t--output=file {-Ofile}\n"
+    "\t--print-status {-S}\n"
+    "\t--strip-comments {-N}\n"
+    "\t--test {-T}\n"
+    "\t--threads=value {-Cvalue}\n"
+    "\t--verbose {-V}\n";
+
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "threads",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "strip-comments", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "force",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "print-status",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "test",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
-	GMT_Message(API, GMT_TIME_NONE, "usage: mbprocess -Iinfile [-Cthreads -Fformat -N -Ooutfile -P -S -T -V -H]\n");
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
-	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
+	GMT_Message(API, GMT_TIME_NONE, "usage: %s", usage_message);
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
+	GMT_Message(API, GMT_TIME_NONE, "\n%s\n", help_message);
 	GMT_Message(API, GMT_TIME_NONE,
 	            "\t-C Number of concurrent processing threads [1].\n"
 	            "\t-F Override the input MBIO format.\n"
@@ -5883,8 +5914,8 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	            "\t-S Print the status of each file.\n"
 	            "\t-T Test only: report, do not process.\n"
 	            "\t-H Print help and exit.\n");
-	GMT_Option(API, "V");
-	return GMT_PARSE_ERROR;
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse_mbprocess(struct GMT_CTRL *GMT, struct MBPROCESS_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -5920,88 +5951,28 @@ static int parse_mbprocess(struct GMT_CTRL *GMT, struct MBPROCESS_CTRL *Ctrl, st
 			}
 			else n_errors++;
 			break;
-		case 'P': case 'p': case 'Q':	/* -P arrives as -Q, see preparse_long_options() */
+		case 'P': case 'p':
 			Ctrl->P.active = true;
 			break;
 		case 'S': case 's':
 			Ctrl->S.active = true;
 			break;
-		case 'T': case 't': case 'Z':	/* -T arrives as -Z, see preparse_long_options() */
+		case 'T': case 't':
 			Ctrl->T.active = true;
 			break;
+		case 'V': case 'v':
+			Ctrl->verbose++;
+			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
 }
 
-static char *join_args(int mode, void *args) {
-	char **argv = (char **)args, *joined;
-	size_t total = 1;
-	int i;
-	if (mode <= 0 || !args) return NULL;
-	for (i = 0; i < mode; i++) total += strlen(argv[i]) + 1;
-	joined = (char *)calloc(total, 1);
-	if (!joined) return NULL;
-	for (i = 0; i < mode; i++) { if (i) strcat(joined, " "); strcat(joined, argv[i]); }
-	return joined;
-}
-
-/* Rewrite the getopt_long options of mbprocess.cc onto short options.
- * GMT reserves -P and -T, so those are carried as -Q and -Z. */
-static char *preparse_long_options(bool *help, const char *args) {
-	size_t length = args ? strlen(args) : 0, out = 0;
-	char *copy = (char *)calloc(length + 2, 1), *result = (char *)calloc(2 * length + 8, 1);
-	char *token, *saveptr = NULL, pending = '\0';
-	if (!copy || !result) { free(copy); free(result); return NULL; }
-	memcpy(copy, args, length);
-	for (token = strtok_r(copy, " \t", &saveptr); token; token = strtok_r(NULL, " \t", &saveptr)) {
-		char emit = '\0', *equals;
-		const char *value = NULL;
-		if (pending) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = pending;
-			memcpy(result + out, token, strlen(token)); out += strlen(token); pending = '\0'; continue;
-		}
-		if (strncmp(token, "--", 2) != 0) {
-			if (token[0] == '-' && (token[1] == 'P' || token[1] == 'p')) token[1] = 'Q';
-			if (token[0] == '-' && (token[1] == 'T' || token[1] == 't')) token[1] = 'Z';
-			if (out) result[out++] = ' ';
-			memcpy(result + out, token, strlen(token)); out += strlen(token); continue;
-		}
-		equals = strchr(token + 2, '=');
-		if (equals) { *equals = '\0'; value = equals + 1; }
-		if (!strcmp(token + 2, "help")) { *help = true; continue; }
-		if (!strcmp(token + 2, "verbose")) emit = 'V';
-		else if (!strcmp(token + 2, "threads")) emit = 'C';
-		else if (!strcmp(token + 2, "format")) emit = 'F';
-		else if (!strcmp(token + 2, "input")) emit = 'I';
-		else if (!strcmp(token + 2, "strip-comments")) emit = 'N';
-		else if (!strcmp(token + 2, "output")) emit = 'O';
-		else if (!strcmp(token + 2, "force")) emit = 'Q';
-		else if (!strcmp(token + 2, "print-status")) emit = 'S';
-		else if (!strcmp(token + 2, "test")) emit = 'Z';
-		if (!emit) {
-			if (equals) *equals = '=';
-			if (out) result[out++] = ' ';
-			memcpy(result + out, token, strlen(token)); out += strlen(token);
-		} else if (strchr("VNQSZ", emit)) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = emit;
-		} else if (value) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = emit;
-			memcpy(result + out, value, strlen(value)); out += strlen(value);
-		} else pending = emit;
-	}
-	free(copy);
-	return result;
-}
-
 #define bailout(code) { gmt_M_free_options(mode); return (code); }
-#define Return(code) { free(processPars); free(remaining_args); Free_mbprocess_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code) { free(processPars); Free_mbprocess_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 EXTERN_MSC int GMT_mbprocess(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
@@ -6011,45 +5982,24 @@ int GMT_mbprocess(void *V_API, int mode, void *args) {
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION *options = NULL;
 	struct MBPROCESS_CTRL *Ctrl = NULL;
-	char *remaining_args = NULL;
-	bool staged_help = false;
 	int parse_error;
 	struct mb_process_struct *processPars = NULL;
 
 	if (!API) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-	{
-		char *joined = join_args(mode, args);
-		const char *text = joined ? joined : (mode == GMT_MODULE_CMD ? (const char *)args : NULL);
-		if (text) remaining_args = preparse_long_options(&staged_help, text);
-		free(joined);
-	}
-	options = GMT_Create_Options(API, remaining_args ? GMT_MODULE_CMD : mode, remaining_args ? (void *)remaining_args : args);
-	if (API->error) { free(remaining_args); return API->error; }
-	/* no arguments is a valid run: mbprocess processes datalist.mb-1 */
-	if (options && options->option == GMT_OPT_USAGE) { free(remaining_args); bailout(usage(API, GMT_USAGE)); }
-	if (options && options->option == GMT_OPT_SYNOPSIS) { free(remaining_args); bailout(usage(API, GMT_SYNOPSIS)); }
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a run of the program (on datalist.mb-1) */
+	if ((parse_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(parse_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) { free(remaining_args); bailout(API->error); }
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	mb_gmt_shorthand_guard(options, "p");	/* -p (force) takes no argument */
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 	Ctrl = (struct MBPROCESS_CTRL *)New_mbprocess_Ctrl(GMT);
-	Ctrl->H.active = staged_help;
 	if ((parse_error = parse_mbprocess(GMT, Ctrl, options)) != GMT_OK) Return(parse_error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
-  static const char usage_message[] =
-      "mbprocess -Iinfile [-C -Fformat -N -Ooutfile -P -S -T -V -H]\n"
-      "\t--format=value {-Fvalue}\n"
-      "\t--force {-P}\n"
-      "\t--help {-H}\n"
-      "\t--input=file {-Ifile}\n"
-      "\t--output=file {-Ofile}\n"
-      "\t--print-status {-S}\n"
-      "\t--strip-comments {-N}\n"
-      "\t--test {-T}\n"
-      "\t--threads=value {-Cvalue}\n"
-      "\t--verbose {-V}\n";
-
-  int verbose = GMT->common.V.active;
+  int verbose = Ctrl->verbose;
   int status = MB_SUCCESS;
   int error = MB_ERROR_NO_ERROR;
   int mbp_format;
@@ -6084,8 +6034,6 @@ int GMT_mbprocess(void *V_API, int mode, void *args) {
 
   /* process argument list */
   {
-    bool help = Ctrl->H.active;
-
     if (Ctrl->C.active)
       n_threads = Ctrl->C.n_threads;
     if (Ctrl->F.active) {
@@ -6108,14 +6056,6 @@ int GMT_mbprocess(void *V_API, int mode, void *args) {
       printfilestatus = true;
     if (Ctrl->T.active)
       testonly = true;
-
-    if (help) {
-      fprintf(stderr, "\nProgram %s\n", program_name);
-      fprintf(stderr, "MB-System Version %s\n", MB_VERSION);
-      fprintf(stderr, "\n%s\n", help_message);
-      fprintf(stderr, "\nusage: %s\n", usage_message);
-      Return(MB_ERROR_NO_ERROR);
-    }
   }
 
   /* try datalist.mb-1 as input */
@@ -6134,7 +6074,7 @@ int GMT_mbprocess(void *V_API, int mode, void *args) {
     fprintf(stderr, "The input file may be specified with the -I option.\n");
     fprintf(stderr, "The default input file is \"datalist.mb-1\".\n");
     fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-    Return(MB_ERROR_OPEN_FAIL);
+    Return(GMT_RUNTIME_ERROR);
   }
 
   /* get format if required */
@@ -6154,7 +6094,7 @@ int GMT_mbprocess(void *V_API, int mode, void *args) {
     if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
       fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      Return(MB_ERROR_OPEN_FAIL);
+      Return(GMT_RUNTIME_ERROR);
     }
     read_data = (mb_datalist_read(verbose, datalist, mbp_ifile, mbp_dfile, &mbp_format, &file_weight, &error) == MB_SUCCESS);
   } else {
@@ -6235,7 +6175,7 @@ int GMT_mbprocess(void *V_API, int mode, void *args) {
   processPars = (struct mb_process_struct *)calloc(MB_THREAD_MAX, sizeof(struct mb_process_struct));
   if (processPars == NULL) {
     fprintf(stderr, "\nUnable to allocate the processing parameter structures\n");
-    Return(MB_ERROR_MEMORY_FAIL);
+    Return(GMT_RUNTIME_ERROR);
   }
 
   /* topography grids for backscatter correction */
@@ -6612,12 +6552,12 @@ int GMT_mbprocess(void *V_API, int mode, void *args) {
             } else {
               fprintf(stderr, "\nUnable to read topography grid file: %s\n", grids[igrid_use].file);
               fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-              Return(MB_ERROR_OPEN_FAIL);
+              Return(GMT_RUNTIME_ERROR);
             }
           } else {
             fprintf(stderr, "\nUnable to clear memory to read topography grid file: %s\n", process->mbp_ampsscorr_topofile);
             fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-            Return(MB_ERROR_OPEN_FAIL);
+            Return(GMT_RUNTIME_ERROR);
           }
         }
       }
@@ -6634,7 +6574,7 @@ int GMT_mbprocess(void *V_API, int mode, void *args) {
       if (mbprocess_thread_start(&mbprocessThreads[n_thread_set], &mbprocessThreadArgs[n_thread_set]) != 0) {
         fprintf(stderr, "\nUnable to start processing thread for: %s\n", processPars[n_thread_set].mbp_ifile);
         fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-        Return(MB_ERROR_MEMORY_FAIL);
+        Return(GMT_RUNTIME_ERROR);
       }
       n_thread_set++;
 
@@ -6694,8 +6634,14 @@ int GMT_mbprocess(void *V_API, int mode, void *args) {
   }
 
   if (worker_failed)
-    Return(worker_error);
+    error = worker_error;
 
-  Return(error);
+  if (worker_failed || (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF)) {
+    char *message;
+    mb_error(verbose, error, &message);
+    GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+    Return(GMT_RUNTIME_ERROR);
+  }
+  Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

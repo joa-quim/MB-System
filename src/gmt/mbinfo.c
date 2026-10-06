@@ -32,6 +32,7 @@
 #include "mb_define.h"
 #include "mb_io.h"
 #include "mb_status.h"
+#include "mb_gmt_text.h"
 
 #define MBINFO_MAXPINGS 50
 
@@ -58,7 +59,10 @@ struct mbi_ping {
 struct MBINFO_CTRL {
 	struct mbi_B { bool active; int t[7]; } B;
 	struct mbi_C { bool active; } C;   /* comments */
+	struct mbi_D { bool active; } D;   /* debug record types */
 	struct mbi_E { bool active; int t[7]; } E;
+	struct mbi_H { bool active; } H;   /* help */
+	struct mbi_K { int n; mb_name id[MB_NUM_DEBUG_RECORD_MAX]; } K;   /* debug record contents */
 	struct mbi_F { bool active; int format; } F;
 	struct mbi_G { bool active; } G;   /* good-nav-only */
 	struct mbi_I { bool active; char *inputfile; } I;
@@ -87,15 +91,85 @@ static void Free_mbinfo_Ctrl(struct GMT_CTRL *GMT, struct MBINFO_CTRL *Ctrl) {
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to the module's short ones. The two debug
+   options are long-only in the program; -D and -K are the short letters they get here. */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'B', "begin-time",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "bounds",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "comments",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "debug-record-types",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'K', "debug-record-contents", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'E', "end-time",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'G', "good-nav",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",                  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",                 "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "longitude-domain",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'M', "mask-dimensions",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "notices",               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output-file",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'X', "output-format",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "ping-variances",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Q', "quick",                 "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "speed-minimum",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "time-gap",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'W', "use-feet",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'v', "verbose",               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
-	GMT_Message(API, GMT_TIME_NONE,
-	    "usage: mbinfo [-Byr/mo/da/hr/mn/sc -C -Eyr/mo/da/hr/mn/sc -Fformat -G\n"
-	    "\t-Ifile -Llonflip -Mnx/ny[/w/e/s/n] -N -O -Ppings -Q\n"
-	    "\t-Rw/e/s/n -Sspeed -Ttimegap -W -Xfmt -V -H]\n\n");
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
-	return GMT_PARSE_ERROR;
+	GMT_Usage(API, 0, "usage: %s -I<file> [-B<yr/mo/da/hr/mn/sc>] [-C] [-D] [-E<yr/mo/da/hr/mn/sc>] [-F<format>] [-G] [-H] "
+	          "[-K<record_id>] [-L<lonflip>] [-M<nx>/<ny>[/<w>/<e>/<s>/<n>]] [-N] [-O] [-P<pings>] [-Q] [-R<w>/<e>/<s>/<n>] "
+	          "[-S<speed>] [-T<timegap>] [-W] [-X<fmt>] [%s]\n", THIS_MODULE_NAME, GMT_V_OPT);
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
+	GMT_Message(API, GMT_TIME_NONE, "  REQUIRED ARGUMENTS:\n");
+	GMT_Usage(API, 1, "\n-I<file> (--input=)");
+	GMT_Usage(API, -2, "Swath data file or datalist.");
+	GMT_Message(API, GMT_TIME_NONE, "\n  OPTIONAL ARGUMENTS:\n");
+	GMT_Usage(API, 1, "\n-B<yr/mo/da/hr/mn/sc> (--begin-time=)");
+	GMT_Usage(API, -2, "Begin time.");
+	GMT_Usage(API, 1, "\n-C (--comments)");
+	GMT_Usage(API, -2, "List the comment records.");
+	GMT_Usage(API, 1, "\n-D (--debug-record-types)");
+	GMT_Usage(API, -2, "List the record types read.");
+	GMT_Usage(API, 1, "\n-E<yr/mo/da/hr/mn/sc> (--end-time=)");
+	GMT_Usage(API, -2, "End time.");
+	GMT_Usage(API, 1, "\n-F<format> (--format=)");
+	GMT_Usage(API, -2, "MBIO format id [inferred from the file name].");
+	GMT_Usage(API, 1, "\n-G (--good-nav)");
+	GMT_Usage(API, -2, "Use only good navigation.");
+	GMT_Usage(API, 1, "\n-H (--help)");
+	GMT_Usage(API, -2, "Print this help.");
+	GMT_Usage(API, 1, "\n-K<record_id> (--debug-record-contents=)");
+	GMT_Usage(API, -2, "Dump the contents of this record type (repeatable).");
+	GMT_Usage(API, 1, "\n-L<lonflip> (--longitude-domain=)");
+	GMT_Usage(API, -2, "Longitude range: -1 = [-360,0], 0 = [-180,180], 1 = [0,360].");
+	GMT_Usage(API, 1, "\n-M<nx>/<ny>[/<w>/<e>/<s>/<n>] (--mask-dimensions=)");
+	GMT_Usage(API, -2, "Coverage mask dimensions [and bounds].");
+	GMT_Usage(API, 1, "\n-N (--notices)");
+	GMT_Usage(API, -2, "List the data notices.");
+	GMT_Usage(API, 1, "\n-O (--output-file)");
+	GMT_Usage(API, -2, "Write <file>.inf (or _inf.json, _inf.xml) instead of the standard output.");
+	GMT_Usage(API, 1, "\n-P<pings> (--ping-variances=)");
+	GMT_Usage(API, -2, "Pings averaged for the beam variances.");
+	GMT_Usage(API, 1, "\n-Q (--quick)");
+	GMT_Usage(API, -2, "Quick: read the existing .inf files of a datalist.");
+	GMT_Usage(API, 1, "\n-R<w>/<e>/<s>/<n> (--bounds=)");
+	GMT_Usage(API, -2, "Bounds.");
+	GMT_Usage(API, 1, "\n-S<speed> (--speed-minimum=)");
+	GMT_Usage(API, -2, "Minimum speed.");
+	GMT_Usage(API, 1, "\n-T<timegap> (--time-gap=)");
+	GMT_Usage(API, -2, "Time gap.");
+	GMT_Usage(API, 1, "\n-W (--use-feet)");
+	GMT_Usage(API, -2, "Bathymetry in feet.");
+	GMT_Usage(API, 1, "\n-X<fmt> (--output-format=)");
+	GMT_Usage(API, -2, "0 free text [Default], 1 JSON, 2 XML.");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse(struct GMT_CTRL *GMT, struct MBINFO_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -113,38 +187,48 @@ static int parse(struct GMT_CTRL *GMT, struct MBINFO_CTRL *Ctrl, struct GMT_OPTI
 				n_files = 1;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax -< option\n"); n_errors++; }
 			break;
-		case 'B':
+		/* Every option keeps the program's lower-case alias: GMT_Parse_Common only touches the
+		   common options named in THIS_MODULE_OPTIONS (-V), so these arrive here untouched. */
+		case 'B': case 'b':
 			Ctrl->B.t[6] = 0;
 			n = sscanf(opt->arg, "%d/%d/%d/%d/%d/%d",
 			           &Ctrl->B.t[0], &Ctrl->B.t[1], &Ctrl->B.t[2],
 			           &Ctrl->B.t[3], &Ctrl->B.t[4], &Ctrl->B.t[5]);
 			if (n == 6) Ctrl->B.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'C': Ctrl->C.active = true; break;
-		case 'E':
+		case 'C': case 'c': Ctrl->C.active = true; break;
+		case 'D': Ctrl->D.active = true; break;
+		case 'K':
+			if (Ctrl->K.n < MB_NUM_DEBUG_RECORD_MAX) {
+				strncpy(Ctrl->K.id[Ctrl->K.n], opt->arg, sizeof (mb_name) - 1);
+				Ctrl->K.n++;
+			}
+			break;
+		case 'E': case 'e':
 			Ctrl->E.t[6] = 0;
 			n = sscanf(opt->arg, "%d/%d/%d/%d/%d/%d",
 			           &Ctrl->E.t[0], &Ctrl->E.t[1], &Ctrl->E.t[2],
 			           &Ctrl->E.t[3], &Ctrl->E.t[4], &Ctrl->E.t[5]);
 			if (n == 6) Ctrl->E.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'F':
+		case 'F': case 'f':
 			n = sscanf(opt->arg, "%d", &Ctrl->F.format);
 			if (n > 0) Ctrl->F.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'G': Ctrl->G.active = true; break;
-		case 'I':
+		case 'G': case 'g': Ctrl->G.active = true; break;
+		case 'H': case 'h': Ctrl->H.active = true; break;
+		case 'I': case 'i':
 			if (!gmt_access(GMT, opt->arg, R_OK)) {
 				Ctrl->I.inputfile = strdup(opt->arg);
 				Ctrl->I.active = true;
 				n_files = 1;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax -I option (file not found)\n"); n_errors++; }
 			break;
-		case 'L':
+		case 'L': case 'l':
 			n = sscanf(opt->arg, "%d", &Ctrl->L.lonflip);
 			if (n > 0) Ctrl->L.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'M': {
+		case 'M': case 'm': {
 			n = sscanf(opt->arg, "%d/%d/%lf/%lf/%lf/%lf",
 			           &Ctrl->M.nx, &Ctrl->M.ny,
 			           &Ctrl->M.bounds[0], &Ctrl->M.bounds[1],
@@ -154,27 +238,30 @@ static int parse(struct GMT_CTRL *GMT, struct MBINFO_CTRL *Ctrl, struct GMT_OPTI
 				Ctrl->M.bounds_set = true;
 			break;
 		}
-		case 'N': Ctrl->N.active = true; break;
-		case 'O': Ctrl->O.active = true; break;
-		case 'P':
+		case 'N': case 'n': Ctrl->N.active = true; break;
+		case 'O': case 'o': Ctrl->O.active = true; break;
+		case 'P': case 'p':
 			n = sscanf(opt->arg, "%d", &Ctrl->P.pings);
 			if (n > 0) Ctrl->P.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'Q': Ctrl->Q.active = true; break;
-		case 'R':
+		case 'Q': case 'q': Ctrl->Q.active = true; break;
+		case 'R': case 'r':
 			mb_get_bounds(opt->arg, Ctrl->R.bounds);
 			Ctrl->R.active = true;
 			break;
-		case 'S':
+		case 'S': case 's':
 			n = sscanf(opt->arg, "%lf", &Ctrl->S.speedmin);
 			if (n > 0) Ctrl->S.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'T':
+		case 'T': case 't':
 			n = sscanf(opt->arg, "%lf", &Ctrl->T.timegap);
 			if (n > 0) Ctrl->T.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'W': Ctrl->W.active = true; break;
-		case 'X': {
+		case 'W': case 'w': Ctrl->W.active = true; break;
+		case 'v':	/* the program's -v: verbosity, as -V */
+			GMT->current.setting.verbose = GMT_MSG_INFORMATION;
+			break;
+		case 'X': case 'x': {
 			int tmp;
 			n = sscanf(opt->arg, "%d", &tmp);
 			if (n > 0 && tmp >= 0 && tmp <= MAX_OUTPUT_FORMAT) {
@@ -184,22 +271,25 @@ static int parse(struct GMT_CTRL *GMT, struct MBINFO_CTRL *Ctrl, struct GMT_OPTI
 			break;
 		}
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 
+	if (Ctrl->H.active) return GMT_NOERROR;	/* help: no input needed */
 	n_errors += gmt_M_check_condition(GMT, n_files != 1,
-	                                  "Syntax: Must specify one input file\n");
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
+	                                  "Must specify one input file (-I)\n");
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code)  { gmt_M_free_options(mode); return (code); }
-#define Return(code)   { Free_mbinfo_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code)   { if (output) mb_gmt_text_end(output); Free_mbinfo_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+
+EXTERN_MSC int GMT_mbinfo(void *V_API, int mode, void *args);
 
 /* helper: emit JSON metadata (single-row pattern from mbinfo.cc) */
-static void emit_meta_json(FILE *out, int *meta, const char *tag, const char *value) {
-	if (*meta == 0) fprintf(out, "\"%s\":\"%s\",\n", tag, value);
+static void emit_meta_json(struct MB_GMT_TEXT *out, int *meta, const char *tag, const char *value) {
+	if (*meta == 0) mb_gmt_text_put(out, "\"%s\":\"%s\",\n", tag, value);
 	(*meta)++;
 }
 
@@ -209,24 +299,22 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 	struct MBINFO_CTRL *Ctrl = NULL;
 	struct GMT_CTRL    *GMT = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION  *options = NULL;
+	struct MB_GMT_TEXT *output = NULL;	/* the listing: GMT records, or the program's own file (-O) */
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
 
 	if (API == NULL) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
-	if (!options || options->option == GMT_OPT_USAGE)    bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS)             bailout(usage(API, GMT_SYNOPSIS));
+	if ((error = gmt_report_usage(API, options, 0, usage)) != GMT_NOERROR) bailout(error);
 
-#if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
-#else
-	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
-#endif
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS,
+	                           module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = New_mbinfo_Ctrl(GMT);
-	if ((error = parse(GMT, Ctrl, options)) != 0) Return (error);
+	if ((error = parse(GMT, Ctrl, options)) != 0) Return(error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
 	int verbose = GMT->common.V.active;
 	int format, pings_get = 1, lonflip;
@@ -276,7 +364,9 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 
 	if (read_datalist || quick) pings_read = 1;
 
-	FILE *stream = (verbose <= 1) ? stdout : stderr;
+	/* Diagnostics only: the program put them on stdout below -V2, but as a module stdout is the
+	   listing, which the caller receives as data. */
+	FILE *stream = stderr;
 		
 	if (verbose == 1) {
 		fprintf(stream, "\nProgram %s\n", THIS_MODULE_NAME);
@@ -330,23 +420,24 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 		}
 	}
 
-	FILE *output = NULL;
 	if (output_usefile) {
 		char output_file[MB_PATH_MAXLINE+10];
 		switch (output_format) {
-		case FREE_TEXT: snprintf(output_file, sizeof(output_file), "%s.inf", read_file); break;
-		case JSON:      snprintf(output_file, sizeof(output_file), "%s_inf.json", read_file); break;
-		case XML:       snprintf(output_file, sizeof(output_file), "%s_inf.xml", read_file); break;
-		default:        snprintf(output_file, sizeof(output_file), "%s", read_file); break;
+		case FREE_TEXT: snprintf(output_file, sizeof (output_file), "%s.inf", read_file); break;
+		case JSON:      snprintf(output_file, sizeof (output_file), "%s_inf.json", read_file); break;
+		case XML:       snprintf(output_file, sizeof (output_file), "%s_inf.xml", read_file); break;
+		default:        snprintf(output_file, sizeof (output_file), "%s", read_file); break;
 		}
-		if ((output = fopen(output_file, "w")) == NULL) output = stream;
-	} else output = stream;
+		output = mb_gmt_text_file(GMT, output_file);	/* NULL when it cannot be opened: the listing then goes out, as the program does */
+	}
+	if (output == NULL && (output = mb_gmt_text_begin(GMT, options)) == NULL)
+		Return(API->error);
 
 	switch (output_format) {
 	case FREE_TEXT: break;
-	case JSON: fprintf(output, "{\n"); break;
+	case JSON: mb_gmt_text_put(output,"{\n"); break;
 	case XML:
-		fprintf(output, "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<mbinfo>\n");
+		mb_gmt_text_put(output,"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<mbinfo>\n");
 		break;
 	default: break;
 	}
@@ -434,8 +525,8 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 			if (read_datalist) {
 				const int look_processed = MB_DATALIST_LOOK_UNSET;
 				if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
-					fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
-					Return(MB_ERROR_OPEN_FAIL);
+					GMT_Report(API, GMT_MSG_ERROR, "Unable to open data list file: %s\n", read_file);
+					Return(GMT_ERROR_ON_FOPEN);
 				}
 				read_data = (mb_datalist_read3(verbose, datalist, &pstatus, path, ppath,
 				                               &astatus, apath, dpath, &format,
@@ -454,9 +545,13 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 				                        &beams_amp_alloc, &pixels_ss_alloc, &error) != MB_SUCCESS) {
 					char *message;
 					mb_error(verbose, error, &message);
-					fprintf(stream, "\nmb_read_init failed: %s\nFile: %s\n", message, path);
-					Return(error);
+					GMT_Report(API, GMT_MSG_ERROR, "mb_read_init failed: %s File: %s\n", message, path);
+					Return(GMT_RUNTIME_ERROR);
 				}
+
+				/* set debug printouts if requested */
+				if (Ctrl->D.active || Ctrl->K.n > 0)
+					status = mb_set_debug_records(verbose, mbio_ptr, Ctrl->D.active, Ctrl->K.n, Ctrl->K.id, &error);
 
 				memset(data, 0, MBINFO_MAXPINGS * sizeof(struct mbi_ping));
 				for (int i = 0; i < pings_read; i++) {
@@ -506,8 +601,8 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 				if (error != MB_ERROR_NO_ERROR) {
 					char *message;
 					mb_error(verbose, error, &message);
-					fprintf(stream, "\nMBIO Error allocating data arrays: %s\n", message);
-					Return(error);
+					GMT_Report(API, GMT_MSG_ERROR, "MBIO Error allocating data arrays: %s\n", message);
+					Return(GMT_RUNTIME_ERROR);
 				}
 
 				irecfile = 0;
@@ -535,54 +630,54 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 					mb_format_description(verbose, &format, format_description, &error);
 					switch (output_format) {
 					case JSON: {
-						fprintf(output, "\"file_info\": {\n");
-						fprintf(output, "\"swath_data_file\": \"%s\",\n", fileprint);
-						fprintf(output, "\"mbio_data_format_id\": \"%d\",\n", format);
+						mb_gmt_text_put(output,"\"file_info\": {\n");
+						mb_gmt_text_put(output,"\"swath_data_file\": \"%s\",\n", fileprint);
+						mb_gmt_text_put(output,"\"mbio_data_format_id\": \"%d\",\n", format);
 						size_t len1 = strspn(format_description, "Formatname: ");
 						size_t len2 = strcspn(&format_description[len1], "\n");
 						strncpy(string, &format_description[len1], len2); string[len2] = '\0';
-						fprintf(output, "\"format_name\": \"%s\",\n", string);
+						mb_gmt_text_put(output,"\"format_name\": \"%s\",\n", string);
 						len1 += len2 + 1;
 						len1 += strspn(&format_description[len1], "InformalDescription: ");
 						len2 = strcspn(&format_description[len1], "\n");
 						strncpy(string, &format_description[len1], len2); string[len2] = '\0';
-						fprintf(output, "\"informal_description\": \"%s\",\n", string);
+						mb_gmt_text_put(output,"\"informal_description\": \"%s\",\n", string);
 						len1 += len2 + 1;
 						len1 += strspn(&format_description[len1], "Attributes: ");
 						format_description[strlen(format_description) - 1] = '\0';
 						for (len2 = len1; len2 <= strlen(format_description); len2++)
 							if (format_description[len2] == 10) format_description[len2] = ';';
-						fprintf(output, "\"attributes\": \"%s\"\n", &format_description[len1]);
-						fprintf(output, "},\n");
+						mb_gmt_text_put(output,"\"attributes\": \"%s\"\n", &format_description[len1]);
+						mb_gmt_text_put(output,"},\n");
 						break;
 					}
 					case XML: {
-						fprintf(output, "\t<file_info>\n");
-						fprintf(output, "\t\t<swath_data_file>%s</swath_data_file>\n", fileprint);
-						fprintf(output, "\t\t<mbio_data_format_id>%d</mbio_data_format_id>\n", format);
+						mb_gmt_text_put(output,"\t<file_info>\n");
+						mb_gmt_text_put(output,"\t\t<swath_data_file>%s</swath_data_file>\n", fileprint);
+						mb_gmt_text_put(output,"\t\t<mbio_data_format_id>%d</mbio_data_format_id>\n", format);
 						size_t len1 = strspn(format_description, "Formatname: ");
 						size_t len2 = strcspn(&format_description[len1], "\n");
 						strncpy(string, &format_description[len1], len2); string[len2] = '\0';
-						fprintf(output, "\t\t<format_name>%s</format_name>\n", string);
+						mb_gmt_text_put(output,"\t\t<format_name>%s</format_name>\n", string);
 						len1 += len2 + 1;
 						len1 += strspn(&format_description[len1], "InformalDescription: ");
 						len2 = strcspn(&format_description[len1], "\n");
 						strncpy(string, &format_description[len1], len2); string[len2] = '\0';
-						fprintf(output, "\t\t<informal_description>%s</informal_description>\n", string);
+						mb_gmt_text_put(output,"\t\t<informal_description>%s</informal_description>\n", string);
 						len1 += len2 + 1;
 						len1 += strspn(&format_description[len1], "Attributes: ");
 						format_description[strlen(format_description) - 1] = '\0';
 						for (len2 = len1; len2 <= strlen(format_description); len2++)
 							if (format_description[len2] == 10) format_description[len2] = ' ';
-						fprintf(output, "\t\t<attributes>%s</attributes>\n", &format_description[len1]);
-						fprintf(output, "\t</file_info>\n");
+						mb_gmt_text_put(output,"\t\t<attributes>%s</attributes>\n", &format_description[len1]);
+						mb_gmt_text_put(output,"\t</file_info>\n");
 						break;
 					}
 					case FREE_TEXT:
 					default:
-						fprintf(output, "\nSwath Data File:      %s\n", fileprint);
-						fprintf(output, "MBIO Data Format ID:  %d\n", format);
-						fprintf(output, "%s", format_description);
+						mb_gmt_text_put(output,"\nSwath Data File:      %s\n", fileprint);
+						mb_gmt_text_put(output,"MBIO Data Format ID:  %d\n", format);
+						mb_gmt_text_put(output,"%s", format_description);
 						break;
 					}
 				}
@@ -612,13 +707,13 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 						if (pass == 0 && error == MB_ERROR_COMMENT && comments) {
 							if (strncmp(comment, "META", 4) != 0) {
 								if (icomment == 0 && output_format == FREE_TEXT) {
-									fprintf(output, "\nComments in file %s:\n", path);
+									mb_gmt_text_put(output,"\nComments in file %s:\n", path);
 									icomment++;
 								}
 								switch (output_format) {
-								case FREE_TEXT: fprintf(output, "  %s\n", comment); break;
-								case JSON:      fprintf(output, "\"comment\": \"%s\",\n", comment); break;
-								case XML:       fprintf(output, "\t<comment>%s</comment>\n", comment); break;
+								case FREE_TEXT: mb_gmt_text_put(output,"  %s\n", comment); break;
+								case JSON:      mb_gmt_text_put(output,"\"comment\": \"%s\",\n", comment); break;
+								case XML:       mb_gmt_text_put(output,"\t<comment>%s</comment>\n", comment); break;
 								default: break;
 								}
 							}
@@ -627,41 +722,41 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 						/* metadata */
 						if (pass == 0 && error == MB_ERROR_COMMENT && strncmp(comment, "META", 4) == 0) {
 							if (output_format == FREE_TEXT) {
-								if (imetadata == 0) { fprintf(output, "\nMetadata:\n"); imetadata++; }
-								if (strncmp(comment, "METAVESSEL:", 11) == 0)        { if (meta_vessel == 0)        fprintf(output, "Vessel:                 %s\n", &comment[11]); meta_vessel++; }
-								else if (strncmp(comment, "METAINSTITUTION:", 16) == 0) { if (meta_institution == 0)  fprintf(output, "Institution:            %s\n", &comment[16]); meta_institution++; }
-								else if (strncmp(comment, "METAPLATFORM:", 13) == 0)    { if (meta_platform == 0)     fprintf(output, "Platform:               %s\n", &comment[13]); meta_platform++; }
-								else if (strncmp(comment, "METASONARVERSION:", 17) == 0){ if (meta_sonarversion == 0) fprintf(output, "Sonar Version:          %s\n", &comment[17]); meta_sonarversion++; }
-								else if (strncmp(comment, "METASONAR:", 10) == 0)       { if (meta_sonar == 0)        fprintf(output, "Sonar:                  %s\n", &comment[10]); meta_sonar++; }
-								else if (strncmp(comment, "METACRUISEID:", 13) == 0)    { if (meta_cruiseid == 0)     fprintf(output, "Cruise ID:              %s\n", &comment[13]); meta_cruiseid++; }
-								else if (strncmp(comment, "METACRUISENAME:", 15) == 0)  { if (meta_cruisename == 0)   fprintf(output, "Cruise Name:            %s\n", &comment[15]); meta_cruisename++; }
-								else if (strncmp(comment, "METAPI:", 7) == 0)           { if (meta_pi == 0)           fprintf(output, "PI:                     %s\n", &comment[7]); meta_pi++; }
-								else if (strncmp(comment, "METAPIINSTITUTION:", 18) == 0){ if (meta_piinstitution == 0) fprintf(output, "PI Institution:         %s\n", &comment[18]); meta_piinstitution++; }
-								else if (strncmp(comment, "METACLIENT:", 11) == 0)      { if (meta_client == 0)       fprintf(output, "Client:                 %s\n", &comment[11]); meta_client++; }
+								if (imetadata == 0) { mb_gmt_text_put(output,"\nMetadata:\n"); imetadata++; }
+								if (strncmp(comment, "METAVESSEL:", 11) == 0)        { if (meta_vessel == 0)        mb_gmt_text_put(output,"Vessel:                 %s\n", &comment[11]); meta_vessel++; }
+								else if (strncmp(comment, "METAINSTITUTION:", 16) == 0) { if (meta_institution == 0)  mb_gmt_text_put(output,"Institution:            %s\n", &comment[16]); meta_institution++; }
+								else if (strncmp(comment, "METAPLATFORM:", 13) == 0)    { if (meta_platform == 0)     mb_gmt_text_put(output,"Platform:               %s\n", &comment[13]); meta_platform++; }
+								else if (strncmp(comment, "METASONARVERSION:", 17) == 0){ if (meta_sonarversion == 0) mb_gmt_text_put(output,"Sonar Version:          %s\n", &comment[17]); meta_sonarversion++; }
+								else if (strncmp(comment, "METASONAR:", 10) == 0)       { if (meta_sonar == 0)        mb_gmt_text_put(output,"Sonar:                  %s\n", &comment[10]); meta_sonar++; }
+								else if (strncmp(comment, "METACRUISEID:", 13) == 0)    { if (meta_cruiseid == 0)     mb_gmt_text_put(output,"Cruise ID:              %s\n", &comment[13]); meta_cruiseid++; }
+								else if (strncmp(comment, "METACRUISENAME:", 15) == 0)  { if (meta_cruisename == 0)   mb_gmt_text_put(output,"Cruise Name:            %s\n", &comment[15]); meta_cruisename++; }
+								else if (strncmp(comment, "METAPI:", 7) == 0)           { if (meta_pi == 0)           mb_gmt_text_put(output,"PI:                     %s\n", &comment[7]); meta_pi++; }
+								else if (strncmp(comment, "METAPIINSTITUTION:", 18) == 0){ if (meta_piinstitution == 0) mb_gmt_text_put(output,"PI Institution:         %s\n", &comment[18]); meta_piinstitution++; }
+								else if (strncmp(comment, "METACLIENT:", 11) == 0)      { if (meta_client == 0)       mb_gmt_text_put(output,"Client:                 %s\n", &comment[11]); meta_client++; }
 								else if (strncmp(comment, "METASVCORRECTED:", 16) == 0) {
 									if (meta_svcorrected == 0) { int v; sscanf(comment, "METASVCORRECTED:%d", &v);
-										fprintf(output, "Corrected Depths:       %s\n", v ? "YES" : "NO"); }
+										mb_gmt_text_put(output,"Corrected Depths:       %s\n", v ? "YES" : "NO"); }
 									meta_svcorrected++;
 								}
 								else if (strncmp(comment, "METATIDECORRECTED:", 18) == 0) {
 									if (meta_tidecorrected == 0) { int v; sscanf(comment, "METATIDECORRECTED:%d", &v);
-										fprintf(output, "Tide Corrected:         %s\n", v ? "YES" : "NO"); }
+										mb_gmt_text_put(output,"Tide Corrected:         %s\n", v ? "YES" : "NO"); }
 									meta_tidecorrected++;
 								}
 								else if (strncmp(comment, "METABATHEDITMANUAL:", 19) == 0) {
 									if (meta_batheditmanual == 0) { int v; sscanf(comment, "METABATHEDITMANUAL:%d", &v);
-										fprintf(output, "Depths Manually Edited: %s\n", v ? "YES" : "NO"); }
+										mb_gmt_text_put(output,"Depths Manually Edited: %s\n", v ? "YES" : "NO"); }
 									meta_batheditmanual++;
 								}
 								else if (strncmp(comment, "METABATHEDITAUTO:", 17) == 0) {
 									if (meta_batheditauto == 0) { int v; sscanf(comment, "METABATHEDITAUTO:%d", &v);
-										fprintf(output, "Depths Auto-Edited:     %s\n", v ? "YES" : "NO"); }
+										mb_gmt_text_put(output,"Depths Auto-Edited:     %s\n", v ? "YES" : "NO"); }
 									meta_batheditauto++;
 								}
-								else if (strncmp(comment, "METAROLLBIAS:", 13) == 0)    { if (meta_rollbias == 0) { sscanf(comment, "METAROLLBIAS:%lf", &val_double); fprintf(output, "Roll Bias:              %f degrees\n", val_double); } meta_rollbias++; }
-								else if (strncmp(comment, "METAPITCHBIAS:", 14) == 0)   { if (meta_pitchbias == 0){ sscanf(comment, "METAPITCHBIAS:%lf", &val_double); fprintf(output, "Pitch Bias:             %f degrees\n", val_double); } meta_pitchbias++; }
-								else if (strncmp(comment, "METAHEADINGBIAS:", 16) == 0) { if (meta_headingbias == 0){ sscanf(comment, "METAHEADINGBIAS:%lf", &val_double); fprintf(output, "Heading Bias:           %f degrees\n", val_double); } meta_headingbias++; }
-								else if (strncmp(comment, "METADRAFT:", 10) == 0)       { if (meta_draft == 0)    { sscanf(comment, "METADRAFT:%lf", &val_double); fprintf(output, "Draft:                  %f m\n", val_double); } meta_draft++; }
+								else if (strncmp(comment, "METAROLLBIAS:", 13) == 0)    { if (meta_rollbias == 0) { sscanf(comment, "METAROLLBIAS:%lf", &val_double); mb_gmt_text_put(output,"Roll Bias:              %f degrees\n", val_double); } meta_rollbias++; }
+								else if (strncmp(comment, "METAPITCHBIAS:", 14) == 0)   { if (meta_pitchbias == 0){ sscanf(comment, "METAPITCHBIAS:%lf", &val_double); mb_gmt_text_put(output,"Pitch Bias:             %f degrees\n", val_double); } meta_pitchbias++; }
+								else if (strncmp(comment, "METAHEADINGBIAS:", 16) == 0) { if (meta_headingbias == 0){ sscanf(comment, "METAHEADINGBIAS:%lf", &val_double); mb_gmt_text_put(output,"Heading Bias:           %f degrees\n", val_double); } meta_headingbias++; }
+								else if (strncmp(comment, "METADRAFT:", 10) == 0)       { if (meta_draft == 0)    { sscanf(comment, "METADRAFT:%lf", &val_double); mb_gmt_text_put(output,"Draft:                  %f m\n", val_double); } meta_draft++; }
 							}
 							else if (output_format == JSON) {
 								if      (strncmp(comment, "METAVESSEL:", 11) == 0)        emit_meta_json(output, &meta_vessel, "vessel", &comment[11]);
@@ -674,35 +769,35 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 								else if (strncmp(comment, "METAPI:", 7) == 0)             emit_meta_json(output, &meta_pi, "pi", &comment[7]);
 								else if (strncmp(comment, "METAPIINSTITUTION:", 18) == 0) emit_meta_json(output, &meta_piinstitution, "pi_institution", &comment[18]);
 								else if (strncmp(comment, "METACLIENT:", 11) == 0)        emit_meta_json(output, &meta_client, "client", &comment[11]);
-								else if (strncmp(comment, "METASVCORRECTED:", 16) == 0)   { if (meta_svcorrected == 0)   { int v; sscanf(comment, "METASVCORRECTED:%d", &v);   fprintf(output, "\"corrected_depths\": \"%s\",\n", v ? "YES" : "NO"); } meta_svcorrected++; }
-								else if (strncmp(comment, "METATIDECORRECTED:", 18) == 0) { if (meta_tidecorrected == 0) { int v; sscanf(comment, "METATIDECORRECTED:%d", &v); fprintf(output, "\"tide_corrected\": \"%s\",\n", v ? "YES" : "NO"); } meta_tidecorrected++; }
-								else if (strncmp(comment, "METABATHEDITMANUAL:", 19) == 0){ if (meta_batheditmanual == 0){ int v; sscanf(comment, "METABATHEDITMANUAL:%d", &v); fprintf(output, "\"depths_manually_edited\": \"%s\",\n", v ? "YES" : "NO"); } meta_batheditmanual++; }
-								else if (strncmp(comment, "METABATHEDITAUTO:", 17) == 0)  { if (meta_batheditauto == 0)  { int v; sscanf(comment, "METABATHEDITAUTO:%d", &v);   fprintf(output, "\"depths_auto-edited\": \"%s\",\n", v ? "YES" : "NO"); } meta_batheditauto++; }
-								else if (strncmp(comment, "METAROLLBIAS:", 13) == 0)      { if (meta_rollbias == 0)      { sscanf(comment, "METAROLLBIAS:%lf", &val_double);     fprintf(output, "\"roll_bias\": \"%f\",\n", val_double); } meta_rollbias++; }
-								else if (strncmp(comment, "METAPITCHBIAS:", 14) == 0)     { if (meta_pitchbias == 0)     { sscanf(comment, "METAPITCHBIAS:%lf", &val_double);    fprintf(output, "\"pitch_bias\": \"%f\",\n", val_double); } meta_pitchbias++; }
-								else if (strncmp(comment, "METAHEADINGBIAS:", 16) == 0)   { if (meta_headingbias == 0)   { sscanf(comment, "METAHEADINGBIAS:%lf", &val_double);  fprintf(output, "\"heading_bias\": \"%f\",\n", val_double); } meta_headingbias++; }
-								else if (strncmp(comment, "METADRAFT:", 10) == 0)         { if (meta_draft == 0)         { sscanf(comment, "METADRAFT:%lf", &val_double);        fprintf(output, "\"draft\": \"%f\",\n", val_double); } meta_draft++; }
+								else if (strncmp(comment, "METASVCORRECTED:", 16) == 0)   { if (meta_svcorrected == 0)   { int v; sscanf(comment, "METASVCORRECTED:%d", &v);   mb_gmt_text_put(output,"\"corrected_depths\": \"%s\",\n", v ? "YES" : "NO"); } meta_svcorrected++; }
+								else if (strncmp(comment, "METATIDECORRECTED:", 18) == 0) { if (meta_tidecorrected == 0) { int v; sscanf(comment, "METATIDECORRECTED:%d", &v); mb_gmt_text_put(output,"\"tide_corrected\": \"%s\",\n", v ? "YES" : "NO"); } meta_tidecorrected++; }
+								else if (strncmp(comment, "METABATHEDITMANUAL:", 19) == 0){ if (meta_batheditmanual == 0){ int v; sscanf(comment, "METABATHEDITMANUAL:%d", &v); mb_gmt_text_put(output,"\"depths_manually_edited\": \"%s\",\n", v ? "YES" : "NO"); } meta_batheditmanual++; }
+								else if (strncmp(comment, "METABATHEDITAUTO:", 17) == 0)  { if (meta_batheditauto == 0)  { int v; sscanf(comment, "METABATHEDITAUTO:%d", &v);   mb_gmt_text_put(output,"\"depths_auto-edited\": \"%s\",\n", v ? "YES" : "NO"); } meta_batheditauto++; }
+								else if (strncmp(comment, "METAROLLBIAS:", 13) == 0)      { if (meta_rollbias == 0)      { sscanf(comment, "METAROLLBIAS:%lf", &val_double);     mb_gmt_text_put(output,"\"roll_bias\": \"%f\",\n", val_double); } meta_rollbias++; }
+								else if (strncmp(comment, "METAPITCHBIAS:", 14) == 0)     { if (meta_pitchbias == 0)     { sscanf(comment, "METAPITCHBIAS:%lf", &val_double);    mb_gmt_text_put(output,"\"pitch_bias\": \"%f\",\n", val_double); } meta_pitchbias++; }
+								else if (strncmp(comment, "METAHEADINGBIAS:", 16) == 0)   { if (meta_headingbias == 0)   { sscanf(comment, "METAHEADINGBIAS:%lf", &val_double);  mb_gmt_text_put(output,"\"heading_bias\": \"%f\",\n", val_double); } meta_headingbias++; }
+								else if (strncmp(comment, "METADRAFT:", 10) == 0)         { if (meta_draft == 0)         { sscanf(comment, "METADRAFT:%lf", &val_double);        mb_gmt_text_put(output,"\"draft\": \"%f\",\n", val_double); } meta_draft++; }
 							}
 							else if (output_format == XML) {
-								if (imetadata == 0) { fprintf(output, "\t<metadata>\n"); imetadata++; }
-								if      (strncmp(comment, "METAVESSEL:", 11) == 0)        { if (meta_vessel == 0)        fprintf(output, "\t\t<vessel>%s</vessel>\n", &comment[11]); meta_vessel++; }
-								else if (strncmp(comment, "METAINSTITUTION:", 16) == 0)   { if (meta_institution == 0)   fprintf(output, "\t\t<institution>%s</institution>\n", &comment[16]); meta_institution++; }
-								else if (strncmp(comment, "METAPLATFORM:", 13) == 0)      { if (meta_platform == 0)      fprintf(output, "\t\t<platform>%s</platform>\n", &comment[13]); meta_platform++; }
-								else if (strncmp(comment, "METASONARVERSION:", 17) == 0)  { if (meta_sonarversion == 0)  fprintf(output, "\t\t<sonar_version>%s</sonar_version>\n", &comment[17]); meta_sonarversion++; }
-								else if (strncmp(comment, "METASONAR:", 10) == 0)         { if (meta_sonar == 0)         fprintf(output, "\t\t<sonar>%s</sonar>\n", &comment[10]); meta_sonar++; }
-								else if (strncmp(comment, "METACRUISEID:", 13) == 0)      { if (meta_cruiseid == 0)      fprintf(output, "\t\t<cruise_id>%s</cruise_id>\n", &comment[13]); meta_cruiseid++; }
-								else if (strncmp(comment, "METACRUISENAME:", 15) == 0)    { if (meta_cruisename == 0)    fprintf(output, "\t\t<cruise_name>%s</cruise_name>\n", &comment[15]); meta_cruisename++; }
-								else if (strncmp(comment, "METAPI:", 7) == 0)             { if (meta_pi == 0)            fprintf(output, "\t\t<pi>%s</pi>\n", &comment[7]); meta_pi++; }
-								else if (strncmp(comment, "METAPIINSTITUTION:", 18) == 0) { if (meta_piinstitution == 0) fprintf(output, "\t\t<pi_institution>%s</pi_institution>\n", &comment[18]); meta_piinstitution++; }
-								else if (strncmp(comment, "METACLIENT:", 11) == 0)        { if (meta_client == 0)        fprintf(output, "\t\t<client>%s</client>\n", &comment[11]); meta_client++; }
-								else if (strncmp(comment, "METASVCORRECTED:", 16) == 0)   { if (meta_svcorrected == 0)   { int v; sscanf(comment, "METASVCORRECTED:%d", &v);   fprintf(output, "\t\t<corrected_depths>%s</corrected_depths>\n", v ? "YES" : "NO"); } meta_svcorrected++; }
-								else if (strncmp(comment, "METATIDECORRECTED:", 18) == 0) { if (meta_tidecorrected == 0) { int v; sscanf(comment, "METATIDECORRECTED:%d", &v); fprintf(output, "\t\t<tide_corrected>%s</tide_corrected>\n", v ? "YES" : "NO"); } meta_tidecorrected++; }
-								else if (strncmp(comment, "METABATHEDITMANUAL:", 19) == 0){ if (meta_batheditmanual == 0){ int v; sscanf(comment, "METABATHEDITMANUAL:%d", &v); fprintf(output, "\t\t<depths_manually_edited>%s</depths_manually_edited>\n", v ? "YES" : "NO"); } meta_batheditmanual++; }
-								else if (strncmp(comment, "METABATHEDITAUTO:", 17) == 0)  { if (meta_batheditauto == 0)  { int v; sscanf(comment, "METABATHEDITAUTO:%d", &v);   fprintf(output, "\t\t<depths_auto_edited>%s</depths_auto_edited>\n", v ? "YES" : "NO"); } meta_batheditauto++; }
-								else if (strncmp(comment, "METAROLLBIAS:", 13) == 0)      { if (meta_rollbias == 0)      { sscanf(comment, "METAROLLBIAS:%lf", &val_double);     fprintf(output, "\t\t<roll_bias>%f</roll_bias>\n", val_double); } meta_rollbias++; }
-								else if (strncmp(comment, "METAPITCHBIAS:", 14) == 0)     { if (meta_pitchbias == 0)     { sscanf(comment, "METAPITCHBIAS:%lf", &val_double);    fprintf(output, "\t\t<pitch_bias>%f</pitch_bias>\n", val_double); } meta_pitchbias++; }
-								else if (strncmp(comment, "METAHEADINGBIAS:", 16) == 0)   { if (meta_headingbias == 0)   { sscanf(comment, "METAHEADINGBIAS:%lf", &val_double);  fprintf(output, "\t\t<heading_bias>%f</heading_bias>\n", val_double); } meta_headingbias++; }
-								else if (strncmp(comment, "METADRAFT:", 10) == 0)         { if (meta_draft == 0)         { sscanf(comment, "METADRAFT:%lf", &val_double);        fprintf(output, "\t\t<draft>%fm</draft>\n\t</metadata>\n", val_double); } meta_draft++; }
+								if (imetadata == 0) { mb_gmt_text_put(output,"\t<metadata>\n"); imetadata++; }
+								if      (strncmp(comment, "METAVESSEL:", 11) == 0)        { if (meta_vessel == 0)        mb_gmt_text_put(output,"\t\t<vessel>%s</vessel>\n", &comment[11]); meta_vessel++; }
+								else if (strncmp(comment, "METAINSTITUTION:", 16) == 0)   { if (meta_institution == 0)   mb_gmt_text_put(output,"\t\t<institution>%s</institution>\n", &comment[16]); meta_institution++; }
+								else if (strncmp(comment, "METAPLATFORM:", 13) == 0)      { if (meta_platform == 0)      mb_gmt_text_put(output,"\t\t<platform>%s</platform>\n", &comment[13]); meta_platform++; }
+								else if (strncmp(comment, "METASONARVERSION:", 17) == 0)  { if (meta_sonarversion == 0)  mb_gmt_text_put(output,"\t\t<sonar_version>%s</sonar_version>\n", &comment[17]); meta_sonarversion++; }
+								else if (strncmp(comment, "METASONAR:", 10) == 0)         { if (meta_sonar == 0)         mb_gmt_text_put(output,"\t\t<sonar>%s</sonar>\n", &comment[10]); meta_sonar++; }
+								else if (strncmp(comment, "METACRUISEID:", 13) == 0)      { if (meta_cruiseid == 0)      mb_gmt_text_put(output,"\t\t<cruise_id>%s</cruise_id>\n", &comment[13]); meta_cruiseid++; }
+								else if (strncmp(comment, "METACRUISENAME:", 15) == 0)    { if (meta_cruisename == 0)    mb_gmt_text_put(output,"\t\t<cruise_name>%s</cruise_name>\n", &comment[15]); meta_cruisename++; }
+								else if (strncmp(comment, "METAPI:", 7) == 0)             { if (meta_pi == 0)            mb_gmt_text_put(output,"\t\t<pi>%s</pi>\n", &comment[7]); meta_pi++; }
+								else if (strncmp(comment, "METAPIINSTITUTION:", 18) == 0) { if (meta_piinstitution == 0) mb_gmt_text_put(output,"\t\t<pi_institution>%s</pi_institution>\n", &comment[18]); meta_piinstitution++; }
+								else if (strncmp(comment, "METACLIENT:", 11) == 0)        { if (meta_client == 0)        mb_gmt_text_put(output,"\t\t<client>%s</client>\n", &comment[11]); meta_client++; }
+								else if (strncmp(comment, "METASVCORRECTED:", 16) == 0)   { if (meta_svcorrected == 0)   { int v; sscanf(comment, "METASVCORRECTED:%d", &v);   mb_gmt_text_put(output,"\t\t<corrected_depths>%s</corrected_depths>\n", v ? "YES" : "NO"); } meta_svcorrected++; }
+								else if (strncmp(comment, "METATIDECORRECTED:", 18) == 0) { if (meta_tidecorrected == 0) { int v; sscanf(comment, "METATIDECORRECTED:%d", &v); mb_gmt_text_put(output,"\t\t<tide_corrected>%s</tide_corrected>\n", v ? "YES" : "NO"); } meta_tidecorrected++; }
+								else if (strncmp(comment, "METABATHEDITMANUAL:", 19) == 0){ if (meta_batheditmanual == 0){ int v; sscanf(comment, "METABATHEDITMANUAL:%d", &v); mb_gmt_text_put(output,"\t\t<depths_manually_edited>%s</depths_manually_edited>\n", v ? "YES" : "NO"); } meta_batheditmanual++; }
+								else if (strncmp(comment, "METABATHEDITAUTO:", 17) == 0)  { if (meta_batheditauto == 0)  { int v; sscanf(comment, "METABATHEDITAUTO:%d", &v);   mb_gmt_text_put(output,"\t\t<depths_auto_edited>%s</depths_auto_edited>\n", v ? "YES" : "NO"); } meta_batheditauto++; }
+								else if (strncmp(comment, "METAROLLBIAS:", 13) == 0)      { if (meta_rollbias == 0)      { sscanf(comment, "METAROLLBIAS:%lf", &val_double);     mb_gmt_text_put(output,"\t\t<roll_bias>%f</roll_bias>\n", val_double); } meta_rollbias++; }
+								else if (strncmp(comment, "METAPITCHBIAS:", 14) == 0)     { if (meta_pitchbias == 0)     { sscanf(comment, "METAPITCHBIAS:%lf", &val_double);    mb_gmt_text_put(output,"\t\t<pitch_bias>%f</pitch_bias>\n", val_double); } meta_pitchbias++; }
+								else if (strncmp(comment, "METAHEADINGBIAS:", 16) == 0)   { if (meta_headingbias == 0)   { sscanf(comment, "METAHEADINGBIAS:%lf", &val_double);  mb_gmt_text_put(output,"\t\t<heading_bias>%f</heading_bias>\n", val_double); } meta_headingbias++; }
+								else if (strncmp(comment, "METADRAFT:", 10) == 0)         { if (meta_draft == 0)         { sscanf(comment, "METADRAFT:%lf", &val_double);        mb_gmt_text_put(output,"\t\t<draft>%fm</draft>\n\t</metadata>\n", val_double); } meta_draft++; }
 							}
 						}
 
@@ -1076,144 +1171,144 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 
 	switch (output_format) {
 	case FREE_TEXT:
-		fprintf(output, "\nData Totals:\nNumber of Records:                    %8d\n", irec);
+		mb_gmt_text_put(output,"\nData Totals:\nNumber of Records:                    %8d\n", irec);
 		isbtmrec = notice_list_tot[MB_DATA_SUBBOTTOM_MCS] + notice_list_tot[MB_DATA_SUBBOTTOM_CNTRBEAM] +
 		           notice_list_tot[MB_DATA_SUBBOTTOM_SUBBOTTOM];
-		if (isbtmrec > 0) fprintf(output, "Number of Subbottom Records:          %8d\n", isbtmrec);
-		if (notice_list_tot[MB_DATA_SIDESCAN2] > 0) fprintf(output, "Number of Secondary Sidescan Records: %8d\n", notice_list_tot[MB_DATA_SIDESCAN2]);
-		if (notice_list_tot[MB_DATA_SIDESCAN3] > 0) fprintf(output, "Number of Tertiary Sidescan Records:  %8d\n", notice_list_tot[MB_DATA_SIDESCAN3]);
-		if (notice_list_tot[MB_DATA_WATER_COLUMN] > 0) fprintf(output, "Number of Water Column Records:       %8d\n", notice_list_tot[MB_DATA_WATER_COLUMN]);
-		fprintf(output, "Bathymetry Data (%d beams):\n", beams_bath_max);
-		fprintf(output, "  Number of Beams:         %8d\n", ntdbeams);
-		fprintf(output, "  Number of Good Beams:    %8d     %5.2f%%\n", ngdbeams, ngd_percent);
-		fprintf(output, "  Number of Zero Beams:    %8d     %5.2f%%\n", nzdbeams, nzd_percent);
-		fprintf(output, "  Number of Flagged Beams: %8d     %5.2f%%\n", nfdbeams, nfd_percent);
-		fprintf(output, "Amplitude Data (%d beams):\n", beams_amp_max);
-		fprintf(output, "  Number of Beams:         %8d\n", ntabeams);
-		fprintf(output, "  Number of Good Beams:    %8d     %5.2f%%\n", ngabeams, nga_percent);
-		fprintf(output, "  Number of Zero Beams:    %8d     %5.2f%%\n", nzabeams, nza_percent);
-		fprintf(output, "  Number of Flagged Beams: %8d     %5.2f%%\n", nfabeams, nfa_percent);
-		fprintf(output, "Sidescan Data (%d pixels):\n", pixels_ss_max);
-		fprintf(output, "  Number of Pixels:        %8d\n", ntsbeams);
-		fprintf(output, "  Number of Good Pixels:   %8d     %5.2f%%\n", ngsbeams, ngs_percent);
-		fprintf(output, "  Number of Zero Pixels:   %8d     %5.2f%%\n", nzsbeams, nzs_percent);
-		fprintf(output, "  Number of Flagged Pixels:%8d     %5.2f%%\n", nfsbeams, nfs_percent);
-		fprintf(output, "\nNavigation Totals:\nTotal Time:         %10.4f hours\n", timtot);
-		fprintf(output, "Total Track Length: %10.4f km\n", distot);
-		fprintf(output, "Average Speed:      %10.4f km/hr (%7.4f knots)\n", spdavg, spdavg / 1.85);
-		fprintf(output, "\nStart of Data:\nTime:  %2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d (%4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%2.2d.%6.6d)\n",
+		if (isbtmrec > 0) mb_gmt_text_put(output,"Number of Subbottom Records:          %8d\n", isbtmrec);
+		if (notice_list_tot[MB_DATA_SIDESCAN2] > 0) mb_gmt_text_put(output,"Number of Secondary Sidescan Records: %8d\n", notice_list_tot[MB_DATA_SIDESCAN2]);
+		if (notice_list_tot[MB_DATA_SIDESCAN3] > 0) mb_gmt_text_put(output,"Number of Tertiary Sidescan Records:  %8d\n", notice_list_tot[MB_DATA_SIDESCAN3]);
+		if (notice_list_tot[MB_DATA_WATER_COLUMN] > 0) mb_gmt_text_put(output,"Number of Water Column Records:       %8d\n", notice_list_tot[MB_DATA_WATER_COLUMN]);
+		mb_gmt_text_put(output,"Bathymetry Data (%d beams):\n", beams_bath_max);
+		mb_gmt_text_put(output,"  Number of Beams:         %8d\n", ntdbeams);
+		mb_gmt_text_put(output,"  Number of Good Beams:    %8d     %5.2f%%\n", ngdbeams, ngd_percent);
+		mb_gmt_text_put(output,"  Number of Zero Beams:    %8d     %5.2f%%\n", nzdbeams, nzd_percent);
+		mb_gmt_text_put(output,"  Number of Flagged Beams: %8d     %5.2f%%\n", nfdbeams, nfd_percent);
+		mb_gmt_text_put(output,"Amplitude Data (%d beams):\n", beams_amp_max);
+		mb_gmt_text_put(output,"  Number of Beams:         %8d\n", ntabeams);
+		mb_gmt_text_put(output,"  Number of Good Beams:    %8d     %5.2f%%\n", ngabeams, nga_percent);
+		mb_gmt_text_put(output,"  Number of Zero Beams:    %8d     %5.2f%%\n", nzabeams, nza_percent);
+		mb_gmt_text_put(output,"  Number of Flagged Beams: %8d     %5.2f%%\n", nfabeams, nfa_percent);
+		mb_gmt_text_put(output,"Sidescan Data (%d pixels):\n", pixels_ss_max);
+		mb_gmt_text_put(output,"  Number of Pixels:        %8d\n", ntsbeams);
+		mb_gmt_text_put(output,"  Number of Good Pixels:   %8d     %5.2f%%\n", ngsbeams, ngs_percent);
+		mb_gmt_text_put(output,"  Number of Zero Pixels:   %8d     %5.2f%%\n", nzsbeams, nzs_percent);
+		mb_gmt_text_put(output,"  Number of Flagged Pixels:%8d     %5.2f%%\n", nfsbeams, nfs_percent);
+		mb_gmt_text_put(output,"\nNavigation Totals:\nTotal Time:         %10.4f hours\n", timtot);
+		mb_gmt_text_put(output,"Total Track Length: %10.4f km\n", distot);
+		mb_gmt_text_put(output,"Average Speed:      %10.4f km/hr (%7.4f knots)\n", spdavg, spdavg / 1.85);
+		mb_gmt_text_put(output,"\nStart of Data:\nTime:  %2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d (%4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%2.2d.%6.6d)\n",
 		        timbeg_i[1], timbeg_i[2], timbeg_i[0], timbeg_i[3], timbeg_i[4], timbeg_i[5], timbeg_i[6], timbeg_j[1],
 		        timbeg_i[0], timbeg_i[1], timbeg_i[2], timbeg_i[3], timbeg_i[4], timbeg_i[5], timbeg_i[6]);
-		if (bathy_in_meters) fprintf(output, "Lon: %15.9f     Lat: %15.9f     Depth: %10.4f meters\n", lonbeg, latbeg, bathbeg);
-		else                 fprintf(output, "Lon: %15.9f     Lat: %15.9f     Depth: %10.4f feet\n",   lonbeg, latbeg, bathy_scale * bathbeg);
-		fprintf(output, "Speed: %7.4f km/hr (%7.4f knots)  Heading:%9.4f degrees\n", spdbeg, spdbeg/1.85, hdgbeg);
-		fprintf(output, "Sonar Depth:%10.4f m  Sonar Altitude:%10.4f m\n", sdpbeg, altbeg);
-		fprintf(output, "\nEnd of Data:\nTime:  %2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d (%4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%2.2d.%6.6d)\n",
+		if (bathy_in_meters) mb_gmt_text_put(output,"Lon: %15.9f     Lat: %15.9f     Depth: %10.4f meters\n", lonbeg, latbeg, bathbeg);
+		else                 mb_gmt_text_put(output,"Lon: %15.9f     Lat: %15.9f     Depth: %10.4f feet\n",   lonbeg, latbeg, bathy_scale * bathbeg);
+		mb_gmt_text_put(output,"Speed: %7.4f km/hr (%7.4f knots)  Heading:%9.4f degrees\n", spdbeg, spdbeg/1.85, hdgbeg);
+		mb_gmt_text_put(output,"Sonar Depth:%10.4f m  Sonar Altitude:%10.4f m\n", sdpbeg, altbeg);
+		mb_gmt_text_put(output,"\nEnd of Data:\nTime:  %2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d (%4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%2.2d.%6.6d)\n",
 		        timend_i[1], timend_i[2], timend_i[0], timend_i[3], timend_i[4], timend_i[5], timend_i[6], timend_j[1],
 		        timend_i[0], timend_i[1], timend_i[2], timend_i[3], timend_i[4], timend_i[5], timend_i[6]);
-		if (bathy_in_meters) fprintf(output, "Lon: %15.9f     Lat: %15.9f     Depth: %10.4f meters\n", lonend, latend, bathend);
-		else                 fprintf(output, "Lon: %15.9f     Lat: %15.9f     Depth: %10.4f feet\n",   lonend, latend, bathy_scale * bathend);
-		fprintf(output, "Speed: %7.4f km/hr (%7.4f knots)  Heading:%9.4f degrees\n", spdend, spdend/1.85, hdgend);
-		fprintf(output, "Sonar Depth:%10.4f m  Sonar Altitude:%10.4f m\n", sdpend, altend);
-		fprintf(output, "\nLimits:\nMinimum Longitude:   %15.9f   Maximum Longitude:   %15.9f\n", lonmin, lonmax);
-		fprintf(output, "Minimum Latitude:    %15.9f   Maximum Latitude:    %15.9f\n", latmin, latmax);
-		fprintf(output, "Minimum Sonar Depth: %10.4f   Maximum Sonar Depth: %10.4f\n", sdpmin, sdpmax);
-		fprintf(output, "Minimum Altitude:    %10.4f   Maximum Altitude:    %10.4f\n", altmin, altmax);
-		if (ngdbeams > 0 || verbose >= 1) fprintf(output, "Minimum Depth:       %10.4f   Maximum Depth:       %10.4f\n", bathy_scale * bathmin, bathy_scale * bathmax);
-		if (ngabeams > 0 || verbose >= 1) fprintf(output, "Minimum Amplitude:   %10.4f   Maximum Amplitude:   %10.4f\n", ampmin, ampmax);
-		if (ngsbeams > 0 || verbose >= 1) fprintf(output, "Minimum Sidescan:    %10.4f   Maximum Sidescan:    %10.4f\n", ssmin, ssmax);
+		if (bathy_in_meters) mb_gmt_text_put(output,"Lon: %15.9f     Lat: %15.9f     Depth: %10.4f meters\n", lonend, latend, bathend);
+		else                 mb_gmt_text_put(output,"Lon: %15.9f     Lat: %15.9f     Depth: %10.4f feet\n",   lonend, latend, bathy_scale * bathend);
+		mb_gmt_text_put(output,"Speed: %7.4f km/hr (%7.4f knots)  Heading:%9.4f degrees\n", spdend, spdend/1.85, hdgend);
+		mb_gmt_text_put(output,"Sonar Depth:%10.4f m  Sonar Altitude:%10.4f m\n", sdpend, altend);
+		mb_gmt_text_put(output,"\nLimits:\nMinimum Longitude:   %15.9f   Maximum Longitude:   %15.9f\n", lonmin, lonmax);
+		mb_gmt_text_put(output,"Minimum Latitude:    %15.9f   Maximum Latitude:    %15.9f\n", latmin, latmax);
+		mb_gmt_text_put(output,"Minimum Sonar Depth: %10.4f   Maximum Sonar Depth: %10.4f\n", sdpmin, sdpmax);
+		mb_gmt_text_put(output,"Minimum Altitude:    %10.4f   Maximum Altitude:    %10.4f\n", altmin, altmax);
+		if (ngdbeams > 0 || verbose >= 1) mb_gmt_text_put(output,"Minimum Depth:       %10.4f   Maximum Depth:       %10.4f\n", bathy_scale * bathmin, bathy_scale * bathmax);
+		if (ngabeams > 0 || verbose >= 1) mb_gmt_text_put(output,"Minimum Amplitude:   %10.4f   Maximum Amplitude:   %10.4f\n", ampmin, ampmax);
+		if (ngsbeams > 0 || verbose >= 1) mb_gmt_text_put(output,"Minimum Sidescan:    %10.4f   Maximum Sidescan:    %10.4f\n", ssmin, ssmax);
 		break;
 	case JSON:
-		fprintf(output, "\"data_totals\": {\n\"number_of_records\": \"%d\"", irec);
+		mb_gmt_text_put(output,"\"data_totals\": {\n\"number_of_records\": \"%d\"", irec);
 		isbtmrec = notice_list_tot[MB_DATA_SUBBOTTOM_MCS] + notice_list_tot[MB_DATA_SUBBOTTOM_CNTRBEAM] +
 		           notice_list_tot[MB_DATA_SUBBOTTOM_SUBBOTTOM];
-		if (isbtmrec > 0) fprintf(output, ",\n\"number_of_subbottom_records\":\"%d\"\n", isbtmrec);
-		if (notice_list_tot[MB_DATA_SIDESCAN2] > 0) fprintf(output, ",\n\"number_of_secondary_sidescan_records\": \"%d\"", notice_list_tot[MB_DATA_SIDESCAN2]);
-		if (notice_list_tot[MB_DATA_SIDESCAN3] > 0) fprintf(output, ",\n\"number_of_tertiary_sidescan_records\": \"%d\"", notice_list_tot[MB_DATA_SIDESCAN3]);
-		if (notice_list_tot[MB_DATA_WATER_COLUMN] > 0) fprintf(output, ",\n\"number_of_water_column_records\": \"%d\"", notice_list_tot[MB_DATA_WATER_COLUMN]);
-		fprintf(output, "\n},\n");
-		fprintf(output, "\"bathymetry_data\": {\n\"max_beams_per_ping\": \"%d\",\n\"number_beams\": \"%d\",\n", beams_bath_max, ntdbeams);
-		fprintf(output, "\"number_good_beams\": \"%d\",\n\"percent_good_beams\": \"%5.2f\",\n", ngdbeams, ngd_percent);
-		fprintf(output, "\"number_zero_beams\": \"%d\",\n\"percent_zero_beams\": \"%5.2f\",\n", nzdbeams, nzd_percent);
-		fprintf(output, "\"number_flagged_beams\": \"%d\",\n\"percent_flagged_beams\": \"%5.2f\"\n},\n", nfdbeams, nfd_percent);
-		fprintf(output, "\"amplitude_data\": {\n\"max_beams_per_ping\": \"%d\",\n\"number_beams\": \"%d\",\n", beams_amp_max, ntabeams);
-		fprintf(output, "\"number_good_beams\": \"%d\",\n\"percent_good_beams\": \" %5.2f\",\n", ngabeams, nga_percent);
-		fprintf(output, "\"number_zero_beams\": \"%d\",\n\"percent_zero_beams\": \"%5.2f\",\n", nzabeams, nza_percent);
-		fprintf(output, "\"number_flagged_beams\": \"%d\",\n\"percent_flagged_beams\": \"%5.2f\"\n},\n", nfabeams, nfa_percent);
-		fprintf(output, "\"sidescan_data\": {\n\"max_pixels_per_ping\": \"%d\",\n\"number_of_pixels\": \"%d\",\n", pixels_ss_max, ntsbeams);
-		fprintf(output, "\"number_good_pixels\": \"%d\",\n\"percent_good_pixels\": \"%5.2f\",\n", ngsbeams, ngs_percent);
-		fprintf(output, "\"number_zero_pixels\": \"%d\",\n\"percent_zero_pixels\": \"%5.2f\",\n", nzsbeams, nzs_percent);
-		fprintf(output, "\"number_flagged_pixels\": \"%d\",\n\"percent_flagged_pixels\": \"%5.2f\"\n},\n", nfsbeams, nfs_percent);
-		fprintf(output, "\"navigation_totals\": {\n\"total_time_hours\": \"%.4f\",\n\"total_track_length_km\": \"%.4f\",\n", timtot, distot);
-		fprintf(output, "\"average_speed_km_per_hr\": \"%.4f\",\n\"average_speed_knots\": \"%.4f\"\n},\n", spdavg, spdavg / 1.85);
-		fprintf(output, "\"start_of_data\": {\n\"time\": \"%2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d\",\n", timbeg_i[1], timbeg_i[2], timbeg_i[0], timbeg_i[3], timbeg_i[4], timbeg_i[5], timbeg_i[6], timbeg_j[1]);
-		fprintf(output, "\"time_iso\": \"%4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%2.2d.%6.6d\",\n", timbeg_i[0], timbeg_i[1], timbeg_i[2], timbeg_i[3], timbeg_i[4], timbeg_i[5], timbeg_i[6]);
-		if (bathy_in_meters) fprintf(output, "\"longitude\": \"%.9f\",\n\"latitude\": \"%.9f\",\n\"depth_meters\": \"%.4f\",\n", lonbeg, latbeg, bathbeg);
-		else                 fprintf(output, "\"longitude\": \"%.9f\",\n\"latitude\": \"%.9f\",\n\"depth_feet\": \"%.4f\",\n",   lonbeg, latbeg, bathy_scale * bathbeg);
-		fprintf(output, "\"speed_km_per_hour\": \"%.4f\",\n\"speed_knots\": \"%.4f\",\n\"heading_degrees\": \"%.4f\",\n", spdbeg, spdbeg/1.85, hdgbeg);
-		fprintf(output, "\"sonar_depth_meters\": \"%.4f\",\n\"sonar_altitude_meters\": \"%.4f\"\n},\n", sdpbeg, altbeg);
-		fprintf(output, "\"end_of_data\": {\n\"time\": \"%2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d\",\n", timend_i[1], timend_i[2], timend_i[0], timend_i[3], timend_i[4], timend_i[5], timend_i[6], timend_j[1]);
-		fprintf(output, "\"time_iso\": \"%4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%2.2d.%6.6d\",\n", timend_i[0], timend_i[1], timend_i[2], timend_i[3], timend_i[4], timend_i[5], timend_i[6]);
-		if (bathy_in_meters) fprintf(output, "\"longitude\": \"%.9f\",\n\"latitude\": \"%.9f\",\n\"depth_meters\": \"%.4f\",\n", lonend, latend, bathend);
-		else                 fprintf(output, "\"longitude\": \"%.9f\",\n\"latitude\": \"%.9f\",\n\"depth_feet\": \"%.4f\",\n",   lonend, latend, bathy_scale * bathend);
-		fprintf(output, "\"speed_km_per_hour\": \"%.4f\",\n\"speed_knots\": \"%.4f\",\n\"heading_degrees\": \"%.4f\",\n", spdend, spdend/1.85, hdgend);
-		fprintf(output, "\"sonar_depth_meters\": \"%.4f\",\n\"sonar_altitude_meters\": \"%.4f\"\n},\n", sdpend, altend);
-		fprintf(output, "\"limits\": {\n\"minimum_longitude\": \"%.9f\",\n\"maximum_longitude\": \"%.9f\",\n", lonmin, lonmax);
-		fprintf(output, "\"minimum_latitude\": \"%.9f\",\n\"maximum_latitude\": \"%.9f\",\n", latmin, latmax);
-		fprintf(output, "\"minimum_sonar_depth\": \"%.4f\",\n\"maximum_sonar_depth\": \"%.4f\",\n", sdpmin, sdpmax);
-		fprintf(output, "\"minimum_altitude\": \"%.4f\",\n\"maximum_altitude\": \"%.4f\"", altmin, altmax);
-		if (ngdbeams > 0 || verbose >= 1) fprintf(output, ",\n\"minimum_depth\": \"%.4f\",\n\"maximum_depth\": \"%.4f\"", bathy_scale * bathmin, bathy_scale * bathmax);
-		if (ngabeams > 0 || verbose >= 1) fprintf(output, ",\n\"minimum_amplitude\": \"%.4f\",\n\"maximum_amplitude\": \"%.4f\"", ampmin, ampmax);
-		if (ngsbeams > 0 || verbose >= 1) fprintf(output, ",\n\"minimum_sidescan\": \"%.4f\",\n\"maximum_sidescan\": \"%.4f\"", ssmin, ssmax);
-		fprintf(output, "\n}");
+		if (isbtmrec > 0) mb_gmt_text_put(output,",\n\"number_of_subbottom_records\":\"%d\"\n", isbtmrec);
+		if (notice_list_tot[MB_DATA_SIDESCAN2] > 0) mb_gmt_text_put(output,",\n\"number_of_secondary_sidescan_records\": \"%d\"", notice_list_tot[MB_DATA_SIDESCAN2]);
+		if (notice_list_tot[MB_DATA_SIDESCAN3] > 0) mb_gmt_text_put(output,",\n\"number_of_tertiary_sidescan_records\": \"%d\"", notice_list_tot[MB_DATA_SIDESCAN3]);
+		if (notice_list_tot[MB_DATA_WATER_COLUMN] > 0) mb_gmt_text_put(output,",\n\"number_of_water_column_records\": \"%d\"", notice_list_tot[MB_DATA_WATER_COLUMN]);
+		mb_gmt_text_put(output,"\n},\n");
+		mb_gmt_text_put(output,"\"bathymetry_data\": {\n\"max_beams_per_ping\": \"%d\",\n\"number_beams\": \"%d\",\n", beams_bath_max, ntdbeams);
+		mb_gmt_text_put(output,"\"number_good_beams\": \"%d\",\n\"percent_good_beams\": \"%5.2f\",\n", ngdbeams, ngd_percent);
+		mb_gmt_text_put(output,"\"number_zero_beams\": \"%d\",\n\"percent_zero_beams\": \"%5.2f\",\n", nzdbeams, nzd_percent);
+		mb_gmt_text_put(output,"\"number_flagged_beams\": \"%d\",\n\"percent_flagged_beams\": \"%5.2f\"\n},\n", nfdbeams, nfd_percent);
+		mb_gmt_text_put(output,"\"amplitude_data\": {\n\"max_beams_per_ping\": \"%d\",\n\"number_beams\": \"%d\",\n", beams_amp_max, ntabeams);
+		mb_gmt_text_put(output,"\"number_good_beams\": \"%d\",\n\"percent_good_beams\": \" %5.2f\",\n", ngabeams, nga_percent);
+		mb_gmt_text_put(output,"\"number_zero_beams\": \"%d\",\n\"percent_zero_beams\": \"%5.2f\",\n", nzabeams, nza_percent);
+		mb_gmt_text_put(output,"\"number_flagged_beams\": \"%d\",\n\"percent_flagged_beams\": \"%5.2f\"\n},\n", nfabeams, nfa_percent);
+		mb_gmt_text_put(output,"\"sidescan_data\": {\n\"max_pixels_per_ping\": \"%d\",\n\"number_of_pixels\": \"%d\",\n", pixels_ss_max, ntsbeams);
+		mb_gmt_text_put(output,"\"number_good_pixels\": \"%d\",\n\"percent_good_pixels\": \"%5.2f\",\n", ngsbeams, ngs_percent);
+		mb_gmt_text_put(output,"\"number_zero_pixels\": \"%d\",\n\"percent_zero_pixels\": \"%5.2f\",\n", nzsbeams, nzs_percent);
+		mb_gmt_text_put(output,"\"number_flagged_pixels\": \"%d\",\n\"percent_flagged_pixels\": \"%5.2f\"\n},\n", nfsbeams, nfs_percent);
+		mb_gmt_text_put(output,"\"navigation_totals\": {\n\"total_time_hours\": \"%.4f\",\n\"total_track_length_km\": \"%.4f\",\n", timtot, distot);
+		mb_gmt_text_put(output,"\"average_speed_km_per_hr\": \"%.4f\",\n\"average_speed_knots\": \"%.4f\"\n},\n", spdavg, spdavg / 1.85);
+		mb_gmt_text_put(output,"\"start_of_data\": {\n\"time\": \"%2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d\",\n", timbeg_i[1], timbeg_i[2], timbeg_i[0], timbeg_i[3], timbeg_i[4], timbeg_i[5], timbeg_i[6], timbeg_j[1]);
+		mb_gmt_text_put(output,"\"time_iso\": \"%4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%2.2d.%6.6d\",\n", timbeg_i[0], timbeg_i[1], timbeg_i[2], timbeg_i[3], timbeg_i[4], timbeg_i[5], timbeg_i[6]);
+		if (bathy_in_meters) mb_gmt_text_put(output,"\"longitude\": \"%.9f\",\n\"latitude\": \"%.9f\",\n\"depth_meters\": \"%.4f\",\n", lonbeg, latbeg, bathbeg);
+		else                 mb_gmt_text_put(output,"\"longitude\": \"%.9f\",\n\"latitude\": \"%.9f\",\n\"depth_feet\": \"%.4f\",\n",   lonbeg, latbeg, bathy_scale * bathbeg);
+		mb_gmt_text_put(output,"\"speed_km_per_hour\": \"%.4f\",\n\"speed_knots\": \"%.4f\",\n\"heading_degrees\": \"%.4f\",\n", spdbeg, spdbeg/1.85, hdgbeg);
+		mb_gmt_text_put(output,"\"sonar_depth_meters\": \"%.4f\",\n\"sonar_altitude_meters\": \"%.4f\"\n},\n", sdpbeg, altbeg);
+		mb_gmt_text_put(output,"\"end_of_data\": {\n\"time\": \"%2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d\",\n", timend_i[1], timend_i[2], timend_i[0], timend_i[3], timend_i[4], timend_i[5], timend_i[6], timend_j[1]);
+		mb_gmt_text_put(output,"\"time_iso\": \"%4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%2.2d.%6.6d\",\n", timend_i[0], timend_i[1], timend_i[2], timend_i[3], timend_i[4], timend_i[5], timend_i[6]);
+		if (bathy_in_meters) mb_gmt_text_put(output,"\"longitude\": \"%.9f\",\n\"latitude\": \"%.9f\",\n\"depth_meters\": \"%.4f\",\n", lonend, latend, bathend);
+		else                 mb_gmt_text_put(output,"\"longitude\": \"%.9f\",\n\"latitude\": \"%.9f\",\n\"depth_feet\": \"%.4f\",\n",   lonend, latend, bathy_scale * bathend);
+		mb_gmt_text_put(output,"\"speed_km_per_hour\": \"%.4f\",\n\"speed_knots\": \"%.4f\",\n\"heading_degrees\": \"%.4f\",\n", spdend, spdend/1.85, hdgend);
+		mb_gmt_text_put(output,"\"sonar_depth_meters\": \"%.4f\",\n\"sonar_altitude_meters\": \"%.4f\"\n},\n", sdpend, altend);
+		mb_gmt_text_put(output,"\"limits\": {\n\"minimum_longitude\": \"%.9f\",\n\"maximum_longitude\": \"%.9f\",\n", lonmin, lonmax);
+		mb_gmt_text_put(output,"\"minimum_latitude\": \"%.9f\",\n\"maximum_latitude\": \"%.9f\",\n", latmin, latmax);
+		mb_gmt_text_put(output,"\"minimum_sonar_depth\": \"%.4f\",\n\"maximum_sonar_depth\": \"%.4f\",\n", sdpmin, sdpmax);
+		mb_gmt_text_put(output,"\"minimum_altitude\": \"%.4f\",\n\"maximum_altitude\": \"%.4f\"", altmin, altmax);
+		if (ngdbeams > 0 || verbose >= 1) mb_gmt_text_put(output,",\n\"minimum_depth\": \"%.4f\",\n\"maximum_depth\": \"%.4f\"", bathy_scale * bathmin, bathy_scale * bathmax);
+		if (ngabeams > 0 || verbose >= 1) mb_gmt_text_put(output,",\n\"minimum_amplitude\": \"%.4f\",\n\"maximum_amplitude\": \"%.4f\"", ampmin, ampmax);
+		if (ngsbeams > 0 || verbose >= 1) mb_gmt_text_put(output,",\n\"minimum_sidescan\": \"%.4f\",\n\"maximum_sidescan\": \"%.4f\"", ssmin, ssmax);
+		mb_gmt_text_put(output,"\n}");
 		break;
 	case XML:
-		fprintf(output, "\t<data_totals>\n\t\t<number_of_records>%d</number_of_records>\n", irec);
+		mb_gmt_text_put(output,"\t<data_totals>\n\t\t<number_of_records>%d</number_of_records>\n", irec);
 		isbtmrec = notice_list_tot[MB_DATA_SUBBOTTOM_MCS] + notice_list_tot[MB_DATA_SUBBOTTOM_CNTRBEAM] +
 		           notice_list_tot[MB_DATA_SUBBOTTOM_SUBBOTTOM];
-		if (isbtmrec > 0) fprintf(output, "\t\t<number_of_subbottom_records>%d</number_of_subbottom_records>\n", isbtmrec);
-		if (notice_list_tot[MB_DATA_SIDESCAN2] > 0) fprintf(output, "\t\t<number_of_secondary_sidescan_records>%d</number_of_secondary_sidescan_records>\n", notice_list_tot[MB_DATA_SIDESCAN2]);
-		if (notice_list_tot[MB_DATA_SIDESCAN3] > 0) fprintf(output, "\t\t<number_of_tertiary_sidescan_records>%d</number_of_tertiary_sidescan_records>\n", notice_list_tot[MB_DATA_SIDESCAN3]);
-		if (notice_list_tot[MB_DATA_WATER_COLUMN] > 0) fprintf(output, "\t\t<number_of_water_column_records>%d</number_of_water_column_records>\n", notice_list_tot[MB_DATA_WATER_COLUMN]);
-		fprintf(output, "\t</data_totals>\n");
-		fprintf(output, "\t<bathymetry_data>\n\t\t<max_beams_per_ping>%d</max_beams_per_ping>\n\t\t<number_beams>%d</number_beams>\n", beams_bath_max, ntdbeams);
-		fprintf(output, "\t\t<number_good_beams>%d</number_good_beams>\n\t\t<percent_good_beams>%.2f</percent_good_beams>\n", ngdbeams, ngd_percent);
-		fprintf(output, "\t\t<number_zero_beams>%d</number_zero_beams>\n\t\t<percent_zero_beams>%.2f</percent_zero_beams>\n", nzdbeams, nzd_percent);
-		fprintf(output, "\t\t<number_flagged_beams>%d</number_flagged_beams>\n\t\t<percent_flagged_beams>%.2f</percent_flagged_beams>\n\t</bathymetry_data>\n", nfdbeams, nfd_percent);
-		fprintf(output, "\t<amplitude_data>\n\t\t<max_beams_per_ping>%d</max_beams_per_ping>\n\t\t<number_beams>%d</number_beams>\n", beams_bath_max, ntabeams);
-		fprintf(output, "\t\t<number_good_beams>%d</number_good_beams>\n\t\t<percent_good_beams>%.2f</percent_good_beams>\n", ngabeams, nga_percent);
-		fprintf(output, "\t\t<number_zero_beams>%d</number_zero_beams>\n\t\t<percent_zero_beams>%.2f</percent_zero_beams>\n", nzabeams, nza_percent);
-		fprintf(output, "\t\t<number_flagged_beams>%d</number_flagged_beams>\n\t\t<percent_flagged_beams>%.2f</percent_flagged_beams>\n\t</amplitude_data>\n", nfabeams, nfa_percent);
-		fprintf(output, "\t<sidescan_data>\n\t\t<max_pixels_per_ping>%d</max_pixels_per_ping>\n\t\t<number_pixels>%d</number_pixels>\n", pixels_ss_max, ntsbeams);
-		fprintf(output, "\t\t<number_good_pixels>%d</number_good_pixels>\n\t\t<percent_good_pixels>%.2f</percent_good_pixels>\n", ngsbeams, ngs_percent);
-		fprintf(output, "\t\t<number_zero_pixels>%d</number_zero_pixels>\n\t\t<percent_zero_pixels>%.2f</percent_zero_pixels>\n", nzsbeams, nzs_percent);
-		fprintf(output, "\t\t<number_flagged_pixels>%d</number_flagged_pixels>\n\t\t<percent_flagged_pixels>%.2f</percent_flagged_pixels>\n\t</sidescan_data>\n", nfsbeams, nfs_percent);
-		fprintf(output, "\t<tnavigation_totals>\n\t\t<total_time_hours>%.4f</total_time_hours>\n", timtot);
-		fprintf(output, "\t\t<total_track_length_km>%.4f</total_track_length_km>\n", distot);
-		fprintf(output, "\t\t<average_speed_km_per_hr>%.4f</average_speed_km_per_hr>\n", spdavg);
-		fprintf(output, "\t\t<average_speed_knots>%.4f</average_speed_knots>\n\t</tnavigation_totals>\n", spdavg / 1.85);
-		fprintf(output, "\t<start_of_data>\n\t\t<time>%2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d</time>\n", timbeg_i[1], timbeg_i[2], timbeg_i[0], timbeg_i[3], timbeg_i[4], timbeg_i[5], timbeg_i[6], timbeg_j[1]);
-		fprintf(output, "\t\t<time_iso>%4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%2.2d.%6.6d</time_iso>\n", timbeg_i[0], timbeg_i[1], timbeg_i[2], timbeg_i[3], timbeg_i[4], timbeg_i[5], timbeg_i[6]);
-		fprintf(output, "\t\t<longitude>%.9f</longitude>\n\t\t<latitude>%.9f</latitude>\n", lonbeg, latbeg);
-		fprintf(output, "\t\t<depth_meters>%.4f</depth_meters>\n", bathy_in_meters ? bathbeg : bathy_scale * bathbeg);
-		fprintf(output, "\t\t<speed_km_per_hour>%.4f</speed_km_per_hour>\n\t\t<speed_knots>%.4f</speed_knots>\n", spdbeg, spdbeg/1.85);
-		fprintf(output, "\t\t<heading_degrees>%.4f</heading_degrees>\n", hdgbeg);
-		fprintf(output, "\t\t<sonar_depth_meters>%.4f</sonar_depth_meters>\n\t\t<sonar_altitude_meters>%.4f</sonar_altitude_meters>\n\t</start_of_data>\n", sdpbeg, altbeg);
-		fprintf(output, "\t<end_of_data>\n\t\t<time>%2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d</time>\n", timend_i[1], timend_i[2], timend_i[0], timend_i[3], timend_i[4], timend_i[5], timend_i[6], timend_j[1]);
-		fprintf(output, "\t\t<time_iso>%4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%2.2d.%6.6d</time_iso>\n", timend_i[0], timend_i[1], timend_i[2], timend_i[3], timend_i[4], timend_i[5], timend_i[6]);
-		fprintf(output, "\t\t<longitude>%.9f</longitude>\n\t\t<latitude>%.9f</latitude>\n", lonend, latend);
-		fprintf(output, "\t\t<depth_meters>%.4f</depth_meters>\n", bathy_in_meters ? bathend : bathy_scale * bathend);
-		fprintf(output, "\t\t<speed_km_per_hour>%.4f</speed_km_per_hour>\n\t\t<speed_knots>%.4f</speed_knots>\n", spdend, spdend/1.85);
-		fprintf(output, "\t\t<heading_degrees>%.4f</heading_degrees>\n", hdgend);
-		fprintf(output, "\t\t<sonar_depth_meters>%.4f</sonar_depth_meters>\n\t\t<sonar_altitude_meters>%.4f</sonar_altitude_meters>\n\t</end_of_data>\n", sdpend, altend);
-		fprintf(output, "\t<limits>\n\t\t<minimum_longitude>%.9f</minimum_longitude>\n\t\t<maximum_longitude>%.9f</maximum_longitude>\n", lonmin, lonmax);
-		fprintf(output, "\t\t<minimum_latitude>%.9f</minimum_latitude>\n\t\t<maximum_latitude>%.9f</maximum_latitude>\n", latmin, latmax);
-		fprintf(output, "\t\t<minimum_sonar_depth>%.4f</minimum_sonar_depth>\n\t\t<maximum_sonar_depth>%.4f</maximum_sonar_depth>\n", sdpmin, sdpmax);
-		fprintf(output, "\t\t<minimum_altitude>%.4f</minimum_altitude>\n\t\t<maximum_altitude>%.4f</maximum_altitude>\n", altmin, altmax);
-		if (ngdbeams > 0 || verbose >= 1) { fprintf(output, "\t\t<minimum_depth>%.4f</minimum_depth>\n\t\t<maximum_depth>%.4f</maximum_depth>\n", bathy_scale * bathmin, bathy_scale * bathmax); }
-		if (ngabeams > 0 || verbose >= 1) { fprintf(output, "\t\t<minimum_amplitude>%.4f</minimum_amplitude>\n\t\t<maximum_amplitude>%.4f</maximum_amplitude>\n", ampmin, ampmax); }
-		if (ngsbeams > 0 || verbose >= 1) { fprintf(output, "\t\t<minimum_sidescan>%.4f</minimum_sidescan>\n\t\t<maximum_sidescan>%.4f</maximum_sidescan>\n", ssmin, ssmax); }
-		fprintf(output, "\t</limits>\n");
+		if (isbtmrec > 0) mb_gmt_text_put(output,"\t\t<number_of_subbottom_records>%d</number_of_subbottom_records>\n", isbtmrec);
+		if (notice_list_tot[MB_DATA_SIDESCAN2] > 0) mb_gmt_text_put(output,"\t\t<number_of_secondary_sidescan_records>%d</number_of_secondary_sidescan_records>\n", notice_list_tot[MB_DATA_SIDESCAN2]);
+		if (notice_list_tot[MB_DATA_SIDESCAN3] > 0) mb_gmt_text_put(output,"\t\t<number_of_tertiary_sidescan_records>%d</number_of_tertiary_sidescan_records>\n", notice_list_tot[MB_DATA_SIDESCAN3]);
+		if (notice_list_tot[MB_DATA_WATER_COLUMN] > 0) mb_gmt_text_put(output,"\t\t<number_of_water_column_records>%d</number_of_water_column_records>\n", notice_list_tot[MB_DATA_WATER_COLUMN]);
+		mb_gmt_text_put(output,"\t</data_totals>\n");
+		mb_gmt_text_put(output,"\t<bathymetry_data>\n\t\t<max_beams_per_ping>%d</max_beams_per_ping>\n\t\t<number_beams>%d</number_beams>\n", beams_bath_max, ntdbeams);
+		mb_gmt_text_put(output,"\t\t<number_good_beams>%d</number_good_beams>\n\t\t<percent_good_beams>%.2f</percent_good_beams>\n", ngdbeams, ngd_percent);
+		mb_gmt_text_put(output,"\t\t<number_zero_beams>%d</number_zero_beams>\n\t\t<percent_zero_beams>%.2f</percent_zero_beams>\n", nzdbeams, nzd_percent);
+		mb_gmt_text_put(output,"\t\t<number_flagged_beams>%d</number_flagged_beams>\n\t\t<percent_flagged_beams>%.2f</percent_flagged_beams>\n\t</bathymetry_data>\n", nfdbeams, nfd_percent);
+		mb_gmt_text_put(output,"\t<amplitude_data>\n\t\t<max_beams_per_ping>%d</max_beams_per_ping>\n\t\t<number_beams>%d</number_beams>\n", beams_bath_max, ntabeams);
+		mb_gmt_text_put(output,"\t\t<number_good_beams>%d</number_good_beams>\n\t\t<percent_good_beams>%.2f</percent_good_beams>\n", ngabeams, nga_percent);
+		mb_gmt_text_put(output,"\t\t<number_zero_beams>%d</number_zero_beams>\n\t\t<percent_zero_beams>%.2f</percent_zero_beams>\n", nzabeams, nza_percent);
+		mb_gmt_text_put(output,"\t\t<number_flagged_beams>%d</number_flagged_beams>\n\t\t<percent_flagged_beams>%.2f</percent_flagged_beams>\n\t</amplitude_data>\n", nfabeams, nfa_percent);
+		mb_gmt_text_put(output,"\t<sidescan_data>\n\t\t<max_pixels_per_ping>%d</max_pixels_per_ping>\n\t\t<number_pixels>%d</number_pixels>\n", pixels_ss_max, ntsbeams);
+		mb_gmt_text_put(output,"\t\t<number_good_pixels>%d</number_good_pixels>\n\t\t<percent_good_pixels>%.2f</percent_good_pixels>\n", ngsbeams, ngs_percent);
+		mb_gmt_text_put(output,"\t\t<number_zero_pixels>%d</number_zero_pixels>\n\t\t<percent_zero_pixels>%.2f</percent_zero_pixels>\n", nzsbeams, nzs_percent);
+		mb_gmt_text_put(output,"\t\t<number_flagged_pixels>%d</number_flagged_pixels>\n\t\t<percent_flagged_pixels>%.2f</percent_flagged_pixels>\n\t</sidescan_data>\n", nfsbeams, nfs_percent);
+		mb_gmt_text_put(output,"\t<tnavigation_totals>\n\t\t<total_time_hours>%.4f</total_time_hours>\n", timtot);
+		mb_gmt_text_put(output,"\t\t<total_track_length_km>%.4f</total_track_length_km>\n", distot);
+		mb_gmt_text_put(output,"\t\t<average_speed_km_per_hr>%.4f</average_speed_km_per_hr>\n", spdavg);
+		mb_gmt_text_put(output,"\t\t<average_speed_knots>%.4f</average_speed_knots>\n\t</tnavigation_totals>\n", spdavg / 1.85);
+		mb_gmt_text_put(output,"\t<start_of_data>\n\t\t<time>%2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d</time>\n", timbeg_i[1], timbeg_i[2], timbeg_i[0], timbeg_i[3], timbeg_i[4], timbeg_i[5], timbeg_i[6], timbeg_j[1]);
+		mb_gmt_text_put(output,"\t\t<time_iso>%4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%2.2d.%6.6d</time_iso>\n", timbeg_i[0], timbeg_i[1], timbeg_i[2], timbeg_i[3], timbeg_i[4], timbeg_i[5], timbeg_i[6]);
+		mb_gmt_text_put(output,"\t\t<longitude>%.9f</longitude>\n\t\t<latitude>%.9f</latitude>\n", lonbeg, latbeg);
+		mb_gmt_text_put(output,"\t\t<depth_meters>%.4f</depth_meters>\n", bathy_in_meters ? bathbeg : bathy_scale * bathbeg);
+		mb_gmt_text_put(output,"\t\t<speed_km_per_hour>%.4f</speed_km_per_hour>\n\t\t<speed_knots>%.4f</speed_knots>\n", spdbeg, spdbeg/1.85);
+		mb_gmt_text_put(output,"\t\t<heading_degrees>%.4f</heading_degrees>\n", hdgbeg);
+		mb_gmt_text_put(output,"\t\t<sonar_depth_meters>%.4f</sonar_depth_meters>\n\t\t<sonar_altitude_meters>%.4f</sonar_altitude_meters>\n\t</start_of_data>\n", sdpbeg, altbeg);
+		mb_gmt_text_put(output,"\t<end_of_data>\n\t\t<time>%2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d</time>\n", timend_i[1], timend_i[2], timend_i[0], timend_i[3], timend_i[4], timend_i[5], timend_i[6], timend_j[1]);
+		mb_gmt_text_put(output,"\t\t<time_iso>%4.4d-%2.2d-%2.2dT%2.2d:%2.2d:%2.2d.%6.6d</time_iso>\n", timend_i[0], timend_i[1], timend_i[2], timend_i[3], timend_i[4], timend_i[5], timend_i[6]);
+		mb_gmt_text_put(output,"\t\t<longitude>%.9f</longitude>\n\t\t<latitude>%.9f</latitude>\n", lonend, latend);
+		mb_gmt_text_put(output,"\t\t<depth_meters>%.4f</depth_meters>\n", bathy_in_meters ? bathend : bathy_scale * bathend);
+		mb_gmt_text_put(output,"\t\t<speed_km_per_hour>%.4f</speed_km_per_hour>\n\t\t<speed_knots>%.4f</speed_knots>\n", spdend, spdend/1.85);
+		mb_gmt_text_put(output,"\t\t<heading_degrees>%.4f</heading_degrees>\n", hdgend);
+		mb_gmt_text_put(output,"\t\t<sonar_depth_meters>%.4f</sonar_depth_meters>\n\t\t<sonar_altitude_meters>%.4f</sonar_altitude_meters>\n\t</end_of_data>\n", sdpend, altend);
+		mb_gmt_text_put(output,"\t<limits>\n\t\t<minimum_longitude>%.9f</minimum_longitude>\n\t\t<maximum_longitude>%.9f</maximum_longitude>\n", lonmin, lonmax);
+		mb_gmt_text_put(output,"\t\t<minimum_latitude>%.9f</minimum_latitude>\n\t\t<maximum_latitude>%.9f</maximum_latitude>\n", latmin, latmax);
+		mb_gmt_text_put(output,"\t\t<minimum_sonar_depth>%.4f</minimum_sonar_depth>\n\t\t<maximum_sonar_depth>%.4f</maximum_sonar_depth>\n", sdpmin, sdpmax);
+		mb_gmt_text_put(output,"\t\t<minimum_altitude>%.4f</minimum_altitude>\n\t\t<maximum_altitude>%.4f</maximum_altitude>\n", altmin, altmax);
+		if (ngdbeams > 0 || verbose >= 1) { mb_gmt_text_put(output,"\t\t<minimum_depth>%.4f</minimum_depth>\n\t\t<maximum_depth>%.4f</maximum_depth>\n", bathy_scale * bathmin, bathy_scale * bathmax); }
+		if (ngabeams > 0 || verbose >= 1) { mb_gmt_text_put(output,"\t\t<minimum_amplitude>%.4f</minimum_amplitude>\n\t\t<maximum_amplitude>%.4f</maximum_amplitude>\n", ampmin, ampmax); }
+		if (ngsbeams > 0 || verbose >= 1) { mb_gmt_text_put(output,"\t\t<minimum_sidescan>%.4f</minimum_sidescan>\n\t\t<maximum_sidescan>%.4f</maximum_sidescan>\n", ssmin, ssmax); }
+		mb_gmt_text_put(output,"\t</limits>\n");
 		break;
 	default: break;
 	}
@@ -1221,37 +1316,37 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 	if (pings_read > 2 && beams_bath_max > 0 && (ngdbeams > 0 || verbose >= 1)) {
 		switch (output_format) {
 		case FREE_TEXT:
-			fprintf(output, "\nBeam Bathymetry Variances:\nPings Averaged: %d\n", pings_read);
-			fprintf(output, " Beam     N      Mean     Variance    Sigma\n ----     -      ----     --------    -----\n");
+			mb_gmt_text_put(output,"\nBeam Bathymetry Variances:\nPings Averaged: %d\n", pings_read);
+			mb_gmt_text_put(output," Beam     N      Mean     Variance    Sigma\n ----     -      ----     --------    -----\n");
 			for (int i = 0; i < beams_bath_max; i++)
-				fprintf(output, "%4d  %5d   %8.2f   %8.2f  %8.2f\n", i, nbathvartot[i],
+				mb_gmt_text_put(output,"%4d  %5d   %8.2f   %8.2f  %8.2f\n", i, nbathvartot[i],
 				        bathy_scale * bathmeantot[i],
 				        bathy_scale * bathy_scale * bathvartot[i],
 				        bathy_scale * sqrt(bathvartot[i]));
-			fprintf(output, "\n");
+			mb_gmt_text_put(output,"\n");
 			break;
 		case JSON:
-			fprintf(output, ",\n\"beam_bathymetry_variances\":{\n\"pings_averaged\": \"%d\",\n", pings_read);
-			fprintf(output, "\"columns\" : \"#beam,N,mean,variance,sigma\",\n\"values\": [\n");
+			mb_gmt_text_put(output,",\n\"beam_bathymetry_variances\":{\n\"pings_averaged\": \"%d\",\n", pings_read);
+			mb_gmt_text_put(output,"\"columns\" : \"#beam,N,mean,variance,sigma\",\n\"values\": [\n");
 			for (int i = 0; i < beams_bath_max; i++) {
-				if (i > 0) fprintf(output, ",\n");
+				if (i > 0) mb_gmt_text_put(output,",\n");
 				double sigma = bathy_scale * sqrt(bathvartot[i]);
 				if (isnan(sigma)) sigma = 0.0;
-				fprintf(output, "{\"row\":\"%d,%d,%.2f,%.2f,%.2f\"}", i, nbathvartot[i],
+				mb_gmt_text_put(output,"{\"row\":\"%d,%d,%.2f,%.2f,%.2f\"}", i, nbathvartot[i],
 				        bathy_scale * bathmeantot[i], bathy_scale * bathy_scale * bathvartot[i], sigma);
 			}
-			fprintf(output, "]}");
+			mb_gmt_text_put(output,"]}");
 			break;
 		case XML:
-			fprintf(output, "\t<beam_bathymetry_variances>\n\t\t<pings_averaged>%d</pings_averaged>\n", pings_read);
-			fprintf(output, "\t\t<columns>pixel,N,mean,variance,sigma</columns>\n\t\t<values>\n");
+			mb_gmt_text_put(output,"\t<beam_bathymetry_variances>\n\t\t<pings_averaged>%d</pings_averaged>\n", pings_read);
+			mb_gmt_text_put(output,"\t\t<columns>pixel,N,mean,variance,sigma</columns>\n\t\t<values>\n");
 			for (int i = 0; i < beams_bath_max; i++) {
 				double sigma = bathy_scale * sqrt(bathvartot[i]);
 				if (isnan(sigma)) sigma = 0.0;
-				fprintf(output, "\t\t\t<row>%d,%d,%.2f,%.2f,%.2f</row>\n", i, nbathvartot[i],
+				mb_gmt_text_put(output,"\t\t\t<row>%d,%d,%.2f,%.2f,%.2f</row>\n", i, nbathvartot[i],
 				        bathy_scale * bathmeantot[i], bathy_scale * bathy_scale * bathvartot[i], sigma);
 			}
-			fprintf(output, "\t\t</values>\n\t</beam_bathymetry_variances>\n");
+			mb_gmt_text_put(output,"\t\t</values>\n\t</beam_bathymetry_variances>\n");
 			break;
 		default: break;
 		}
@@ -1259,30 +1354,30 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 	if (pings_read > 2 && beams_amp_max > 0 && (ngabeams > 0 || verbose >= 1)) {
 		switch (output_format) {
 		case FREE_TEXT:
-			fprintf(output, "\nBeam Amplitude Variances:\nPings Averaged: %d\n", pings_read);
-			fprintf(output, " Beam     N      Mean     Variance    Sigma\n ----     -      ----     --------    -----\n");
+			mb_gmt_text_put(output,"\nBeam Amplitude Variances:\nPings Averaged: %d\n", pings_read);
+			mb_gmt_text_put(output," Beam     N      Mean     Variance    Sigma\n ----     -      ----     --------    -----\n");
 			for (int i = 0; i < beams_amp_max; i++)
-				fprintf(output, "%4d  %5d   %8.2f   %8.2f  %8.2f\n", i, nampvartot[i], ampmeantot[i], ampvartot[i], sqrt(ampvartot[i]));
-			fprintf(output, "\n");
+				mb_gmt_text_put(output,"%4d  %5d   %8.2f   %8.2f  %8.2f\n", i, nampvartot[i], ampmeantot[i], ampvartot[i], sqrt(ampvartot[i]));
+			mb_gmt_text_put(output,"\n");
 			break;
 		case JSON:
-			fprintf(output, ",\n\"beam_amplitude_variances\":{\n\"pings_averaged\": \"%d\",\n", pings_read);
-			fprintf(output, "\"columns\":\"beam,N,mean,variance,sigma\",\n\"values\": [\n");
+			mb_gmt_text_put(output,",\n\"beam_amplitude_variances\":{\n\"pings_averaged\": \"%d\",\n", pings_read);
+			mb_gmt_text_put(output,"\"columns\":\"beam,N,mean,variance,sigma\",\n\"values\": [\n");
 			for (int i = 0; i < beams_amp_max; i++) {
-				if (i > 0) fprintf(output, ",\n");
+				if (i > 0) mb_gmt_text_put(output,",\n");
 				double sigma = sqrt(ampvartot[i]); if (isnan(sigma)) sigma = 0;
-				fprintf(output, "{\"row\" : \"%d,%d,%.2f,%.2f,%.2f\"}", i, nampvartot[i], ampmeantot[i], ampvartot[i], sigma);
+				mb_gmt_text_put(output,"{\"row\" : \"%d,%d,%.2f,%.2f,%.2f\"}", i, nampvartot[i], ampmeantot[i], ampvartot[i], sigma);
 			}
-			fprintf(output, "\n]}");
+			mb_gmt_text_put(output,"\n]}");
 			break;
 		case XML:
-			fprintf(output, "\t<beam_amplitude_variances>\n\t\t<pings_averaged>%d</pings_averaged>\n", pings_read);
-			fprintf(output, "\t\t<columns>pixel,N,mean,variance,sigma</columns>\n\t\t<values>\n");
+			mb_gmt_text_put(output,"\t<beam_amplitude_variances>\n\t\t<pings_averaged>%d</pings_averaged>\n", pings_read);
+			mb_gmt_text_put(output,"\t\t<columns>pixel,N,mean,variance,sigma</columns>\n\t\t<values>\n");
 			for (int i = 0; i < beams_amp_max; i++) {
 				double sigma = sqrt(ampvartot[i]); if (isnan(sigma)) sigma = 0.0;
-				fprintf(output, "\t\t\t<row>%d,%d,%.2f,%.2f,%.2f</row>\n", i, nampvartot[i], ampmeantot[i], ampvartot[i], sigma);
+				mb_gmt_text_put(output,"\t\t\t<row>%d,%d,%.2f,%.2f,%.2f</row>\n", i, nampvartot[i], ampmeantot[i], ampvartot[i], sigma);
 			}
-			fprintf(output, "\t\t</values>\n\t</beam_amplitude_variances>\n");
+			mb_gmt_text_put(output,"\t\t</values>\n\t</beam_amplitude_variances>\n");
 			break;
 		default: break;
 		}
@@ -1290,30 +1385,30 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 	if (pings_read > 2 && pixels_ss_max > 0 && (ngsbeams > 0 || verbose >= 1)) {
 		switch (output_format) {
 		case FREE_TEXT:
-			fprintf(output, "\nPixel Sidescan Variances:\nPings Averaged: %d\n", pings_read);
-			fprintf(output, " Beam     N      Mean     Variance    Sigma\n ----     -      ----     --------    -----\n");
+			mb_gmt_text_put(output,"\nPixel Sidescan Variances:\nPings Averaged: %d\n", pings_read);
+			mb_gmt_text_put(output," Beam     N      Mean     Variance    Sigma\n ----     -      ----     --------    -----\n");
 			for (int i = 0; i < pixels_ss_max; i++)
-				fprintf(output, "%4d  %5d   %8.2f   %8.2f  %8.2f\n", i, nssvartot[i], ssmeantot[i], ssvartot[i], sqrt(ssvartot[i]));
-			fprintf(output, "\n");
+				mb_gmt_text_put(output,"%4d  %5d   %8.2f   %8.2f  %8.2f\n", i, nssvartot[i], ssmeantot[i], ssvartot[i], sqrt(ssvartot[i]));
+			mb_gmt_text_put(output,"\n");
 			break;
 		case JSON:
-			fprintf(output, ",\n\"pixel_sidescan_variances\":{\n\"pings_averaged\": \"%d\",\n", pings_read);
-			fprintf(output, "\"columns\":\"pixel,N,mean,variance,sigma\",\n\"values\": [\n");
+			mb_gmt_text_put(output,",\n\"pixel_sidescan_variances\":{\n\"pings_averaged\": \"%d\",\n", pings_read);
+			mb_gmt_text_put(output,"\"columns\":\"pixel,N,mean,variance,sigma\",\n\"values\": [\n");
 			for (int i = 0; i < pixels_ss_max; i++) {
-				if (i > 0) fprintf(output, ",\n");
+				if (i > 0) mb_gmt_text_put(output,",\n");
 				double sigma = sqrt(ssvartot[i]); if (isnan(sigma)) sigma = 0.0;
-				fprintf(output, "{\"row\":\"%d,%d,%.2f,%.2f,%.2f\"}", i, nssvartot[i], ssmeantot[i], ssvartot[i], sigma);
+				mb_gmt_text_put(output,"{\"row\":\"%d,%d,%.2f,%.2f,%.2f\"}", i, nssvartot[i], ssmeantot[i], ssvartot[i], sigma);
 			}
-			fprintf(output, "\n]\n}");
+			mb_gmt_text_put(output,"\n]\n}");
 			break;
 		case XML:
-			fprintf(output, "\t<pixel_sidescan_variances>\n\t\t<pings_averaged>%d</pings_averaged>\n", pings_read);
-			fprintf(output, "\t\t<columns>pixel,N,mean,variance,sigma</columns>\n\t\t<values>\n");
+			mb_gmt_text_put(output,"\t<pixel_sidescan_variances>\n\t\t<pings_averaged>%d</pings_averaged>\n", pings_read);
+			mb_gmt_text_put(output,"\t\t<columns>pixel,N,mean,variance,sigma</columns>\n\t\t<values>\n");
 			for (int i = 0; i < pixels_ss_max; i++) {
 				double sigma = sqrt(ssvartot[i]); if (isnan(sigma)) sigma = 0.0;
-				fprintf(output, "\t\t\t<row>%d,%d,%.2f,%.2f,%.2f</row>\n", i, nssvartot[i], ssmeantot[i], ssvartot[i], sigma);
+				mb_gmt_text_put(output,"\t\t\t<row>%d,%d,%.2f,%.2f,%.2f</row>\n", i, nssvartot[i], ssmeantot[i], ssvartot[i], sigma);
 			}
-			fprintf(output, "\t\t</values>\n\t</pixel_sidescan_variances>\n");
+			mb_gmt_text_put(output,"\t\t</values>\n\t</pixel_sidescan_variances>\n");
 			break;
 		default: break;
 		}
@@ -1322,72 +1417,72 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 	if (print_notices) {
 		switch (output_format) {
 		case FREE_TEXT:
-			fprintf(output, "\nData Record Type Notices:\n");
+			mb_gmt_text_put(output,"\nData Record Type Notices:\n");
 			for (int i = 0; i <= MB_DATA_KINDS; i++)
-				if (notice_list_tot[i] > 0) { char *m; mb_notice_message(verbose, i, &m); fprintf(output, "DN: %d %s\n", notice_list_tot[i], m); }
-			fprintf(output, "\nNonfatal Error Notices:\n");
+				if (notice_list_tot[i] > 0) { char *m; mb_notice_message(verbose, i, &m); mb_gmt_text_put(output,"DN: %d %s\n", notice_list_tot[i], m); }
+			mb_gmt_text_put(output,"\nNonfatal Error Notices:\n");
 			for (int i = MB_DATA_KINDS + 1; i <= MB_DATA_KINDS - (MB_ERROR_MIN); i++)
-				if (notice_list_tot[i] > 0) { char *m; mb_notice_message(verbose, i, &m); fprintf(output, "EN: %d %s\n", notice_list_tot[i], m); }
-			fprintf(output, "\nProblem Notices:\n");
+				if (notice_list_tot[i] > 0) { char *m; mb_notice_message(verbose, i, &m); mb_gmt_text_put(output,"EN: %d %s\n", notice_list_tot[i], m); }
+			mb_gmt_text_put(output,"\nProblem Notices:\n");
 			for (int i = MB_DATA_KINDS - (MB_ERROR_MIN) + 1; i < MB_NOTICE_MAX; i++)
-				if (notice_list_tot[i] > 0) { char *m; mb_notice_message(verbose, i, &m); fprintf(output, "PN: %d %s\n", notice_list_tot[i], m); }
+				if (notice_list_tot[i] > 0) { char *m; mb_notice_message(verbose, i, &m); mb_gmt_text_put(output,"PN: %d %s\n", notice_list_tot[i], m); }
 			break;
 		case JSON: {
-			fprintf(output, ",\n\"notices\": {\n\"data_record_type_notices\": [\n");
+			mb_gmt_text_put(output,",\n\"notices\": {\n\"data_record_type_notices\": [\n");
 			int notice_total = 0;
 			for (int i = 0; i <= MB_DATA_KINDS; i++)
 				if (notice_list_tot[i] > 0) {
 					char *m; mb_notice_message(verbose, i, &m);
-					if (notice_total > 0) fprintf(output, ",\n");
-					fprintf(output, "{\"notice\": {\n\"notice_number\": \"%d\",\n\"notice_message\": \"%s\"\n}}", notice_list_tot[i], m);
+					if (notice_total > 0) mb_gmt_text_put(output,",\n");
+					mb_gmt_text_put(output,"{\"notice\": {\n\"notice_number\": \"%d\",\n\"notice_message\": \"%s\"\n}}", notice_list_tot[i], m);
 					notice_total++;
 				}
-			if (notice_total > 0) fprintf(output, "\n");
-			fprintf(output, "]");
+			if (notice_total > 0) mb_gmt_text_put(output,"\n");
+			mb_gmt_text_put(output,"]");
 			notice_total = 0;
-			fprintf(output, ",\n\"nonfatal_error_notices\": [\n");
+			mb_gmt_text_put(output,",\n\"nonfatal_error_notices\": [\n");
 			for (int i = MB_DATA_KINDS + 1; i <= MB_DATA_KINDS - (MB_ERROR_MIN); i++)
 				if (notice_list_tot[i] > 0) {
 					char *m; mb_notice_message(verbose, i, &m);
-					if (notice_total > 0) fprintf(output, ",\n");
-					fprintf(output, "{\"notice\": {\n\"notice_number\": \"%d\",\n\"notice_message\": \"%s\"\n}}", notice_list_tot[i], m);
+					if (notice_total > 0) mb_gmt_text_put(output,",\n");
+					mb_gmt_text_put(output,"{\"notice\": {\n\"notice_number\": \"%d\",\n\"notice_message\": \"%s\"\n}}", notice_list_tot[i], m);
 					notice_total++;
 				}
-			if (notice_total > 0) fprintf(output, "\n");
-			fprintf(output, "]");
+			if (notice_total > 0) mb_gmt_text_put(output,"\n");
+			mb_gmt_text_put(output,"]");
 			notice_total = 0;
-			fprintf(output, ",\n\"problem_notices\": [\n");
+			mb_gmt_text_put(output,",\n\"problem_notices\": [\n");
 			for (int i = MB_DATA_KINDS - (MB_ERROR_MIN) + 1; i < MB_NOTICE_MAX; i++)
 				if (notice_list_tot[i] > 0) {
 					char *m; mb_notice_message(verbose, i, &m);
-					if (notice_total > 0) fprintf(output, ",\n");
-					fprintf(output, "{\"notice\": {\n\"notice_number\": \"%d\",\n\"notice_message\": \"%s\"\n}}", notice_list_tot[i], m);
+					if (notice_total > 0) mb_gmt_text_put(output,",\n");
+					mb_gmt_text_put(output,"{\"notice\": {\n\"notice_number\": \"%d\",\n\"notice_message\": \"%s\"\n}}", notice_list_tot[i], m);
 					notice_total++;
 				}
-			if (notice_total > 0) fprintf(output, "\n");
-			fprintf(output, "]\n}");
+			if (notice_total > 0) mb_gmt_text_put(output,"\n");
+			mb_gmt_text_put(output,"]\n}");
 			break;
 		}
 		case XML:
-			fprintf(output, "\t<data_record_type_notices>\n");
+			mb_gmt_text_put(output,"\t<data_record_type_notices>\n");
 			for (int i = 0; i <= MB_DATA_KINDS; i++)
 				if (notice_list_tot[i] > 0) {
 					char *m; mb_notice_message(verbose, i, &m);
-					fprintf(output, "\t\t<notice_number>%d</notice_number>\n\t\t<notice_messsage>%s</notice_messsage>\n", notice_list_tot[i], m);
+					mb_gmt_text_put(output,"\t\t<notice_number>%d</notice_number>\n\t\t<notice_messsage>%s</notice_messsage>\n", notice_list_tot[i], m);
 				}
-			fprintf(output, "\t</data_record_type_notices>\n\t<nonfatal_error_notices>\n");
+			mb_gmt_text_put(output,"\t</data_record_type_notices>\n\t<nonfatal_error_notices>\n");
 			for (int i = MB_DATA_KINDS + 1; i <= MB_DATA_KINDS - (MB_ERROR_MIN); i++)
 				if (notice_list_tot[i] > 0) {
 					char *m; mb_notice_message(verbose, i, &m);
-					fprintf(output, "\t\t<notice_number>%d</notice_number>\n\t\t<notice_messsage>%s</notice_messsage>\n", notice_list_tot[i], m);
+					mb_gmt_text_put(output,"\t\t<notice_number>%d</notice_number>\n\t\t<notice_messsage>%s</notice_messsage>\n", notice_list_tot[i], m);
 				}
-			fprintf(output, "\t</nonfatal_error_notices>\n\t<problem_notices>\n");
+			mb_gmt_text_put(output,"\t</nonfatal_error_notices>\n\t<problem_notices>\n");
 			for (int i = MB_DATA_KINDS - (MB_ERROR_MIN) + 1; i < MB_NOTICE_MAX; i++)
 				if (notice_list_tot[i] > 0) {
 					char *m; mb_notice_message(verbose, i, &m);
-					fprintf(output, "\t\t<notice_number>%d</notice_number>\n\t\t<notice_messsage>%s</notice_messsage>\n", notice_list_tot[i], m);
+					mb_gmt_text_put(output,"\t\t<notice_number>%d</notice_number>\n\t\t<notice_messsage>%s</notice_messsage>\n", notice_list_tot[i], m);
 				}
-			fprintf(output, "\t</problem_notices>\n");
+			mb_gmt_text_put(output,"\t</problem_notices>\n");
 			break;
 		default: break;
 		}
@@ -1396,20 +1491,20 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 	if (coverage_mask) {
 		switch (output_format) {
 		case FREE_TEXT:
-			fprintf(output, "\nCoverage Mask:\nCM dimensions: %d %d\n", mask_nx, mask_ny);
+			mb_gmt_text_put(output,"\nCoverage Mask:\nCM dimensions: %d %d\n", mask_nx, mask_ny);
 			for (int j = mask_ny - 1; j >= 0; j--) {
-				fprintf(output, "CM:  ");
-				for (int i = 0; i < mask_nx; i++) fprintf(output, " %1d", mask[i + j * mask_nx]);
-				fprintf(output, "\n");
+				mb_gmt_text_put(output,"CM:  ");
+				for (int i = 0; i < mask_nx; i++) mb_gmt_text_put(output," %1d", mask[i + j * mask_nx]);
+				mb_gmt_text_put(output,"\n");
 			}
 			break;
 		case JSON:
-			fprintf(output, ",\n\"coverage_mask\": {\n\"dimensions_nx\": \"%d\",\n\"dimensions_ny\": \"%d\",\n\"mask\": \" ", mask_nx, mask_ny);
+			mb_gmt_text_put(output,",\n\"coverage_mask\": {\n\"dimensions_nx\": \"%d\",\n\"dimensions_ny\": \"%d\",\n\"mask\": \" ", mask_nx, mask_ny);
 			for (int j = mask_ny - 1; j >= 0; j--) {
-				for (int i = 0; i < mask_nx; i++) { if (i > 0) fprintf(output, ","); fprintf(output, "%1d", mask[i + j * mask_nx]); }
-				fprintf(output, "\n");
+				for (int i = 0; i < mask_nx; i++) { if (i > 0) mb_gmt_text_put(output,","); mb_gmt_text_put(output,"%1d", mask[i + j * mask_nx]); }
+				mb_gmt_text_put(output,"\n");
 			}
-			fprintf(output, "\"}");
+			mb_gmt_text_put(output,"\"}");
 			break;
 		case XML: default: break;
 		}
@@ -1417,12 +1512,17 @@ int GMT_mbinfo(void *V_API, int mode, void *args) {
 
 	switch (output_format) {
 	case FREE_TEXT: break;
-	case JSON:      fprintf(output, "}\n"); break;
-	case XML:       fprintf(output, "</mbinfo>\n"); break;
+	case JSON:      mb_gmt_text_put(output,"}\n"); break;
+	case XML:       mb_gmt_text_put(output,"</mbinfo>\n"); break;
 	default: break;
 	}
 
-	if (output_usefile && output != NULL && output != stream) fclose(output);
+	const int output_failed = mb_gmt_text_end(output);
+	output = NULL;	/* closed: Return() must not close it again */
+	if (output_failed) {
+		GMT_Report(API, GMT_MSG_ERROR, "Writing the listing failed\n");
+		Return(GMT_RUNTIME_ERROR);
+	}
 
 	mb_freed(verbose, __FILE__, __LINE__, (void **)&bathmeantot, &error);
 	mb_freed(verbose, __FILE__, __LINE__, (void **)&bathvartot,  &error);

@@ -46,5 +46,5 @@ target_link_libraries(dump_gsf PRIVATE mbgsf ${MB_SYSLIBS})
 
 install(TARGETS mbgsf DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(TARGETS dump_gsf DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES gsf.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES gsf.h mbgsf_export.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 

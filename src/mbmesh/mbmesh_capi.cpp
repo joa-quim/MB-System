@@ -12,8 +12,11 @@
  * reporting and error handling stays in the driver (src/gmt/mbmesh.c).
  */
 
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <iostream>
+#include <sstream>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -229,8 +232,18 @@ size_t mbmesh_preprocessed_files_read(const mbmesh_preprocessed_t *preprocessed)
 	return preprocessed->value.read_result.stats.files_read;
 }
 
-void mbmesh_print_datalist_metadata(const mbmesh_preprocessed_t *preprocessed, const struct mbmesh_options *options) {
+char *mbmesh_datalist_metadata_text(const mbmesh_preprocessed_t *preprocessed, const struct mbmesh_options *options) {
+	/* the program's own printer, unchanged, with std::cout pointed at a string */
+	std::ostringstream text;
+	std::streambuf *saved = std::cout.rdbuf(text.rdbuf());
+	const std::streamsize precision = std::cout.precision();
 	print_datalist_metadata(preprocessed->value, to_cxx_options(*options));
+	std::cout.precision(precision);
+	std::cout.rdbuf(saved);
+	const std::string s = text.str();
+	char *result = static_cast<char *>(std::malloc(s.size() + 1));
+	if (result != nullptr) std::memcpy(result, s.c_str(), s.size() + 1);
+	return result;
 }
 
 mbmesh_collected_t *mbmesh_preprocessed_take_points(mbmesh_preprocessed_t *preprocessed) {

@@ -612,8 +612,8 @@ int main(int argc, char **argv) {
 	double file_weight;
 	char swathfile[MB_PATH_MAXLINE];
 	char dfile[MB_PATH_MAXLINE];
-	char amptablefile[MB_PATH_MAXLINE];
-	char sstablefile[MB_PATH_MAXLINE];
+	char amptablefile[MB_PATH_MAXLINE] = "";  // empty under -D (was uninitialized: the dump printed stack contents)
+	char sstablefile[MB_PATH_MAXLINE] = "";
 	FILE *atfp = nullptr;
 	FILE *stfp = nullptr;
 	int beams_bath;

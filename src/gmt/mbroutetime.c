@@ -33,11 +33,9 @@
  * Location:	R/V Thompson, at the dock in Apia, Samoa
  */
 /*
- * GMT-module port of src/utilities/mbroutetime.cc. The program's getopt_long() option loop
- * is kept as it is, running on the reentrant mb_getopt_long() (the state
- * lives in a local structure, so the module can run any number of times in
- * one GMT session), and main() becomes GMT_mbroutetime(), with every exit()
- * turned into Return().
+ * GMT-module port of src/utilities/mbroutetime.cc: options from GMT's option list (long options
+ * through module_kw, lower-case aliases kept), main() becomes GMT_mbroutetime() and every exit() a
+ * Return() with a GMT error code. The waypoint time list is the program's own output file.
  */
 
 #define THIS_MODULE_NAME "mbroutetime"
@@ -62,8 +60,6 @@
 #include "mb_define.h"
 #include "mb_format.h"
 #include "mb_status.h"
-
-#include "mb_getopt.h"
 
 enum { MBES_ALLOC_NUM = 128 };
 /* constexpr int MBES_ROUTE_WAYPOINT_NONE = 0; */
@@ -95,69 +91,51 @@ static const char usage_message[] =
 
 /* --- GMT front end ---------------------------------------------------- */
 
+/* Translation table from the program's long options to its short ones (each one has a short twin) */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'U', "range-threshold", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "route-file",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
-	return GMT_PARSE_ERROR;
+	GMT_Message(API, GMT_TIME_NONE, "Every option also has the program's lower-case and long forms.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
-/* The options GMT itself should see: -V (verbosity) and -I (the input the
- * module keys bind). Everything else, long options included, is parsed by
- * the program's own option loop below. */
-static char *mb_gmt_options_string(int argc, char **argv) {
-	size_t total = 1;
-	for (int i = 1; i < argc; i++)
-		total += strlen(argv[i]) + 1;
-	char *s = (char *)calloc(total + 8, 1);
-	if (s == NULL)
-		return NULL;
-	for (int i = 1; i < argc; i++) {
-		if (argv[i][0] == '-' && (argv[i][1] == 'V' || (argv[i][1] == 'I' && argv[i][2] != '\0'))) {
-			if (s[0] != '\0')
-				strcat(s, " ");
-			strcat(s, argv[i]);
-		}
-	}
-	return s;
-}
-
-/* gmt_M_free_options() hard-codes a variable named "options", which the
-   program's own option table shadows here, so destroy gmt_options directly */
-#define bailout(code) { mb_getopt_args_free(argc, argv); free(gmt_args); GMT_Destroy_Options(API, &gmt_options); return (code); }
+#define bailout(code) { gmt_M_free_options(mode); return code; }
 #define Return(code) { gmt_end_module(GMT, GMT_cpy); bailout(code); }
-EXTERN_MSC int GMT_mbroutetime(void *V_API, int gmt_mode, void *args);
+EXTERN_MSC int GMT_mbroutetime(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
 
-int GMT_mbroutetime(void *V_API, int gmt_mode, void *args) {
+int GMT_mbroutetime(void *V_API, int mode, void *args) {
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
-	struct GMT_OPTION *gmt_options = NULL;
-	char *gmt_args = NULL;
-	char **argv = NULL;
-	int argc = 0;
-	struct mb_getopt_state getopt_state;
-	mb_getopt_init(&getopt_state);
+	struct GMT_OPTION *options = NULL;
+	int gmt_error;
 
-	if (!API) return GMT_NOT_A_SESSION;
-	if (gmt_mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-
-	/* the program's own argv[], whatever shape GMT handed us */
-	argc = mb_getopt_args_build(THIS_MODULE_NAME, gmt_mode, args, &argv);
-	if (argc == 2 && (strcmp(argv[1], "-") == 0 || strcmp(argv[1], "?") == 0))
-		bailout(usage(API, GMT_USAGE));
-	if (argc == 2 && strcmp(argv[1], "+") == 0)
-		bailout(usage(API, GMT_SYNOPSIS));
-
-	gmt_args = mb_gmt_options_string(argc, argv);
-	gmt_options = GMT_Create_Options(API, GMT_MODULE_CMD, (gmt_args != NULL && gmt_args[0] != '\0') ? gmt_args : NULL);
-	if (API->error) bailout(API->error);
+	if (API == NULL) return GMT_NOT_A_SESSION;
+	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a run of the program, which reports the missing route file itself */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &gmt_options, &GMT_cpy)) == NULL) bailout(API->error);
-	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, gmt_options)) Return(API->error);
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	int verbose = 0;
 	int format;
@@ -179,47 +157,12 @@ int GMT_mbroutetime(void *V_API, int gmt_mode, void *args) {
 	strcpy(read_file, "datalist.mb-1");
 
 	{
-		static struct mb_getopt_option options[] = {{"verbose", mb_no_argument, NULL, 0},
-		                                  {"help", mb_no_argument, NULL, 0},
-		                                  {"format", mb_required_argument, NULL, 0},
-		                                  {"input", mb_required_argument, NULL, 0},
-		                                  {"output", mb_required_argument, NULL, 0},
-		                                  {"range-threshold", mb_required_argument, NULL, 0},
-		                                  {"route-file", mb_required_argument, NULL, 0},
-		                                  {NULL, 0, NULL, 0}};
-
 		bool errflg = false;
-		int c;
-		int option_index;
 		bool help = false;
-		/* process argument list */
-		while ((c = mb_getopt_long(&getopt_state, argc, argv, "F:f:I:i:O:o:R:r:U:u:VvHh", options, &option_index)) != -1)
-			switch (c) {
-			/* long options all return c=0 */
-			case 0:
-				if (strcmp("verbose", options[option_index].name) == 0) {
-					verbose++;
-				}
-				else if (strcmp("help", options[option_index].name) == 0) {
-					help = true;
-				}
-				else if (strcmp("format", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d", &format);
-				}
-				else if (strcmp("input", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", read_file);
-				}
-				else if (strcmp("output", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", output_file);
-					output_file_set = true;
-				}
-				else if (strcmp("range-threshold", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%lf", &rangethreshold);
-				}
-				else if (strcmp("route-file", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", route_file);
-				}
-				break;
+		/* process argument list: the program's options from GMT's option list (long options come
+		   in as their short twins through module_kw; lower-case aliases kept) */
+		for (struct GMT_OPTION *opt = options; opt; opt = opt->next)
+			switch (opt->option) {
 			case 'H':
 			case 'h':
 				help = true;
@@ -230,34 +173,32 @@ int GMT_mbroutetime(void *V_API, int gmt_mode, void *args) {
 				break;
 			case 'F':
 			case 'f':
-				sscanf(getopt_state.optarg, "%d", &format);
+				sscanf(opt->arg, "%d", &format);
 				break;
 			case 'I':
 			case 'i':
-				sscanf(getopt_state.optarg, "%1023s", read_file);
+				sscanf(opt->arg, "%1023s", read_file);
 				break;
 			case 'O':
 			case 'o':
-				sscanf(getopt_state.optarg, "%1023s", output_file);
+				sscanf(opt->arg, "%1023s", output_file);
 				output_file_set = true;
 				break;
 			case 'R':
 			case 'r':
-				sscanf(getopt_state.optarg, "%1023s", route_file);
+				sscanf(opt->arg, "%1023s", route_file);
 				break;
 			case 'U':
 			case 'u':
-				sscanf(getopt_state.optarg, "%lf", &rangethreshold);
+				sscanf(opt->arg, "%lf", &rangethreshold);
 				break;
-			case '?':
-				errflg = true;
+			default:
+				errflg |= (gmt_default_option_error(GMT, opt) != 0);
+				break;
 			}
 
-		if (errflg) {
-			fprintf(stderr, "usage: %s\n", usage_message);
-			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_BAD_USAGE);
-		}
+		if (errflg)
+			Return(GMT_PARSE_ERROR);
 
 		if (verbose == 1 || help) {
 			fprintf(stderr, "\nProgram %s\n", program_name);
@@ -301,17 +242,16 @@ int GMT_mbroutetime(void *V_API, int gmt_mode, void *args) {
 		}
 
 		if (help) {
-			fprintf(stderr, "\n%s\n", help_message);
-			fprintf(stderr, "\nusage: %s\n", usage_message);
-			Return(MB_ERROR_NO_ERROR);
+			Return(usage(API, GMT_USAGE));
 		}
 	}
 
 	/* read route file */
 	FILE *fp = fopen(route_file, "r");
 	if (fp == NULL) {
-		fprintf(stderr, "\nUnable to open route file <%s> for reading\n", route_file);
-		Return(MB_FAILURE);
+		/* the program exits with MB_FAILURE here, which is 0: as a module it is the error it is */
+		GMT_Report(API, GMT_MSG_ERROR, "Unable to open route file <%s> for reading\n", route_file);
+		Return(GMT_ERROR_ON_FOPEN);
 	}
 
 	int route_file_version_major = 0;
@@ -373,9 +313,8 @@ int GMT_mbroutetime(void *V_API, int gmt_mode, void *args) {
 				if (status != MB_SUCCESS) {
 					char *message;
 					mb_error(verbose, error, &message);
-					fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
-					fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-					Return(error);
+					GMT_Report(API, GMT_MSG_ERROR, "MBIO Error allocating data arrays: %s\n", message);
+					Return(GMT_RUNTIME_ERROR);
 				}
 			}
 
@@ -396,14 +335,12 @@ int GMT_mbroutetime(void *V_API, int gmt_mode, void *args) {
 
 	/* Check that there are valid waypoints in memory */
 	if (nroutepoint < 1) {
-		fprintf(stderr, "\nNo line start or line end waypoints read from route file: <%s>\n", route_file);
-		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-		Return(MB_ERROR_EOF);
+		GMT_Report(API, GMT_MSG_ERROR, "No line start or line end waypoints read from route file: <%s>\n", route_file);
+		Return(GMT_RUNTIME_ERROR);
 	}
 	else if (nroutepoint < 2) {
-		fprintf(stderr, "\nOnly one line start or line end waypoint read from route file: <%s>\n", route_file);
-		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-		Return(MB_ERROR_EOF);
+		GMT_Report(API, GMT_MSG_ERROR, "Only one line start or line end waypoint read from route file: <%s>\n", route_file);
+		Return(GMT_RUNTIME_ERROR);
 	}
 
 	/* set starting values */
@@ -434,9 +371,8 @@ int GMT_mbroutetime(void *V_API, int gmt_mode, void *args) {
 	if (read_datalist) {
 		const int look_processed = MB_DATALIST_LOOK_UNSET;
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
-			fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
-			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			GMT_Report(API, GMT_MSG_ERROR, "Unable to open data list file: %s\n", read_file);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		double file_weight;
 		read_data = mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight, &error) == MB_SUCCESS;
@@ -491,10 +427,9 @@ int GMT_mbroutetime(void *V_API, int gmt_mode, void *args) {
 		                           &btime_d, &etime_d, &beams_bath, &beams_amp, &pixels_ss, &error) != MB_SUCCESS) {
 			char *message;
 			mb_error(verbose, error, &message);
-			fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
-			fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", file);
-			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			GMT_Report(API, GMT_MSG_ERROR, "MBIO Error returned from function <mb_read_init>: %s\n", message);
+			GMT_Report(API, GMT_MSG_ERROR, "Multibeam File <%s> not initialized for reading\n", file);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		/* allocate memory for data arrays */
@@ -521,9 +456,8 @@ int GMT_mbroutetime(void *V_API, int gmt_mode, void *args) {
 		if (error != MB_ERROR_NO_ERROR) {
 			char *message;
 			mb_error(verbose, error, &message);
-			fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
-			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			GMT_Report(API, GMT_MSG_ERROR, "MBIO Error allocating data arrays: %s\n", message);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		/* read and use data */
@@ -619,8 +553,8 @@ int GMT_mbroutetime(void *V_API, int gmt_mode, void *args) {
 	}
 	fp = fopen(output_file, "w");
 	if (fp == NULL) {
-		fprintf(stderr, "\nUnable to open output waypoint time list file <%s> for writing\n", output_file);
-		Return(MB_ERROR_OPEN_FAIL);
+		GMT_Report(API, GMT_MSG_ERROR, "Unable to open output waypoint time list file <%s> for writing\n", output_file);
+		Return(GMT_ERROR_ON_FOPEN);
 	}
 	for (int i = 0; i < nroutepointfound; i++) {
 		fprintf(fp, "%3d %3d %11.6f %10.6f %10.6f %.6f\n", i, routewaypoint[i], routelon[i], routelat[i], routeheading[i],
@@ -648,6 +582,13 @@ int GMT_mbroutetime(void *V_API, int gmt_mode, void *args) {
 		fprintf(stderr, "dbg2       status:  %d\n", status);
 	}
 
-	Return(error);
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one */
+	if (error != MB_ERROR_NO_ERROR) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

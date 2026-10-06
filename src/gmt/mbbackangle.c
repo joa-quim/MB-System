@@ -41,9 +41,9 @@
 #define THIS_MODULE_LIB			"mbsystem"
 #define THIS_MODULE_PURPOSE		"Generate amplitude / sidescan vs grazing angle correction tables from swath sonar data"
 /* Primary input is the swath file or datalist given with -I; writes .aga/.sga tables; -T is an optional topography grid. */
-#define THIS_MODULE_KEYS		"ID{,TG("
+#define THIS_MODULE_KEYS		"ID{,TG(,>D}"	/* >D}: the -D dump through the GMT API */
 #define THIS_MODULE_NEEDS		""
-#define THIS_MODULE_OPTIONS		"-:>RVh"
+#define THIS_MODULE_OPTIONS		"->V"	/* -R is the program's reference angle, -h its help */
 
 #include "gmt_dev.h"
 
@@ -58,6 +58,7 @@
 #include "mb_format.h"
 #include "mb_process.h"
 #include "mb_status.h"
+#include "mb_gmt_text.h"
 
 /* mode defines */
 typedef enum {
@@ -111,7 +112,7 @@ EXTERN_MSC int GMT_mbbackangle(void *API, int mode, void *args);
 #define MB_MIN2(a,b) ((a) < (b) ? (a) : (b))
 
 /*--------------------------------------------------------------------*/
-static int output_table(int verbose, void *V_API, FILE *tfp, int ntable, int nping, double time_d, int nangles, double angle_max,
+static int output_table(int verbose, void *V_API, struct MB_GMT_TEXT *tfp, int ntable, int nping, double time_d, int nangles, double angle_max,
                         double dangle, bool symmetry, int *nmean, double *mean, double *sigma, int *error) {
 	struct GMTAPI_CTRL *API = (struct GMTAPI_CTRL *)V_API;
 	if (verbose >= 2) {
@@ -134,11 +135,11 @@ static int output_table(int verbose, void *V_API, FILE *tfp, int ntable, int npi
 	/* process sums and print out results */
 	int time_i[7];
 	mb_get_date(verbose, time_d, time_i);
-	fprintf(tfp, "# table: %d\n", ntable);
-	fprintf(tfp, "# nping: %d\n", nping);
-	fprintf(tfp, "# time:  %4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d    %16.6f\n", time_i[0], time_i[1], time_i[2], time_i[3],
+	mb_gmt_text_put(tfp, "# table: %d\n", ntable);
+	mb_gmt_text_put(tfp, "# nping: %d\n", nping);
+	mb_gmt_text_put(tfp, "# time:  %4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d    %16.6f\n", time_i[0], time_i[1], time_i[2], time_i[3],
 	        time_i[4], time_i[5], time_i[6], time_d);
-	fprintf(tfp, "# nangles: %d\n", nangles);
+	mb_gmt_text_put(tfp, "# nangles: %d\n", nangles);
 
 	for (int i = 0; i < nangles; i++) {
 		const double angle = -angle_max + i * dangle;
@@ -172,10 +173,10 @@ static int output_table(int verbose, void *V_API, FILE *tfp, int ntable, int npi
 			amean = sum / sumn;
 			asigma = sqrt((sumsq / sumn) - amean * amean);
 		}
-		fprintf(tfp, "%7.4f %12.4f %12.4f\n", angle, amean, asigma);
+		mb_gmt_text_put(tfp, "%7.4f %12.4f %12.4f\n", angle, amean, asigma);
 	}
-	fprintf(tfp, "#\n");
-	fprintf(tfp, "#\n");
+	mb_gmt_text_put(tfp, "#\n");
+	mb_gmt_text_put(tfp, "#\n");
 
 	const int status = MB_SUCCESS;
 
@@ -190,7 +191,7 @@ static int output_table(int verbose, void *V_API, FILE *tfp, int ntable, int npi
 	return (status);
 }
 /*--------------------------------------------------------------------*/
-static int output_model(int verbose, void *V_API, FILE *tfp, double beamwidth, double depression, double ref_angle, int ntable,
+static int output_model(int verbose, void *V_API, struct MB_GMT_TEXT *tfp, double beamwidth, double depression, double ref_angle, int ntable,
                         int nping, double time_d, double altitude, int nangles, double angle_max, double dangle, bool symmetry,
                         int *nmean, double *mean, double *sigma, int *error) {
 	struct GMTAPI_CTRL *API = (struct GMTAPI_CTRL *)V_API;
@@ -251,20 +252,20 @@ static int output_model(int verbose, void *V_API, FILE *tfp, double beamwidth, d
 	/* process sums and print out results */
 	int time_i[7];
 	mb_get_date(verbose, time_d, time_i);
-	fprintf(tfp, "# table: %d\n", ntable);
-	fprintf(tfp, "# nping: %d\n", nping);
-	fprintf(tfp, "# time:  %4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d    %16.6f\n", time_i[0], time_i[1], time_i[2], time_i[3],
+	mb_gmt_text_put(tfp, "# table: %d\n", ntable);
+	mb_gmt_text_put(tfp, "# nping: %d\n", nping);
+	mb_gmt_text_put(tfp, "# time:  %4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d    %16.6f\n", time_i[0], time_i[1], time_i[2], time_i[3],
 	        time_i[4], time_i[5], time_i[6], time_d);
-	fprintf(tfp, "# nangles: %d\n", nangles);
+	mb_gmt_text_put(tfp, "# nangles: %d\n", nangles);
 	for (int i = 0; i < nangles; i++) {
 		const double angle = -angle_max + i * dangle;
 		del = fabs(angle) - (90 - depression);
 		range = altitude / cos(DTR * fabs(angle));
 		const double amean = factor * exp(-aa * del * del) / (range * range);
-		fprintf(tfp, "%7.4f %12.4f %12.4f\n", angle, amean, asigma);
+		mb_gmt_text_put(tfp, "%7.4f %12.4f %12.4f\n", angle, amean, asigma);
 	}
-	fprintf(tfp, "#\n");
-	fprintf(tfp, "#\n");
+	mb_gmt_text_put(tfp, "#\n");
+	mb_gmt_text_put(tfp, "#\n");
 
 	const int status = MB_SUCCESS;
 
@@ -283,6 +284,8 @@ static int output_model(int verbose, void *V_API, FILE *tfp, double beamwidth, d
 /* --- Control structure ---------------------------------------------- */
 
 struct MBBACKANGLE_CTRL {
+	int verbose;	/* the program's -V/-v count */
+	struct mbba_H { bool active; } H;
 	struct mba_A { bool active; backangle_kind_t ampkind; } A;
 	struct mba_B { bool active; beampattern_t beammode; double beamwidth; double depression; } B;
 	struct mba_C { bool active; } C;
@@ -318,13 +321,36 @@ static void Free_mbbackangle_Ctrl(struct GMT_CTRL *GMT, struct MBBACKANGLE_CTRL 
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",                 "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Z', "altitude",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "angle-bins",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'B', "beam-pattern-mode",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'A', "data-kind",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "dump-output",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'G', "output-grid",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "pings-average",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "reference-angle",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "skip-existing",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Q', "slope-correction",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "symmetric-correction", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "topography-grid",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "\n%s\n\n", help_message);
-	return GMT_PARSE_ERROR;
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse(struct GMT_CTRL *GMT, struct MBBACKANGLE_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -340,7 +366,8 @@ static int parse(struct GMT_CTRL *GMT, struct MBBACKANGLE_CTRL *Ctrl, struct GMT
 				Ctrl->I.inputfile = strdup(opt->arg); n_files = 1;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'A': {
+		case 'A':
+		case 'a': {
 			int tmp;
 			if (sscanf(opt->arg, "%d", &tmp) > 0) {
 				Ctrl->A.ampkind = (backangle_kind_t)tmp;
@@ -348,7 +375,8 @@ static int parse(struct GMT_CTRL *GMT, struct MBBACKANGLE_CTRL *Ctrl, struct GMT
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		}
-		case 'B': {
+		case 'B':
+		case 'b': {
 			double d1, d2;
 			int tmp;
 			const int n = sscanf(opt->arg, "%d/%lf/%lf", &tmp, &d1, &d2);
@@ -361,15 +389,19 @@ static int parse(struct GMT_CTRL *GMT, struct MBBACKANGLE_CTRL *Ctrl, struct GMT
 			break;
 		}
 		case 'C':
+		case 'c':
 			Ctrl->C.active = true;
 			break;
 		case 'D':
+		case 'd':
 			Ctrl->D.active = true;
 			break;
 		case 'F':
+		case 'f':
 			if (sscanf(opt->arg, "%d", &Ctrl->F.format) > 0) Ctrl->F.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'G': {
+		case 'G':
+		case 'g': {
 			int gmode, gi, gj;
 			double gangle, gmin, gmax;
 			int n = sscanf(opt->arg, "%d/%lf/%lf/%lf/%d/%d", &gmode, &gangle, &gmin, &gmax, &gi, &gj);
@@ -398,70 +430,85 @@ static int parse(struct GMT_CTRL *GMT, struct MBBACKANGLE_CTRL *Ctrl, struct GMT
 			break;
 		}
 		case 'I':
+		case 'i':
 			if (!gmt_access(GMT, opt->arg, R_OK)) {
 				Ctrl->I.inputfile = strdup(opt->arg); Ctrl->I.active = true; n_files = 1;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'N':
+		case 'n':
 			if (sscanf(opt->arg, "%d/%lf", &Ctrl->N.nangles, &Ctrl->N.angle_max) >= 1) Ctrl->N.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'P':
+		case 'p':
 			if (sscanf(opt->arg, "%d", &Ctrl->P.pings_avg) > 0) Ctrl->P.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'Q':
+		case 'q':
 			Ctrl->Q.active = true;
 			break;
 		case 'R':
+		case 'r':
 			if (sscanf(opt->arg, "%lf", &Ctrl->R.ref_angle) > 0) Ctrl->R.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'S':
+		case 's':
 			Ctrl->S.active = true;
 			break;
 		case 'T':
+		case 't':
 			sscanf(opt->arg, "%1023s", Ctrl->T.gridfile);
 			Ctrl->T.active = true;
 			break;
 		case 'Z':
+		case 'z':
 			if (sscanf(opt->arg, "%lf", &Ctrl->Z.altitude_default) > 0) Ctrl->Z.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
+		case 'V':
+		case 'v':
+			Ctrl->verbose++;
+			break;
+		case 'H':
+		case 'h':
+			Ctrl->H.active = true;
+			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 
 	(void)n_files;
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code)  { gmt_M_free_options(mode); return code; }
-#define Return(code)   { Free_mbbackangle_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code)   { if (T) mb_gmt_text_end(T); Free_mbbackangle_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 
 /*--------------------------------------------------------------------*/
 int GMT_mbbackangle(void *V_API, int mode, void *args) {
 	struct MBBACKANGLE_CTRL *Ctrl = NULL;
+	struct MB_GMT_TEXT      *T = NULL;	/* -D: the tables through the GMT API */
 	struct GMT_CTRL         *GMT  = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION       *options = NULL;
 	struct GMTAPI_CTRL      *API = gmt_get_api_ptr(V_API);
+	int gmt_error;
 
 	if (API == NULL) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
-	if (!options || options->option == GMT_OPT_USAGE)    bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS)             bailout(usage(API, GMT_SYNOPSIS));
+	/* 1: no options is a run of the program (on datalist.mb-1) */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 
-#if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
-#else
-	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
-#endif
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = New_mbbackangle_Ctrl(GMT);
 	{ int perr = parse(GMT, Ctrl, options); if (perr) Return(perr); }
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
-	int verbose = GMT->common.V.active;
+	int verbose = Ctrl->verbose;
 	int format, pings, lonflip;
 	double bounds[4];
 	int btime_i[7], etime_i[7];
@@ -538,10 +585,10 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 	double file_weight;
 	char swathfile[MB_PATH_MAXLINE];
 	char dfile[MB_PATH_MAXLINE];
-	char amptablefile[MB_PATH_MAXLINE];
-	char sstablefile[MB_PATH_MAXLINE];
-	FILE *atfp = NULL;
-	FILE *stfp = NULL;
+	char amptablefile[MB_PATH_MAXLINE] = "";	/* empty under -D (was uninitialized: the dump printed stack contents) */
+	char sstablefile[MB_PATH_MAXLINE] = "";
+	struct MB_GMT_TEXT *atfp = NULL;	/* the tables: the .aga/.sga files, or with -D the GMT API */
+	struct MB_GMT_TEXT *stfp = NULL;
 	int beams_bath;
 	int beams_amp;
 	int pixels_ss;
@@ -753,7 +800,7 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 		mb_error(verbose, error, &message);
 		GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating angle arrays:\n%s\n", message);
 		GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-		Return(error);
+		Return(GMT_MEMORY_ERROR);
 	}
 
 	/* check grid modes */
@@ -817,7 +864,7 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 		if (status == MB_FAILURE) {
 			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to read grd file: %s\n", grid.file);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 
 		/* rationalize grid bounds and lonflip */
@@ -871,7 +918,7 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
 			mb_memory_clear(verbose, &error);
-			Return(error);
+			Return(GMT_MEMORY_ERROR);
 		}
 	}
 	if (gridss) {
@@ -885,7 +932,7 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
 			mb_memory_clear(verbose, &error);
-			Return(error);
+			Return(GMT_MEMORY_ERROR);
 		}
 	}
 
@@ -903,7 +950,7 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open data list file: %s\n", read_file);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		read_data = mb_datalist_read(verbose, datalist, swathfile, dfile, &format, &file_weight, &error) == MB_SUCCESS;
 	} else {
@@ -1027,7 +1074,7 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 				GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 				GMT_Report(API, GMT_MSG_NORMAL, "\nMultibeam File <%s> not initialized for reading\n", swathfile);
 				GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-				Return(error);
+				Return(GMT_RUNTIME_ERROR);
 			}
 
 			/* set correction modes according to format */
@@ -1111,7 +1158,7 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 				mb_error(verbose, error, &message);
 				GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
 				GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-				Return(error);
+				Return(GMT_MEMORY_ERROR);
 			}
 
 			/* Deal with esf file if avialable */
@@ -1139,28 +1186,31 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 
 			/* open output files */
 			if (error == MB_ERROR_NO_ERROR && dump) {
-				atfp = stdout;
-				stfp = stdout;
+				/* the program's stdout: one listing through the GMT API for the whole run */
+				if (T == NULL && (T = mb_gmt_text_begin(GMT, options)) == NULL)
+					Return(API->error);
+				atfp = T;
+				stfp = T;
 			}
 			else if (error == MB_ERROR_NO_ERROR) {
 				if (amplitude_on) {
 					snprintf(amptablefile, sizeof(amptablefile), "%s.aga", swathfile);
-					if ((atfp = fopen(amptablefile, "w")) == NULL) {
+					if ((atfp = mb_gmt_text_file(GMT, amptablefile)) == NULL) {
 						char *message;
 						mb_error(verbose, error, &message);
 						GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open output table file %s\n", amptablefile);
 						GMT_Report(API, GMT_MSG_NORMAL, "Program %s aborted!\n", program_name);
-						Return(MB_ERROR_OPEN_FAIL);
+						Return(GMT_ERROR_ON_FOPEN);
 					}
 				}
 				if (sidescan_on) {
 					snprintf(sstablefile, sizeof(sstablefile), "%s.sga", swathfile);
-					if ((stfp = fopen(sstablefile, "w")) == NULL) {
+					if ((stfp = mb_gmt_text_file(GMT, sstablefile)) == NULL) {
 						char *message;
 						mb_error(verbose, error, &message);
 						GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open output table file %s\n", sstablefile);
 						GMT_Report(API, GMT_MSG_NORMAL, "Program %s aborted!\n", program_name);
-						Return(MB_ERROR_OPEN_FAIL);
+						Return(GMT_ERROR_ON_FOPEN);
 					}
 				}
 			}
@@ -1172,35 +1222,35 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 
 				/* set comments in table files */
 				if (amplitude_on) {
-					fprintf(atfp, "## Amplitude correction table files generated by program %s\n", program_name);
-					fprintf(atfp, "## MB-system Version %s\n", MB_VERSION);
-					fprintf(atfp, "## Table file format: 1.0.0\n");
-					fprintf(atfp, "## Run by user <%s> on cpu <%s> at <%s>\n", user2, host2, date2);
-					fprintf(atfp, "## Input swath file:      %s\n", swathfile);
-					fprintf(atfp, "## Input swath format:    %d\n", format);
-					fprintf(atfp, "## Output table file:     %s\n", amptablefile);
-					fprintf(atfp, "## Pings to average:      %d\n", pings_avg);
-					fprintf(atfp, "## Number of angle bins:  %d\n", nangles);
-					fprintf(atfp, "## Maximum angle:         %f\n", angle_max);
-					fprintf(atfp, "## Default altitude:      %f\n", altitude_default);
-					fprintf(atfp, "## Slope correction:      %d\n", amp_corr_slope);
-					fprintf(atfp, "## Data type:             beam amplitude\n");
+					mb_gmt_text_put(atfp, "## Amplitude correction table files generated by program %s\n", program_name);
+					mb_gmt_text_put(atfp, "## MB-system Version %s\n", MB_VERSION);
+					mb_gmt_text_put(atfp, "## Table file format: 1.0.0\n");
+					mb_gmt_text_put(atfp, "## Run by user <%s> on cpu <%s> at <%s>\n", user2, host2, date2);
+					mb_gmt_text_put(atfp, "## Input swath file:      %s\n", swathfile);
+					mb_gmt_text_put(atfp, "## Input swath format:    %d\n", format);
+					mb_gmt_text_put(atfp, "## Output table file:     %s\n", amptablefile);
+					mb_gmt_text_put(atfp, "## Pings to average:      %d\n", pings_avg);
+					mb_gmt_text_put(atfp, "## Number of angle bins:  %d\n", nangles);
+					mb_gmt_text_put(atfp, "## Maximum angle:         %f\n", angle_max);
+					mb_gmt_text_put(atfp, "## Default altitude:      %f\n", altitude_default);
+					mb_gmt_text_put(atfp, "## Slope correction:      %d\n", amp_corr_slope);
+					mb_gmt_text_put(atfp, "## Data type:             beam amplitude\n");
 				}
 
 				if (sidescan_on) {
-					fprintf(stfp, "## Sidescan correction table files generated by program %s\n", program_name);
-					fprintf(stfp, "## MB-system Version %s\n", MB_VERSION);
-					fprintf(stfp, "## Table file format: 1.0.0\n");
-					fprintf(stfp, "## Run by user <%s> on cpu <%s> at <%s>\n", user2, host2, date2);
-					fprintf(stfp, "## Input swath file:      %s\n", swathfile);
-					fprintf(stfp, "## Input swath format:    %d\n", format);
-					fprintf(stfp, "## Output table file:     %s\n", sstablefile);
-					fprintf(stfp, "## Pings to average:      %d\n", pings_avg);
-					fprintf(stfp, "## Number of angle bins:  %d\n", nangles);
-					fprintf(stfp, "## Maximum angle:         %f\n", angle_max);
-					fprintf(stfp, "## Default altitude:      %f\n", altitude_default);
-					fprintf(stfp, "## Slope Correction:      %d\n", ss_corr_slope);
-					fprintf(stfp, "## Data type:             sidescan\n");
+					mb_gmt_text_put(stfp, "## Sidescan correction table files generated by program %s\n", program_name);
+					mb_gmt_text_put(stfp, "## MB-system Version %s\n", MB_VERSION);
+					mb_gmt_text_put(stfp, "## Table file format: 1.0.0\n");
+					mb_gmt_text_put(stfp, "## Run by user <%s> on cpu <%s> at <%s>\n", user2, host2, date2);
+					mb_gmt_text_put(stfp, "## Input swath file:      %s\n", swathfile);
+					mb_gmt_text_put(stfp, "## Input swath format:    %d\n", format);
+					mb_gmt_text_put(stfp, "## Output table file:     %s\n", sstablefile);
+					mb_gmt_text_put(stfp, "## Pings to average:      %d\n", pings_avg);
+					mb_gmt_text_put(stfp, "## Number of angle bins:  %d\n", nangles);
+					mb_gmt_text_put(stfp, "## Maximum angle:         %f\n", angle_max);
+					mb_gmt_text_put(stfp, "## Default altitude:      %f\n", altitude_default);
+					mb_gmt_text_put(stfp, "## Slope Correction:      %d\n", ss_corr_slope);
+					mb_gmt_text_put(stfp, "## Data type:             sidescan\n");
 				}
 			}
 
@@ -1574,9 +1624,9 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 				mb_esf_close(verbose, &esf, &error);
 
 			if (!dump && amplitude_on)
-				fclose(atfp);
+				mb_gmt_text_end(atfp);
 			if (!dump && sidescan_on)
-				fclose(stfp);
+				mb_gmt_text_end(stfp);
 			ntabletot += ntable;
 			nrectot += nrec;
 			namptot += namp;
@@ -1716,26 +1766,26 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 	altitude_totavg /= ntotavg;
 	if (!dump && amplitude_on) {
 		snprintf(amptablefile, sizeof(amptablefile), "%s_tot.aga", read_file);
-		if ((atfp = fopen(amptablefile, "w")) == NULL) {
+		if ((atfp = mb_gmt_text_file(GMT, amptablefile)) == NULL) {
 			error = MB_ERROR_OPEN_FAIL;
 			char *message;
 			mb_error(verbose, error, &message);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open output table file %s\n", amptablefile);
 			GMT_Report(API, GMT_MSG_NORMAL, "Program %s aborted!\n", program_name);
-			Return(error);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
-		fprintf(atfp, "## Amplitude correction table files generated by program %s\n", program_name);
-		fprintf(atfp, "## MB-system Version %s\n", MB_VERSION);
-		fprintf(atfp, "## Table file format: 1.0.0\n");
-		fprintf(atfp, "## Run by user <%s> on cpu <%s> at <%s>\n", user, host, date);
-		fprintf(atfp, "## Input file:            %s\n", read_file);
-		fprintf(atfp, "## Output table file:     %s\n", amptablefile);
-		fprintf(atfp, "## Pings to average:      %d\n", pings_avg);
-		fprintf(atfp, "## Number of angle bins:  %d\n", nangles);
-		fprintf(atfp, "## Maximum angle:         %f\n", angle_max);
-		fprintf(atfp, "## Default altitude:      %f\n", altitude_default);
-		fprintf(atfp, "## Slope correction:      %d\n", amp_corr_slope);
-		fprintf(atfp, "## Data type:             beam amplitude\n");
+		mb_gmt_text_put(atfp, "## Amplitude correction table files generated by program %s\n", program_name);
+		mb_gmt_text_put(atfp, "## MB-system Version %s\n", MB_VERSION);
+		mb_gmt_text_put(atfp, "## Table file format: 1.0.0\n");
+		mb_gmt_text_put(atfp, "## Run by user <%s> on cpu <%s> at <%s>\n", user, host, date);
+		mb_gmt_text_put(atfp, "## Input file:            %s\n", read_file);
+		mb_gmt_text_put(atfp, "## Output table file:     %s\n", amptablefile);
+		mb_gmt_text_put(atfp, "## Pings to average:      %d\n", pings_avg);
+		mb_gmt_text_put(atfp, "## Number of angle bins:  %d\n", nangles);
+		mb_gmt_text_put(atfp, "## Maximum angle:         %f\n", angle_max);
+		mb_gmt_text_put(atfp, "## Default altitude:      %f\n", altitude_default);
+		mb_gmt_text_put(atfp, "## Slope correction:      %d\n", amp_corr_slope);
+		mb_gmt_text_put(atfp, "## Data type:             beam amplitude\n");
 		if (beammode == MBBACKANGLE_BEAMPATTERN_EMPIRICAL) {
 			output_table(verbose, API, atfp, 0, ntotavg, time_d_totavg, nangles, angle_max, dangle, symmetry, nmeantotamp, meantotamp,
 			             sigmatotamp, &error);
@@ -1744,30 +1794,30 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 			output_model(verbose, API, atfp, ssbeamwidth, ssdepression, ref_angle, 0, ntotavg, time_d_totavg, altitude_totavg, nangles,
 			             angle_max, dangle, symmetry, nmeantotamp, meantotamp, sigmatotamp, &error);
 		}
-		fclose(atfp);
+		mb_gmt_text_end(atfp);
 	}
 	if (!dump && sidescan_on) {
 		snprintf(sstablefile, sizeof(sstablefile), "%s_tot.sga", read_file);
-		if ((stfp = fopen(sstablefile, "w")) == NULL) {
+		if ((stfp = mb_gmt_text_file(GMT, sstablefile)) == NULL) {
 			error = MB_ERROR_OPEN_FAIL;
 			char *message;
 			mb_error(verbose, error, &message);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open output table file %s\n", sstablefile);
 			GMT_Report(API, GMT_MSG_NORMAL, "Program %s aborted!\n", program_name);
-			Return(error);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
-		fprintf(stfp, "## Sidescan correction table files generated by program %s\n", program_name);
-		fprintf(stfp, "## MB-system Version %s\n", MB_VERSION);
-		fprintf(stfp, "## Table file format: 1.0.0\n");
-		fprintf(stfp, "## Run by user <%s> on cpu <%s> at <%s>\n", user, host, date);
-		fprintf(stfp, "## Input file:            %s\n", read_file);
-		fprintf(stfp, "## Output table file:     %s\n", sstablefile);
-		fprintf(stfp, "## Pings to average:      %d\n", pings_avg);
-		fprintf(stfp, "## Number of angle bins:  %d\n", nangles);
-		fprintf(stfp, "## Maximum angle:         %f\n", angle_max);
-		fprintf(stfp, "## Default altitude:      %f\n", altitude_default);
-		fprintf(stfp, "## Slope Correction:      %d\n", ss_corr_slope);
-		fprintf(stfp, "## Data type:             sidescan\n");
+		mb_gmt_text_put(stfp, "## Sidescan correction table files generated by program %s\n", program_name);
+		mb_gmt_text_put(stfp, "## MB-system Version %s\n", MB_VERSION);
+		mb_gmt_text_put(stfp, "## Table file format: 1.0.0\n");
+		mb_gmt_text_put(stfp, "## Run by user <%s> on cpu <%s> at <%s>\n", user, host, date);
+		mb_gmt_text_put(stfp, "## Input file:            %s\n", read_file);
+		mb_gmt_text_put(stfp, "## Output table file:     %s\n", sstablefile);
+		mb_gmt_text_put(stfp, "## Pings to average:      %d\n", pings_avg);
+		mb_gmt_text_put(stfp, "## Number of angle bins:  %d\n", nangles);
+		mb_gmt_text_put(stfp, "## Maximum angle:         %f\n", angle_max);
+		mb_gmt_text_put(stfp, "## Default altitude:      %f\n", altitude_default);
+		mb_gmt_text_put(stfp, "## Slope Correction:      %d\n", ss_corr_slope);
+		mb_gmt_text_put(stfp, "## Data type:             sidescan\n");
 		if (beammode == MBBACKANGLE_BEAMPATTERN_EMPIRICAL) {
 			output_table(verbose, API, stfp, 0, ntotavg, time_d_totavg, nangles, angle_max, dangle, symmetry, nmeantotss, meantotss,
 			             sigmatotss, &error);
@@ -1776,7 +1826,7 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 			output_model(verbose, API, stfp, ssbeamwidth, ssdepression, ref_angle, 0, ntotavg, time_d_totavg, altitude_totavg, nangles,
 			             angle_max, dangle, symmetry, nmeantotss, meantotss, sigmatotss, &error);
 		}
-		fclose(stfp);
+		mb_gmt_text_end(stfp);
 	}
 
 	/* output information */
@@ -1832,6 +1882,20 @@ int GMT_mbbackangle(void *V_API, int mode, void *args) {
 	if (verbose > 0)
 		fprintf(stderr, "\n");
 
-	Return(error);
+	if (T) {
+		const int output_failed = mb_gmt_text_end(T);
+		T = NULL;
+		if (output_failed) Return(GMT_RUNTIME_ERROR);
+	}
+
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+	   The end of the data (EOF) is how every read finishes, not an error. */
+	if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

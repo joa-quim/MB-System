@@ -10,6 +10,7 @@
 
 #include <stdlib.h>
 #include "mb_bitpack.h"
+#include "../mbio/mbio_export.h"   /* MBBITPACK_API: its C API is declared in mbio's mb_define.h */
 
 /*****************************************************************************
 ** C wrapper API for class BitPack
@@ -25,15 +26,15 @@ typedef struct mb_bitpack_s mb_bitpack_t;
 extern "C" {
 #endif
 
-// BitPack C API
-void *mb_bitpack_new();
-void mb_bitpack_delete(void **mbbpptr);
+// BitPack C API (MBBITPACK_API: what mbio uses from outside this DLL)
+MBBITPACK_API void *mb_bitpack_new();
+MBBITPACK_API void mb_bitpack_delete(void **mbbpptr);
 void mb_bitpack_clear(void *mbbpptr);
-void mb_bitpack_setbitsize(void *mbbpptr, unsigned int nbits);
-bool mb_bitpack_resize(void *mbbpptr, unsigned int arraySize, char **buffer, unsigned int* buffer_size);
+MBBITPACK_API void mb_bitpack_setbitsize(void *mbbpptr, unsigned int nbits);
+MBBITPACK_API bool mb_bitpack_resize(void *mbbpptr, unsigned int arraySize, char **buffer, unsigned int* buffer_size);
 int mb_bitpack_getbytestoread(void *mbbpptr);
 int mb_bitpack_getbytestowrite(void *mbbpptr);
-bool mb_bitpack_readvalue(void *mbbpptr, unsigned int* value);
+MBBITPACK_API bool mb_bitpack_readvalue(void *mbbpptr, unsigned int* value);
 bool mb_bitpack_writevalue(void *mbbpptr, unsigned int value);
 
 #ifdef __cplusplus
@@ -42,7 +43,7 @@ bool mb_bitpack_writevalue(void *mbbpptr, unsigned int value);
 
 //-----------------------------------------------------------------------------
 /* allocate a new instance of a bit packed array */
-void *mb_bitpack_new()
+MBBITPACK_API void *mb_bitpack_new()
 {
     mb_bitpack_t *m = (mb_bitpack_t *)malloc(sizeof(*m));
 
@@ -58,7 +59,7 @@ void *mb_bitpack_new()
 
 //-----------------------------------------------------------------------------
 /* deallocate a bit packed array */
-void mb_bitpack_delete(void **pmbbpptr)
+MBBITPACK_API void mb_bitpack_delete(void **pmbbpptr)
 {
 	mb_bitpack_t **pself = (mb_bitpack_t **)pmbbpptr;
     if (NULL != pself) {
@@ -85,7 +86,7 @@ void   mb_bitpack_clear(void *vself)
 
 //-----------------------------------------------------------------------------
 /* set the bit packing (number of bits per value) in a bit packed array */
-void   mb_bitpack_setbitsize(void *vself, unsigned int nbits)
+MBBITPACK_API void   mb_bitpack_setbitsize(void *vself, unsigned int nbits)
 {
 	mb_bitpack_t *self = (mb_bitpack_t *) vself;
 	unsigned char WriteSizeBits = (unsigned char) nbits;
@@ -100,7 +101,7 @@ void   mb_bitpack_setbitsize(void *vself, unsigned int nbits)
 
 //-----------------------------------------------------------------------------
 /* set the size of a bit packed array */
-bool   mb_bitpack_resize(void *vself, unsigned int arraySize, char **pbuffer, unsigned int* bufferSize)
+MBBITPACK_API bool   mb_bitpack_resize(void *vself, unsigned int arraySize, char **pbuffer, unsigned int* bufferSize)
 {
 	mb_bitpack_t *self = (mb_bitpack_t *) vself;
     *pbuffer = NULL;
@@ -150,7 +151,7 @@ int    mb_bitpack_getbytestowrite(void *vself)
 
 //-----------------------------------------------------------------------------
 /* read the next value from a bit packed array */
-bool   mb_bitpack_readvalue(void *vself, unsigned int* pValue)
+MBBITPACK_API bool   mb_bitpack_readvalue(void *vself, unsigned int* pValue)
 {
 	mb_bitpack_t *self = (mb_bitpack_t *) vself;
     if (NULL != self) {

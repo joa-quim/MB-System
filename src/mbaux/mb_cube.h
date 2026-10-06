@@ -50,6 +50,7 @@
 
 #ifndef MB_CUBE_H_
 #define MB_CUBE_H_
+#include "mbaux_export.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -201,28 +202,28 @@ typedef struct mb_cube_answer {
 /* Get fixed and variable Total Vertical Uncertainty components for the different IHO Order
    categories, see S-44 Table 1 - Minimum Bathymetry Standards for Safety of Navigation
    Hydrographic Surveys.  'a' is the fixed component of the TVU equation, 'b' the variable one. */
-MB_CUBE_API int mb_cube_iho_limits(mb_cube_iho_t iho_order, double *a, double *b);
+MBAUX_API MB_CUBE_API int mb_cube_iho_limits(mb_cube_iho_t iho_order, double *a, double *b);
 
 /* Same table, Total Horizontal Uncertainty: THU = a + b * depth, both at 95% confidence.
    (Not in bathycube; used by callers that have no per-sounding horizontal uncertainty.) */
-MB_CUBE_API int mb_cube_iho_thu_limits(mb_cube_iho_t iho_order, double *a, double *b);
+MBAUX_API MB_CUBE_API int mb_cube_iho_thu_limits(mb_cube_iho_t iho_order, double *a, double *b);
 
-MB_CUBE_API int mb_cube_iho_from_name(const char *name, mb_cube_iho_t *iho_order);
-MB_CUBE_API const char *mb_cube_iho_name(mb_cube_iho_t iho_order);
-MB_CUBE_API int mb_cube_method_from_name(const char *name, mb_cube_method_t *method);
-MB_CUBE_API const char *mb_cube_method_name(mb_cube_method_t method);
-MB_CUBE_API int mb_cube_variance_from_name(const char *name, mb_cube_variance_t *variance_selection);
-MB_CUBE_API const char *mb_cube_variance_name(mb_cube_variance_t variance_selection);
+MBAUX_API MB_CUBE_API int mb_cube_iho_from_name(const char *name, mb_cube_iho_t *iho_order);
+MBAUX_API MB_CUBE_API const char *mb_cube_iho_name(mb_cube_iho_t iho_order);
+MBAUX_API MB_CUBE_API int mb_cube_method_from_name(const char *name, mb_cube_method_t *method);
+MBAUX_API MB_CUBE_API const char *mb_cube_method_name(mb_cube_method_t method);
+MBAUX_API MB_CUBE_API int mb_cube_variance_from_name(const char *name, mb_cube_variance_t *variance_selection);
+MBAUX_API MB_CUBE_API const char *mb_cube_variance_name(mb_cube_variance_t variance_selection);
 MB_CUBE_API int mb_cube_extractor_from_name(const char *name, mb_cube_extractor_t *extractor);
 MB_CUBE_API const char *mb_cube_extractor_name(mb_cube_extractor_t extractor);
 MB_CUBE_API const char *mb_cube_strerror(int code);
 
 /* ---- CubeParameters ------------------------------------------------------------------------ */
 
-MB_CUBE_API void mb_cube_params_default(mb_cube_params *p);
+MBAUX_API MB_CUBE_API void mb_cube_params_default(mb_cube_params *p);
 
 /* Build the situational parameters now, those related to IHO order or grid resolution. */
-MB_CUBE_API int mb_cube_params_initialize(mb_cube_params *p, mb_cube_iho_t iho_order, double grid_resolution_x,
+MBAUX_API MB_CUBE_API int mb_cube_params_initialize(mb_cube_params *p, mb_cube_iho_t iho_order, double grid_resolution_x,
                               double grid_resolution_y);
 
 /* The parameter file is the JSON object bathycube's write_parameter_file() writes (json.dump of
@@ -230,8 +231,8 @@ MB_CUBE_API int mb_cube_params_initialize(mb_cube_params *p, mb_cube_iho_t iho_o
    that names a parameter is applied, unknown keys are ignored.  Reading does not re-initialize;
    call mb_cube_params_initialize() afterwards so derived values follow what was read.
    *valid_data (may be NULL) tells whether the file held any parameter at all. */
-MB_CUBE_API int mb_cube_params_write(const mb_cube_params *p, const char *param_file);
-MB_CUBE_API int mb_cube_params_read(mb_cube_params *p, const char *param_file, bool *valid_data);
+MBAUX_API MB_CUBE_API int mb_cube_params_write(const mb_cube_params *p, const char *param_file);
+MBAUX_API MB_CUBE_API int mb_cube_params_read(mb_cube_params *p, const char *param_file, bool *valid_data);
 
 /* ---- CubeGrid ------------------------------------------------------------------------------ */
 
@@ -240,65 +241,65 @@ MB_CUBE_API int mb_cube_params_read(mb_cube_params *p, const char *param_file, b
    to false this step is skipped (the User Manual states that with multiple hypothesis
    implementation of CUBE, Reordering is no longer necessary).  logfile may be NULL; debug enables
    the DEBUG-level messages.  Returns NULL on bad arguments or out of memory. */
-MB_CUBE_API mb_cube_grid *mb_cube_grid_new(double minimum_easting, double maximum_northing, int num_columns, int num_rows,
+MBAUX_API MB_CUBE_API mb_cube_grid *mb_cube_grid_new(double minimum_easting, double maximum_northing, int num_columns, int num_rows,
                                double resolution_x, double resolution_y, const mb_cube_params *param, bool use_queue,
                                const char *logfile, bool debug);
-MB_CUBE_API void mb_cube_grid_free(mb_cube_grid **grid);
+MBAUX_API MB_CUBE_API void mb_cube_grid_free(mb_cube_grid **grid);
 
 MB_CUBE_API const mb_cube_params *mb_cube_grid_params(const mb_cube_grid *grid);
 
 /* Add an array of point values to the grid.  depth: new depth values; horizontal_uncertainty and
    vertical_uncertainty: the variances (units^2) associated with the points; easting, northing:
    the positions, in the grid's projected units. */
-MB_CUBE_API int mb_cube_grid_insert(mb_cube_grid *grid, size_t n, const double *depth, const double *horizontal_uncertainty,
+MBAUX_API MB_CUBE_API int mb_cube_grid_insert(mb_cube_grid *grid, size_t n, const double *depth, const double *horizontal_uncertainty,
                         const double *vertical_uncertainty, const double *easting, const double *northing);
 
 /* Flush the queues for each node.  Must be done before extracting depth estimates. */
-MB_CUBE_API void mb_cube_grid_flush(mb_cube_grid *grid);
+MBAUX_API MB_CUBE_API void mb_cube_grid_flush(mb_cube_grid *grid);
 
-MB_CUBE_API size_t mb_cube_grid_populated_nodes_count(const mb_cube_grid *grid);
-MB_CUBE_API size_t mb_cube_grid_empty_nodes_count(const mb_cube_grid *grid);
-MB_CUBE_API size_t mb_cube_grid_total_nodes_count(const mb_cube_grid *grid);
+MBAUX_API MB_CUBE_API size_t mb_cube_grid_populated_nodes_count(const mb_cube_grid *grid);
+MBAUX_API MB_CUBE_API size_t mb_cube_grid_empty_nodes_count(const mb_cube_grid *grid);
+MBAUX_API MB_CUBE_API size_t mb_cube_grid_total_nodes_count(const mb_cube_grid *grid);
 
 /* Get the values for each node in the grid.  Any output pointer may be NULL; each non-NULL one
    holds num_rows * num_columns floats in the given layout.  n_hypotheses comes back without the
    expensive hypothesis selection when it is the only output requested. */
-MB_CUBE_API int mb_cube_grid_get_values(mb_cube_grid *grid, mb_cube_method_t method, float *depth, float *uncertainty,
+MBAUX_API MB_CUBE_API int mb_cube_grid_get_values(mb_cube_grid *grid, mb_cube_method_t method, float *depth, float *uncertainty,
                             float *ratio, float *n_hypotheses, float *n_points, mb_cube_layout_t layout);
 
 /* ---- CubeNode (addressed through the grid) ------------------------------------------------- */
 
-MB_CUBE_API mb_cube_node *mb_cube_grid_node(mb_cube_grid *grid, int row, int col);
+MBAUX_API MB_CUBE_API mb_cube_node *mb_cube_grid_node(mb_cube_grid *grid, int row, int col);
 
-MB_CUBE_API double mb_cube_node_predicted_depth(const mb_cube_node *node);
-MB_CUBE_API double mb_cube_node_predicted_variance(const mb_cube_node *node);
-MB_CUBE_API void mb_cube_node_set_predicted_depth(mb_cube_node *node, double new_depth);
-MB_CUBE_API void mb_cube_node_set_predicted_variance(mb_cube_node *node, double new_variance);
+MBAUX_API MB_CUBE_API double mb_cube_node_predicted_depth(const mb_cube_node *node);
+MBAUX_API MB_CUBE_API double mb_cube_node_predicted_variance(const mb_cube_node *node);
+MBAUX_API MB_CUBE_API void mb_cube_node_set_predicted_depth(mb_cube_node *node, double new_depth);
+MBAUX_API MB_CUBE_API void mb_cube_node_set_predicted_variance(mb_cube_node *node, double new_variance);
 
-MB_CUBE_API int mb_cube_node_add_hypothesis(mb_cube_grid *grid, mb_cube_node *node, double depth, double variance,
+MBAUX_API MB_CUBE_API int mb_cube_node_add_hypothesis(mb_cube_grid *grid, mb_cube_node *node, double depth, double variance,
                                 bool null_hypothesis);
-MB_CUBE_API int mb_cube_node_remove_hypothesis(mb_cube_grid *grid, mb_cube_node *node, double depth);
-MB_CUBE_API int mb_cube_node_nominate_hypothesis(mb_cube_grid *grid, mb_cube_node *node, double depth);
-MB_CUBE_API void mb_cube_node_clear_nomination(mb_cube_grid *grid, mb_cube_node *node);
-MB_CUBE_API bool mb_cube_node_has_nomination(const mb_cube_node *node);
-MB_CUBE_API int mb_cube_node_number_of_hypotheses(const mb_cube_node *node);
-MB_CUBE_API int mb_cube_node_number_queued(const mb_cube_node *node);
+MBAUX_API MB_CUBE_API int mb_cube_node_remove_hypothesis(mb_cube_grid *grid, mb_cube_node *node, double depth);
+MBAUX_API MB_CUBE_API int mb_cube_node_nominate_hypothesis(mb_cube_grid *grid, mb_cube_node *node, double depth);
+MBAUX_API MB_CUBE_API void mb_cube_node_clear_nomination(mb_cube_grid *grid, mb_cube_node *node);
+MBAUX_API MB_CUBE_API bool mb_cube_node_has_nomination(const mb_cube_node *node);
+MBAUX_API MB_CUBE_API int mb_cube_node_number_of_hypotheses(const mb_cube_node *node);
+MBAUX_API MB_CUBE_API int mb_cube_node_number_queued(const mb_cube_node *node);
 
 /* Insert a point into the node (squared distance from point to node, as bathycube passes it). */
-MB_CUBE_API int mb_cube_node_add_point(mb_cube_grid *grid, mb_cube_node *node, double depth, double vertical_uncertainty,
+MBAUX_API MB_CUBE_API int mb_cube_node_add_point(mb_cube_grid *grid, mb_cube_node *node, double depth, double vertical_uncertainty,
                            double horizontal_uncertainty, double distance_to_node);
-MB_CUBE_API int mb_cube_node_flush_queue(mb_cube_grid *grid, mb_cube_node *node);
+MBAUX_API MB_CUBE_API int mb_cube_node_flush_queue(mb_cube_grid *grid, mb_cube_node *node);
 
-MB_CUBE_API void mb_cube_node_extract_value(mb_cube_grid *grid, const mb_cube_node *node, mb_cube_answer *answer);
-MB_CUBE_API void mb_cube_node_extract_closest_value(mb_cube_grid *grid, const mb_cube_node *node, double depth, double variance,
+MBAUX_API MB_CUBE_API void mb_cube_node_extract_value(mb_cube_grid *grid, const mb_cube_node *node, mb_cube_answer *answer);
+MBAUX_API MB_CUBE_API void mb_cube_node_extract_closest_value(mb_cube_grid *grid, const mb_cube_node *node, double depth, double variance,
                                         mb_cube_answer *answer);
-MB_CUBE_API void mb_cube_node_extract_posterior_weighted_value(mb_cube_grid *grid, const mb_cube_node *node, double depth,
+MBAUX_API MB_CUBE_API void mb_cube_node_extract_posterior_weighted_value(mb_cube_grid *grid, const mb_cube_node *node, double depth,
                                                    double variance, mb_cube_answer *answer);
 MB_CUBE_API double mb_cube_node_return_depth(mb_cube_grid *grid, const mb_cube_node *node);
 MB_CUBE_API double mb_cube_node_return_uncertainty(mb_cube_grid *grid, const mb_cube_node *node);
 
 /* Hypothesis i (0-based) of the node; any out pointer may be NULL. */
-MB_CUBE_API int mb_cube_node_hypothesis(const mb_cube_node *node, int i, double *current_depth, double *current_variance,
+MBAUX_API MB_CUBE_API int mb_cube_node_hypothesis(const mb_cube_node *node, int i, double *current_depth, double *current_variance,
                             int *number_of_points, int *hypothesis_number);
 
 /* Print the status of each hypothesis */
@@ -310,7 +311,7 @@ MB_CUBE_API void mb_cube_node_dump_hypotheses(const mb_cube_node *node, FILE *fp
    are used and then initialized with iho_order and the resolutions.  Each output grid (any may
    be NULL) holds num_rows * num_columns floats, MB_CUBE_LAYOUT_ROWS_NORTH: bathycube's
    (rows, columns). */
-MB_CUBE_API int mb_cube_run_gridding(size_t n, const double *depth, const double *horizontal_uncertainty,
+MBAUX_API MB_CUBE_API int mb_cube_run_gridding(size_t n, const double *depth, const double *horizontal_uncertainty,
                          const double *vertical_uncertainty, const double *easting, const double *northing,
                          int num_columns, int num_rows, double minimum_easting, double maximum_northing,
                          mb_cube_method_t method, mb_cube_iho_t iho_order, double grid_resolution_x,

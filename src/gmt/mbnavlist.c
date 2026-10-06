@@ -39,7 +39,9 @@
 #define THIS_MODULE_PURPOSE		"List contents of navigation records in a swath sonar data file"
 #define THIS_MODULE_KEYS		"<D{,>D}"
 #define THIS_MODULE_NEEDS		""
-#define THIS_MODULE_OPTIONS		"-:>RVhi"
+/* -V only: -R, -h and -i were listed here and GMT took them -- the program's -R bounds, -h help and
+   -i input (lower-case alias of -I) are its own, parsed below. */
+#define THIS_MODULE_OPTIONS		"->V"
 
 #include "gmt_dev.h"
 
@@ -47,6 +49,7 @@
 #include "mb_format.h"
 #include "mb_io.h"
 #include "mb_status.h"
+#include "mb_gmt_text.h"
 
 #define MAX_OPTIONS 100
 
@@ -61,7 +64,7 @@ EXTERN_MSC int GMT_mbnavlist(void *API, int mode, void *args);
 
 /* --- helper ---------------------------------------------------------- */
 
-static int printsimplevalue(int verbose, double value, int width, int precision, bool ascii,
+static int printsimplevalue(struct MB_GMT_TEXT *T, int verbose, double value, int width, int precision, bool ascii,
                             bool *invert, bool *flipsign, int *error) {
 	if (verbose >= 2) {
 		fprintf(stderr, "\ndbg2  MBlist function <%s> called\n", __func__);
@@ -96,7 +99,7 @@ static int printsimplevalue(int verbose, double value, int width, int precision,
 	}
 
 	if (ascii)
-		printf(format, value);
+		mb_gmt_text_put(T,format, value);
 	else
 		fwrite(&value, sizeof(double), 1, stdout);
 
@@ -133,6 +136,7 @@ struct MBNAVLIST_CTRL {
 	struct mnl_S { bool active; double speedmin; } S;
 	struct mnl_T { bool active; double timegap; } T;
 	struct mnl_Z { bool active; segment_mode_t mode; char tag[MB_PATH_MAXLINE]; } Z;
+	struct mnl_H { bool active; } H;                                   /* help */
 };
 
 static void *New_mbnavlist_Ctrl(struct GMT_CTRL *GMT) {
@@ -152,6 +156,30 @@ static void Free_mbnavlist_Ctrl(struct GMT_CTRL *GMT, struct MBNAVLIST_CTRL *Ctr
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones (each one has a short twin) */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'B', "begin-time",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'A', "binary",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "bounds",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'K', "data-kind",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "decimate",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'G', "delimiter",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'E', "end-time",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "longitude-domain", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "nav-channel",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output-format",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'J', "projection",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Z', "segment",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "speed-minimum",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "time-gap",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'v', "verbose",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
@@ -159,8 +187,11 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	    "usage: mbnavlist [-A -Byr/mo/da/hr/mn/sc -Ddecimate -Eyr/mo/da/hr/mn/sc\n"
 	    "\t-Fformat -Gdelim -Ifile -Jproj -Kkind -Llonflip -Nnavchan\n"
 	    "\t-Ooptions -Rw/e/s/n -Sspeed -Ttimegap -Zseg -V -H]\n\n");
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
-	return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
+	GMT_Message(API, GMT_TIME_NONE,
+	    "Every option also has the program's lower-case and long forms (--input=, --output-format=, ...).\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse(struct GMT_CTRL *GMT, struct MBNAVLIST_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -177,48 +208,54 @@ static int parse(struct GMT_CTRL *GMT, struct MBNAVLIST_CTRL *Ctrl, struct GMT_O
 				Ctrl->I.inputfile = strdup(opt->arg); n_files = 1;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'A': Ctrl->A.active = true; break;
-		case 'B':
+		/* Every option keeps the program's lower-case alias: GMT_Parse_Common only touches the
+		   common options named in THIS_MODULE_OPTIONS (-V), so these arrive here untouched. */
+		case 'A': case 'a': Ctrl->A.active = true; break;
+		case 'H': case 'h': Ctrl->H.active = true; break;
+		case 'v':	/* the program's -v: verbosity, as -V */
+			GMT->current.setting.verbose = GMT_MSG_INFORMATION;
+			break;
+		case 'B': case 'b':
 			Ctrl->B.t[6] = 0;
 			n = sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &Ctrl->B.t[0], &Ctrl->B.t[1], &Ctrl->B.t[2],
 			           &Ctrl->B.t[3], &Ctrl->B.t[4], &Ctrl->B.t[5]);
 			if (n == 6) Ctrl->B.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'D':
+		case 'D': case 'd':
 			if (sscanf(opt->arg, "%d", &Ctrl->D.decimate) > 0) Ctrl->D.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'E':
+		case 'E': case 'e':
 			Ctrl->E.t[6] = 0;
 			n = sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &Ctrl->E.t[0], &Ctrl->E.t[1], &Ctrl->E.t[2],
 			           &Ctrl->E.t[3], &Ctrl->E.t[4], &Ctrl->E.t[5]);
 			if (n == 6) Ctrl->E.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'F':
+		case 'F': case 'f':
 			if (sscanf(opt->arg, "%d", &Ctrl->F.format) > 0) Ctrl->F.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'G':
+		case 'G': case 'g':
 			sscanf(opt->arg, "%1023s", Ctrl->G.delim);
 			Ctrl->G.active = true;
 			break;
-		case 'I':
+		case 'I': case 'i':
 			if (!gmt_access(GMT, opt->arg, R_OK)) {
 				Ctrl->I.inputfile = strdup(opt->arg); Ctrl->I.active = true; n_files = 1;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'J':
+		case 'J': case 'j':
 			sscanf(opt->arg, "%1023s", Ctrl->J.proj);
 			Ctrl->J.active = true;
 			break;
-		case 'K':
+		case 'K': case 'k':
 			if (sscanf(opt->arg, "%d", &Ctrl->K.data_kind) > 0) Ctrl->K.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'L':
+		case 'L': case 'l':
 			if (sscanf(opt->arg, "%d", &Ctrl->L.lonflip) > 0) Ctrl->L.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'N':
+		case 'N': case 'n':
 			if (sscanf(opt->arg, "%d", &Ctrl->N.aux_nav_channel) > 0) Ctrl->N.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'O':
+		case 'O': case 'o':
 			if (strlen(opt->arg) > 0) {
 				int len = (int)strlen(opt->arg);
 				if (len > MAX_OPTIONS) len = MAX_OPTIONS;
@@ -230,17 +267,17 @@ static int parse(struct GMT_CTRL *GMT, struct MBNAVLIST_CTRL *Ctrl, struct GMT_O
 			}
 			Ctrl->O.active = true;
 			break;
-		case 'R':
+		case 'R': case 'r':
 			mb_get_bounds(opt->arg, Ctrl->R.bounds);
 			Ctrl->R.active = true;
 			break;
-		case 'S':
+		case 'S': case 's':
 			if (sscanf(opt->arg, "%lf", &Ctrl->S.speedmin) > 0) Ctrl->S.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'T':
+		case 'T': case 't':
 			if (sscanf(opt->arg, "%lf", &Ctrl->T.timegap) > 0) Ctrl->T.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'Z':
+		case 'Z': case 'z':
 			sscanf(opt->arg, "%1023s", Ctrl->Z.tag);
 			if      (strcmp(Ctrl->Z.tag, "swathfile") == 0) Ctrl->Z.mode = MBNAVLIST_SEGMENT_MODE_SWATHFILE;
 			else if (strcmp(Ctrl->Z.tag, "datalist") == 0)  Ctrl->Z.mode = MBNAVLIST_SEGMENT_MODE_DATALIST;
@@ -248,16 +285,16 @@ static int parse(struct GMT_CTRL *GMT, struct MBNAVLIST_CTRL *Ctrl, struct GMT_O
 			Ctrl->Z.active = true;
 			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code)  { gmt_M_free_options(mode); return code; }
-#define Return(code)   { free(asynch_buffer); Free_mbnavlist_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code)   { if (T) mb_gmt_text_end(T); free(asynch_buffer); Free_mbnavlist_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 
 /*--------------------------------------------------------------------*/
 int GMT_mbnavlist(void *V_API, int mode, void *args) {
@@ -267,24 +304,23 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 	struct MBNAVLIST_CTRL *Ctrl = NULL;
 	struct GMT_CTRL       *GMT = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION     *options = NULL;
+	struct MB_GMT_TEXT    *T = NULL;	/* the listing: GMT records, or stdout for the binary one (-A) */
 	struct GMTAPI_CTRL    *API = gmt_get_api_ptr(V_API);
 
 	if (API == NULL) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
-	if (!options || options->option == GMT_OPT_USAGE)    bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS)             bailout(usage(API, GMT_SYNOPSIS));
+	/* 1: no options is a valid run -- the program then lists ./datalist.mb-1 */
+	if ((error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(error);
 
-#if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
-#else
-	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
-#endif
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS,
+	                           module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = New_mbnavlist_Ctrl(GMT);
-	if ((error = parse(GMT, Ctrl, options)) != 0) Return (error);
+	if ((error = parse(GMT, Ctrl, options)) != 0) Return(error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
 	int verbose = GMT->common.V.active;
 	int format, pings, lonflip;
@@ -319,6 +355,9 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 
 	char list[MAX_OPTIONS];
 	memcpy(list, Ctrl->O.list, MAX_OPTIONS);
+
+	if ((T = ascii ? mb_gmt_text_begin(GMT, options) : mb_gmt_text_stdout(GMT)) == NULL)
+		Return(API->error);
 	int n_list = Ctrl->O.n_list;
 
 	if (verbose >= 2) {
@@ -377,9 +416,8 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 	if (read_datalist) {
 		const int look_processed = MB_DATALIST_LOOK_UNSET;
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
-			GMT_Report(API, GMT_MSG_NORMAL, "Unable to open data list file: %s\n", read_file);
-			GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			GMT_Report(API, GMT_MSG_ERROR, "Unable to open data list file: %s\n", read_file);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		read_data = mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight, &error) == MB_SUCCESS;
 	} else {
@@ -414,9 +452,8 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 	   whole default stack of a Windows thread: keep them on the heap. */
 	asynch_buffer = malloc(9 * MB_ASYNCH_SAVE_MAX * sizeof(double) + 7 * MB_ASYNCH_SAVE_MAX * sizeof(int));
 	if (asynch_buffer == NULL) {
-		fprintf(stderr, "\nUnable to allocate the asynchronous data buffers\n");
-		fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-		Return(MB_ERROR_MEMORY_FAIL);
+		GMT_Report(API, GMT_MSG_ERROR, "Unable to allocate the asynchronous data buffers\n");
+		Return(GMT_MEMORY_ERROR);
 	}
 	double *atime_d = (double *)asynch_buffer;
 	double *anavlon = atime_d + MB_ASYNCH_SAVE_MAX;
@@ -457,9 +494,8 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 		                               &attitude_source, &svp_source, &error)) == MB_FAILURE) {
 			char *message;
 			mb_error(verbose, error, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "MBIO Error returned from function <mb_format_source>:\n%s\n", message);
-			GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(error);
+			GMT_Report(API, GMT_MSG_ERROR, "MBIO Error returned from function <mb_format_source>: %s\n", message);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		if (aux_nav_channel > 0) {
@@ -476,10 +512,9 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 		                 &btime_d, &etime_d, &beams_bath, &beams_amp, &pixels_ss, &error) != MB_SUCCESS) {
 			char *message;
 			mb_error(verbose, error, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "MBIO Error returned from function <mb_read_init>:\n%s\n", message);
-			GMT_Report(API, GMT_MSG_NORMAL, "Multibeam File <%s> not initialized for reading\n", file);
-			GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(error);
+			GMT_Report(API, GMT_MSG_ERROR, "MBIO Error returned from function <mb_read_init>: %s\n", message);
+			GMT_Report(API, GMT_MSG_ERROR, "Multibeam File <%s> not initialized for reading\n", file);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		if (error == MB_ERROR_NO_ERROR)
@@ -502,18 +537,17 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 		if (error != MB_ERROR_NO_ERROR) {
 			char *message;
 			mb_error(verbose, error, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "MBIO Error allocating data arrays:\n%s\n", message);
-			GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(error);
+			GMT_Report(API, GMT_MSG_ERROR, "MBIO Error allocating data arrays: %s\n", message);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		if (segment && ascii) {
 			if (segment_mode == MBNAVLIST_SEGMENT_MODE_TAG)
-				printf("%s\n", segment_tag);
+				mb_gmt_text_put(T,"%s\n", segment_tag);
 			else if (segment_mode == MBNAVLIST_SEGMENT_MODE_SWATHFILE)
-				printf("# %s\n", file);
+				mb_gmt_text_put(T,"# %s\n", file);
 			else if (segment_mode == MBNAVLIST_SEGMENT_MODE_DATALIST)
-				printf("# %s\n", dfile);
+				mb_gmt_text_put(T,"# %s\n", dfile);
 		}
 
 		double distance_total = 0.0;
@@ -635,10 +669,9 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 							proj_status = mb_proj_init(verbose, projection_id, &pjptr, &error);
 
 							if (proj_status != MB_SUCCESS) {
-								GMT_Report(API, GMT_MSG_NORMAL, "Output projection %s not found in database\n", projection_id);
-								GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", THIS_MODULE_NAME);
+								GMT_Report(API, GMT_MSG_ERROR, "Output projection %s not found in database\n", projection_id);
 								mb_memory_clear(verbose, &error);
-								Return(MB_ERROR_BAD_PARAMETER);
+								Return(GMT_RUNTIME_ERROR);
 							}
 						}
 
@@ -661,19 +694,19 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 								signflip_next_value = true;
 								break;
 							case 'c':
-								printsimplevalue(verbose, sensordepth, 0, 4, ascii, &invert_next_value, &signflip_next_value, &error);
+								printsimplevalue(T, verbose,sensordepth, 0, 4, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
 							case 'H':
-								printsimplevalue(verbose, heading, 7, 3, ascii, &invert_next_value, &signflip_next_value, &error);
+								printsimplevalue(T, verbose,heading, 7, 3, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
 							case 'h':
-								printsimplevalue(verbose, course, 7, 3, ascii, &invert_next_value, &signflip_next_value, &error);
+								printsimplevalue(T, verbose,course, 7, 3, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
 							case 'J':
 								mb_get_jtime(verbose, time_i, time_j);
 								seconds = time_i[5] + 0.000001 * time_i[6];
 								if (ascii) {
-									printf("%.4d %.3d %.2d %.2d %9.6f", time_j[0], time_j[1], time_i[3], time_i[4], seconds);
+									mb_gmt_text_put(T,"%.4d %.3d %.2d %.2d %9.6f", time_j[0], time_j[1], time_i[3], time_i[4], seconds);
 								} else {
 									double b = time_j[0];
 									fwrite(&b, sizeof(double), 1, stdout);
@@ -693,7 +726,7 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 								mb_get_jtime(verbose, time_i, time_j);
 								seconds = time_i[5] + 0.000001 * time_i[6];
 								if (ascii) {
-									printf("%.4d %.3d %.4d %9.6f", time_j[0], time_j[1], time_j[2], seconds);
+									mb_gmt_text_put(T,"%.4d %.3d %.4d %9.6f", time_j[0], time_j[1], time_j[2], seconds);
 								} else {
 									double b = time_j[0];
 									fwrite(&b, sizeof(double), 1, stdout);
@@ -708,13 +741,13 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 								}
 								break;
 							case 'L':
-								printsimplevalue(verbose, distance_total, 8, 4, ascii, &invert_next_value, &signflip_next_value, &error);
+								printsimplevalue(T, verbose,distance_total, 8, 4, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
 							case 'l':
-								printsimplevalue(verbose, 1000.0 * distance_total, 8, 4, ascii, &invert_next_value, &signflip_next_value, &error);
+								printsimplevalue(T, verbose,1000.0 * distance_total, 8, 4, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
 							case 'M':
-								printsimplevalue(verbose, time_d, 0, 6, ascii, &invert_next_value, &signflip_next_value, &error);
+								printsimplevalue(T, verbose,time_d, 0, 6, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
 							case 'm': {
 								if (first_m) {
@@ -722,31 +755,31 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 									first_m = false;
 								}
 								double b = time_d - time_d_ref;
-								printsimplevalue(verbose, b, 0, 6, ascii, &invert_next_value, &signflip_next_value, &error);
+								printsimplevalue(T, verbose,b, 0, 6, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
 							}
 							case 'P':
-								printsimplevalue(verbose, pitch, 6, 3, ascii, &invert_next_value, &signflip_next_value, &error);
+								printsimplevalue(T, verbose,pitch, 6, 3, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
 							case 'p':
-								printsimplevalue(verbose, draft, 7, 4, ascii, &invert_next_value, &signflip_next_value, &error);
+								printsimplevalue(T, verbose,draft, 7, 4, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
 							case 'R':
-								printsimplevalue(verbose, roll, 6, 3, ascii, &invert_next_value, &signflip_next_value, &error);
+								printsimplevalue(T, verbose,roll, 6, 3, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
 							case 'r':
-								printsimplevalue(verbose, heave, 7, 4, ascii, &invert_next_value, &signflip_next_value, &error);
+								printsimplevalue(T, verbose,heave, 7, 4, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
 							case 'S':
-								printsimplevalue(verbose, speed, 6, 3, ascii, &invert_next_value, &signflip_next_value, &error);
+								printsimplevalue(T, verbose,speed, 6, 3, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
 							case 's':
-								printsimplevalue(verbose, speed_made_good, 6, 3, ascii, &invert_next_value, &signflip_next_value, &error);
+								printsimplevalue(T, verbose,speed_made_good, 6, 3, ascii, &invert_next_value, &signflip_next_value, &error);
 								break;
 							case 'T':
 								seconds = time_i[5] + 1e-6 * time_i[6];
 								if (ascii) {
-									printf("%.4d/%.2d/%.2d/%.2d/%.2d/%09.6f", time_i[0], time_i[1], time_i[2], time_i[3],
+									mb_gmt_text_put(T,"%.4d/%.2d/%.2d/%.2d/%.2d/%09.6f", time_i[0], time_i[1], time_i[2], time_i[3],
 									       time_i[4], seconds);
 								} else {
 									double b = time_i[0];
@@ -766,7 +799,7 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 							case 't':
 								seconds = time_i[5] + 1e-6 * time_i[6];
 								if (ascii) {
-									printf("%.4d %.2d %.2d %.2d %.2d %09.6f", time_i[0], time_i[1], time_i[2], time_i[3],
+									mb_gmt_text_put(T,"%.4d %.2d %.2d %.2d %.2d %09.6f", time_i[0], time_i[1], time_i[2], time_i[3],
 									       time_i[4], seconds);
 								} else {
 									double b = time_i[0];
@@ -786,7 +819,7 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 							case 'U':
 								time_u = (time_t)time_d;
 								if (ascii) {
-									printf("%lld", (long long)time_u);
+									mb_gmt_text_put(T,"%lld", (long long)time_u);
 								} else {
 									double b = (double)time_u;
 									fwrite(&b, sizeof(double), 1, stdout);
@@ -799,7 +832,7 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 									first_u = false;
 								}
 								if (ascii) {
-									printf("%lld", (long long)(time_u - time_u_ref));
+									mb_gmt_text_put(T,"%lld", (long long)(time_u - time_u_ref));
 								} else {
 									double b = (double)(time_u - time_u_ref);
 									fwrite(&b, sizeof(double), 1, stdout);
@@ -809,9 +842,9 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 							case 'v':
 								if (ascii) {
 									if (fabs(time_interval) > 100.0)
-										printf("%g", time_interval);
+										mb_gmt_text_put(T,"%g", time_interval);
 									else
-										printf("%7.3f", time_interval);
+										mb_gmt_text_put(T,"%7.3f", time_interval);
 								} else {
 									fwrite(&time_interval, sizeof(double), 1, stdout);
 								}
@@ -819,10 +852,10 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 							case 'X':
 								if (!projectednav_next_value) {
 									dlon = navlon;
-									printsimplevalue(verbose, dlon, 15, 10, ascii, &invert_next_value, &signflip_next_value, &error);
+									printsimplevalue(T, verbose,dlon, 15, 10, ascii, &invert_next_value, &signflip_next_value, &error);
 								} else {
 									deasting = naveasting;
-									printsimplevalue(verbose, deasting, 15, 3, ascii, &invert_next_value, &signflip_next_value, &error);
+									printsimplevalue(T, verbose,deasting, 15, 3, ascii, &invert_next_value, &signflip_next_value, &error);
 								}
 								projectednav_next_value = false;
 								break;
@@ -837,7 +870,7 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 								degrees = (int)dlon;
 								minutes = 60.0 * (dlon - degrees);
 								if (ascii) {
-									printf("%3d %11.8f%c", degrees, minutes, hemi);
+									mb_gmt_text_put(T,"%3d %11.8f%c", degrees, minutes, hemi);
 								} else {
 									double b = degrees;
 									if (hemi == 'W')
@@ -851,10 +884,10 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 							case 'Y':
 								if (!projectednav_next_value) {
 									dlat = navlat;
-									printsimplevalue(verbose, dlat, 15, 10, ascii, &invert_next_value, &signflip_next_value, &error);
+									printsimplevalue(T, verbose,dlat, 15, 10, ascii, &invert_next_value, &signflip_next_value, &error);
 								} else {
 									const double dnorthing = navnorthing;
-									printsimplevalue(verbose, dnorthing, 15, 3, ascii, &invert_next_value, &signflip_next_value, &error);
+									printsimplevalue(T, verbose,dnorthing, 15, 3, ascii, &invert_next_value, &signflip_next_value, &error);
 								}
 								projectednav_next_value = false;
 								break;
@@ -869,7 +902,7 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 								degrees = (int)dlat;
 								minutes = 60.0 * (dlat - degrees);
 								if (ascii) {
-									printf("%3d %11.8f%c", degrees, minutes, hemi);
+									mb_gmt_text_put(T,"%3d %11.8f%c", degrees, minutes, hemi);
 								} else {
 									double b = degrees;
 									if (hemi == 'S')
@@ -882,14 +915,14 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 							}
 							default:
 								if (ascii)
-									printf("<Invalid Option: %c>", list[i]);
+									mb_gmt_text_put(T,"<Invalid Option: %c>", list[i]);
 								break;
 							}
 							if (ascii) {
 								if (i < (n_list - 1))
-									printf("%s", delimiter);
+									mb_gmt_text_put(T,"%s", delimiter);
 								else
-									printf("\n");
+									mb_gmt_text_put(T,"\n");
 							}
 						}
 					nnav++;
@@ -921,6 +954,19 @@ int GMT_mbnavlist(void *V_API, int mode, void *args) {
 		fprintf(stderr, "dbg2       status:  %d\n", status);
 	}
 
-	Return(error);
+	const int output_failed = mb_gmt_text_end(T);
+	T = NULL;	/* closed: Return() must not close it again */
+	if (output_failed) {
+		GMT_Report(API, GMT_MSG_ERROR, "Writing the listing failed\n");
+		Return(GMT_RUNTIME_ERROR);
+	}
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one */
+	if (error != MB_ERROR_NO_ERROR) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

@@ -21,16 +21,19 @@
  */
 
 #define THIS_MODULE_NAME    "mbareaclean"
+/* the program's own name, as it writes it into the edit save files */
+static const char program_name[] = "MBAREACLEAN";
 #define THIS_MODULE_LIB     "mbsystem"
 #define THIS_MODULE_PURPOSE "Identifies and flags artifacts in swath bathymetry data over an area"
 /* Primary input is the swath file or datalist given with -I; edits .esf edit-save files in place; nothing is returned. */
 #define THIS_MODULE_KEYS "ID{"
 #define THIS_MODULE_NEEDS		""
-#define THIS_MODULE_OPTIONS		"-:>Vh"
+#define THIS_MODULE_OPTIONS		"->V"
 
 #include "gmt_dev.h"
 
 #include "mb_status.h"
+#include "mb_gmt_opts.h"
 #include "mb_format.h"
 #include "mb_define.h"
 #include "mb_io.h"
@@ -90,6 +93,8 @@ EXTERN_MSC int GMT_mbareaclean(void *API, int mode, void *args);
 /* --- Control structure ----------------------------------------------- */
 
 struct MBAREACLEAN_CTRL {
+	int verbose;	/* the program's -V/-v count */
+	struct mbac_H { bool active; } H;
 	struct mbac_B { bool active; } B;   /* output bad (flag) */
 	struct mbac_D { bool active; double threshold; int nmin; } D;   /* std dev filter */
 	struct mbac_F { bool active; int format; } F;
@@ -129,6 +134,25 @@ static void Free_mbareaclean_Ctrl(struct GMT_CTRL *GMT, struct MBAREACLEAN_CTRL 
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "beam-range",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "bin-size",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "bounds",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "detection-type", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'B', "flag-bad",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'M', "median-filter",  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "plane-fit",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "std-dev-filter", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'G', "unflag-good",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
@@ -137,10 +161,12 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	    "usage: mbareaclean [-Fformat -Iinfile -Rwest/east/south/north -B -G\n"
 	    "\t-Sbinsize -Mthreshold[/nmin[/nmax]] -Dthreshold[/nmin]\n"
 	    "\t-Ttype -N[-]minbeam/maxbeam] [-V -H]\n\n");
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 
-	GMT_Message(API, GMT_TIME_NONE, "\t<inputfile> is an MB-System datalist or single swath file.\n\n");
-	return GMT_PARSE_ERROR;
+	GMT_Message(API, GMT_TIME_NONE, "\t<inputfile> is an MB-System datalist or single swath file [datalist.mb-1].\n"
+	                                "\tEvery option also has the program's lower-case and long forms.\n\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 /* --- parse ----------------------------------------------------------- */
@@ -165,10 +191,12 @@ static int parse(struct GMT_CTRL *GMT, struct MBAREACLEAN_CTRL *Ctrl, struct GMT
 			break;
 
 		case 'B':
+		case 'b':
 			Ctrl->B.active = true;
 			break;
 
-		case 'D': {
+		case 'D':
+		case 'd': {
 			double d1 = Ctrl->D.threshold;
 			int i1 = Ctrl->D.nmin;
 			n = sscanf(opt->arg, "%lf/%d", &d1, &i1);
@@ -178,16 +206,19 @@ static int parse(struct GMT_CTRL *GMT, struct MBAREACLEAN_CTRL *Ctrl, struct GMT
 		}
 
 		case 'F':
+		case 'f':
 			n = sscanf(opt->arg, "%d", &Ctrl->F.format);
 			if (n > 0) Ctrl->F.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -F option\n"); n_errors++; }
 			break;
 
 		case 'G':
+		case 'g':
 			Ctrl->G.active = true;
 			break;
 
 		case 'I':
+		case 'i':
 			if (!gmt_access(GMT, opt->arg, R_OK)) {
 				Ctrl->I.inputfile = strdup(opt->arg);
 				Ctrl->I.active = true;
@@ -195,7 +226,8 @@ static int parse(struct GMT_CTRL *GMT, struct MBAREACLEAN_CTRL *Ctrl, struct GMT
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -I option (file not found)\n"); n_errors++; }
 			break;
 
-		case 'M': {
+		case 'M':
+		case 'm': {
 			double d1 = Ctrl->M.threshold;
 			int i1 = Ctrl->M.nmin, i2 = 0;
 			n = sscanf(opt->arg, "%lf/%d/%d", &d1, &i1, &i2);
@@ -206,7 +238,8 @@ static int parse(struct GMT_CTRL *GMT, struct MBAREACLEAN_CTRL *Ctrl, struct GMT
 			break;
 		}
 
-		case 'N': {
+		case 'N':
+		case 'n': {
 			int min_beam = 0, max_beam_no = 0;
 			Ctrl->N.beam_in = true;
 			sscanf(opt->arg, "%d/%d", &min_beam, &max_beam_no);
@@ -219,36 +252,50 @@ static int parse(struct GMT_CTRL *GMT, struct MBAREACLEAN_CTRL *Ctrl, struct GMT
 		}
 
 		case 'P':
+		case 'p':
 			Ctrl->P.active = true;
 			break;
 
 		case 'R':
+		case 'r':
 			mb_get_bounds(opt->arg, Ctrl->R.bounds);
 			Ctrl->R.active = true;
 			break;
 
 		case 'S':
+		case 's':
 			n = sscanf(opt->arg, "%lf", &Ctrl->S.binsize);
 			if (n > 0) Ctrl->S.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -S option\n"); n_errors++; }
 			break;
 
 		case 'T':
+		case 't':
 			n = sscanf(opt->arg, "%d", &Ctrl->T.flag_detect);
 			if (n > 0) Ctrl->T.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -T option\n"); n_errors++; }
 			break;
 
+		case 'V':
+		case 'v':
+			Ctrl->verbose++;
+			break;
+
+		case 'H':
+		case 'h':
+			Ctrl->H.active = true;
+			break;
+
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 
-	n_errors += gmt_M_check_condition(GMT, n_files != 1,
-	                                  "Syntax error: Must specify one input file\n");
+	/* no -I is the program's datalist.mb-1, as in the program */
+	(void)n_files;
 
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code)  { gmt_M_free_options(mode); return (code); }
@@ -270,20 +317,19 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
-	if (!options || options->option == GMT_OPT_USAGE)    bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS)             bailout(usage(API, GMT_SYNOPSIS));
+	/* 1: no options is a run of the program (on datalist.mb-1) */
+	if ((error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(error);
 
-#if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
-#else
-	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
-#endif
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	/* -B (flag bad) takes no argument: keep GMT from completing it as its -B from history */
+	mb_gmt_shorthand_guard(options, "B");
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = New_mbareaclean_Ctrl(GMT);
 	if ((error = parse(GMT, Ctrl, options)) != 0) Return (error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
-	int    verbose = GMT->common.V.active;
+	const int verbose = Ctrl->verbose;
 	int    format, pings, lonflip;
 	double bounds[4];
 	int    btime_i[7], etime_i[7];
@@ -381,7 +427,7 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 		mb_error(verbose, error, &message);
 		GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
 		GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", THIS_MODULE_NAME);
-		Return(error);
+		Return(GMT_MEMORY_ERROR);
 	}
 	for (int i = 0; i < nx * ny; i++) {
 		gsndg[i] = NULL;
@@ -410,7 +456,7 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 		const int look_processed = MB_DATALIST_LOOK_UNSET;
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open data list file: %s\n", read_file);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		read_data = (mb_datalist_read(verbose, datalist, swathfile, dfile, &format, &file_weight, &error) == MB_SUCCESS);
 	} else {
@@ -448,7 +494,7 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 			char *message = NULL;
 			mb_error(verbose, error, &message);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error from mb_format_flags fmt %d:\n%s\n", format, message);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		strcpy(swathfileread, swathfile);
@@ -460,7 +506,7 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 			char *message = NULL;
 			mb_error(verbose, error, &message);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nmb_read_init failed: %s\nfile: %s\n", message, swathfileread);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		int pings_file = 0;
@@ -491,7 +537,7 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 			char *message = NULL;
 			mb_error(verbose, error, &message);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nmb_register_array failed: %s\n", message);
-			Return(error);
+			Return(GMT_MEMORY_ERROR);
 		}
 
 		if (nfile >= nfile_alloc) {
@@ -502,7 +548,7 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 				char *message = NULL;
 				mb_error(verbose, error, &message);
 				GMT_Report(API, GMT_MSG_NORMAL, "\nrealloc files failed: %s\n", message);
-				Return(error);
+				Return(GMT_MEMORY_ERROR);
 			}
 		}
 
@@ -539,13 +585,13 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 			char *message = NULL;
 			mb_error(verbose, error, &message);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nfile alloc failed: %s\n", message);
-			Return(error);
+			Return(GMT_MEMORY_ERROR);
 		}
 		nfile++;
 
 		if (status == MB_SUCCESS) {
 			int esf_error = MB_ERROR_NO_ERROR;
-			mb_esf_load(verbose, THIS_MODULE_NAME, swathfile, true, false, esffile, &esf, &esf_error);
+			mb_esf_load(verbose, program_name, swathfile, true, false, esffile, &esf, &esf_error);
 		}
 
 		bool done = false;
@@ -586,7 +632,7 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 						char *message = NULL;
 						mb_error(verbose, error, &message);
 						GMT_Report(API, GMT_MSG_NORMAL, "\nrealloc per-file ping arrays failed: %s\n", message);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -638,7 +684,7 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 									char *message = NULL;
 									mb_error(verbose, error, &message);
 									GMT_Report(API, GMT_MSG_NORMAL, "\nrealloc sndg failed: %s\n", message);
-									Return(error);
+									Return(GMT_MEMORY_ERROR);
 								}
 							}
 							if (gsndgnum[kgrid] >= gsndgnum_alloc[kgrid]) {
@@ -649,7 +695,7 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 									char *message = NULL;
 									mb_error(verbose, error, &message);
 									GMT_Report(API, GMT_MSG_NORMAL, "\nrealloc gsndg failed: %s\n", message);
-									Return(error);
+									Return(GMT_MEMORY_ERROR);
 								}
 							}
 
@@ -715,7 +761,7 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 		char *message = NULL;
 		mb_error(verbose, error, &message);
 		GMT_Report(API, GMT_MSG_NORMAL, "\nbindepths alloc failed: %s\n", message);
-		Return(error);
+		Return(GMT_MEMORY_ERROR);
 	}
 
 	/* median filter */
@@ -799,7 +845,7 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 
 	/* write changed soundings */
 	for (int i = 0; i < nfile; i++) {
-		status = mb_esf_load(verbose, THIS_MODULE_NAME, files[i].filelist, false, true, esffile, &esf, &error);
+		status = mb_esf_load(verbose, program_name, files[i].filelist, false, true, esffile, &esf, &error);
 		bool esffile_open = false;
 		if (status == MB_SUCCESS && esf.esffp != NULL) esffile_open = true;
 		if (status == MB_FAILURE && error == MB_ERROR_OPEN_FAIL) {
@@ -828,13 +874,13 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 		}
 	}
 
-	GMT_Report(API, GMT_MSG_NORMAL, "\nMBareaclean Processing Totals:\n-------------------------\n");
-	GMT_Report(API, GMT_MSG_NORMAL, "%d total swath data files processed\n", files_tot);
-	GMT_Report(API, GMT_MSG_NORMAL, "%d total pings processed\n", pings_tot);
-	GMT_Report(API, GMT_MSG_NORMAL, "%d total soundings processed\n-------------------------\n", beams_tot);
+	fprintf(stderr, "\nMBareaclean Processing Totals:\n-------------------------\n");
+	fprintf(stderr, "%d total swath data files processed\n", files_tot);
+	fprintf(stderr, "%d total pings processed\n", pings_tot);
+	fprintf(stderr, "%d total soundings processed\n-------------------------\n", beams_tot);
 	for (int i = 0; i < nfile; i++) {
-		GMT_Report(API, GMT_MSG_NORMAL, "%3d soundings:%7d flagged:%7d unflagged:%7d  file:%s\n",
-		           i, files[i].ngood + files[i].nflag, files[i].nflagged, files[i].nunflagged, files[i].filelist);
+		fprintf(stderr, "%3d soundings:%7d flagged:%7d unflagged:%7d  file:%s\n",
+		        i, files[i].ngood + files[i].nflag, files[i].nflagged, files[i].nunflagged, files[i].filelist);
 	}
 
 	mb_freed(verbose, __FILE__, __LINE__, (void **)&bindepths, &error);

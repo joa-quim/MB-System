@@ -37,6 +37,7 @@
 
 #ifndef MBNAVADJUST_CORE_H_
 #define MBNAVADJUST_CORE_H_
+#include "mbnavadjust_export.h"
 
 #ifndef MB_DEFINE_DEF
 #include "mb_define.h"
@@ -278,7 +279,7 @@ int mbnavadjust_referenceplussection_unload(void);
 int mbnavadjust_get_misfit(void);
 int mbnavadjust_get_misfitxy(void);
 void mbnavadjust_naverr_scale(void);
-int mbnavadjust_autopick(int verbose, struct mbna_project *project_ptr, int crossing_type, int scope_mode,
+MBNAVADJUST_API int mbnavadjust_autopick(int verbose, struct mbna_project *project_ptr, int crossing_type, int scope_mode,
                          int survey_select, int survey_select1, int survey_select2,
                          int file_select, int section_select,
                          double overlap_threshold, bool do_vertical,
@@ -287,9 +288,9 @@ int mbnavadjust_autopick(int verbose, struct mbna_project *project_ptr, int cros
 /* GUI-free network-adjustment navigation solver, reference grid
     regeneration, and corrected-navigation output, shared by mbnavadjust
     and mbnavadjustmerge, implemented in mbnavadjust_invertnav.c */
-int mbnavadjust_invertnav(int verbose, struct mbna_project *project_ptr);
-int mbnavadjust_updategrid(int verbose, struct mbna_project *project_ptr);
-int mbnavadjust_applynav(int verbose, struct mbna_project *project_ptr);
+MBNAVADJUST_API int mbnavadjust_invertnav(int verbose, struct mbna_project *project_ptr);
+MBNAVADJUST_API int mbnavadjust_updategrid(int verbose, struct mbna_project *project_ptr);
+MBNAVADJUST_API int mbnavadjust_applynav(int verbose, struct mbna_project *project_ptr);
 
 #endif /* MBNAVADJUST_CORE_H_ */
 /*--------------------------------------------------------------------*/

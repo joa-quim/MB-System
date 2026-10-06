@@ -53,18 +53,19 @@
  *
  * GMT-module port of src/utilities/mbmakedatalist.cc, translated back
  * to C: the getopt_long loop is replaced by the GMT option parser (long
- * options, and short options given with a separate value, are rewritten
- * before GMT sees them) and main() becomes GMT_mbmakedatalist(), with
- * every return from main() turned into Return().
+ * options through module_kw, lower-case aliases kept, a short option's separate value
+ * joined back by mb_gmt_join_separated_values()) and main() becomes GMT_mbmakedatalist(),
+ * with every return a Return() with a GMT error code.
  *
  *--------------------------------------------------------------------*/
 
 #define THIS_MODULE_NAME "mbmakedatalist"
 #define THIS_MODULE_LIB "mbsystem"
 #define THIS_MODULE_PURPOSE "Generate an MB-System datalist from swath files in a directory"
-/* -I names the directory to scan. The datalist is a file written by the
+/* -I names the directory to scan (not data GMT reads, so no input key: an "ID{" key made GMT.jl
+ * take "-I dir" for data to pass in memory). The datalist is a file written by the
  * module itself (-O), so there is no output key. */
-#define THIS_MODULE_KEYS "ID{"
+#define THIS_MODULE_KEYS ""
 #define THIS_MODULE_NEEDS ""
 #define THIS_MODULE_OPTIONS "->V"
 
@@ -90,6 +91,7 @@
 
 #include "mb_format.h"
 #include "mb_status.h"
+#include "mb_gmt_opts.h"
 
 /*--------------------------------------------------------------------
  * Constants
@@ -335,41 +337,42 @@ static int name_cmp(const void *a, const void *b) {
 /*--------------------------------------------------------------------
  * Print usage / help
  *--------------------------------------------------------------------*/
-static void print_help(void) {
-    printf("\n%s:\n", program_name);
-    printf("Macro to generate an MB-System datalist file referencing all\n");
-    printf("identifiable swath files in the specified directory. If no directory\n");
-    printf("is specified with the -I option, then the current directory is used.\n");
-    printf("The resulting datalist will be named datalist.mb-1 by default.\n\n");
-    printf("Mbmakedatalist is a macro to generate an MB-System datalist file\n");
-    printf("referencing all identifiable swath files in the specified target directory.\n");
-    printf("Datalists are fundamental structures in MB-System workflows because they\n");
-    printf("allow programs to operate on sets of swath data files.\n");
-    printf("Datalist files are text lists of swath data files and their format ids with each\n");
-    printf("file entry taking up a single line. These lists may contain references to other\n");
-    printf("datalists, making them recursive. Datalists may also contain comments and parsing\n");
-    printf("directives that, for example, determine whether parsing returns references to\n");
-    printf("raw or processed data files. See the MB-System manual page for details\n");
-    printf("on the format and structure of datalists.\n\n");
-    printf("Usage:\n");
-    printf("  %s [options]\n\n", program_name);
-    printf("Options (short and long forms are equivalent):\n");
-    printf("  -B size,  --min-size=size        Minimum file size in KB; smaller files are ignored\n");
-    printf("  -F format,--format=format        Format id assigned to all files (default: inferred)\n");
-    printf("  -I dir,   --input=dir            Directory to scan (default: current directory)\n");
-    printf("  -L,       --skip-latest          Omit the last file in the listing\n");
-    printf("  -O file,  --output=file          Output datalist filename (default: datalist.mb-1)\n");
-    printf("  -P,       --ignore-processed     Exclude processed files (e.g. *p.mb88)\n");
-    printf("  -S suffix,--suffix=suffix        Consider only files with this suffix\n");
-    printf("  -T,       --no-time-sort         Disable time-order sorting of Kongsberg files\n");
-    printf("  -H,       --help                 Print this help message and exit\n");
-    printf("  -V,       --verbose              Print verbose status messages\n");
-    printf("\n");
+static void print_help(struct GMTAPI_CTRL *API) {
+    GMT_Message(API, GMT_TIME_NONE, "\n%s:\n", program_name);
+    GMT_Message(API, GMT_TIME_NONE, "Macro to generate an MB-System datalist file referencing all\n");
+    GMT_Message(API, GMT_TIME_NONE, "identifiable swath files in the specified directory. If no directory\n");
+    GMT_Message(API, GMT_TIME_NONE, "is specified with the -I option, then the current directory is used.\n");
+    GMT_Message(API, GMT_TIME_NONE, "The resulting datalist will be named datalist.mb-1 by default.\n\n");
+    GMT_Message(API, GMT_TIME_NONE, "Mbmakedatalist is a macro to generate an MB-System datalist file\n");
+    GMT_Message(API, GMT_TIME_NONE, "referencing all identifiable swath files in the specified target directory.\n");
+    GMT_Message(API, GMT_TIME_NONE, "Datalists are fundamental structures in MB-System workflows because they\n");
+    GMT_Message(API, GMT_TIME_NONE, "allow programs to operate on sets of swath data files.\n");
+    GMT_Message(API, GMT_TIME_NONE, "Datalist files are text lists of swath data files and their format ids with each\n");
+    GMT_Message(API, GMT_TIME_NONE, "file entry taking up a single line. These lists may contain references to other\n");
+    GMT_Message(API, GMT_TIME_NONE, "datalists, making them recursive. Datalists may also contain comments and parsing\n");
+    GMT_Message(API, GMT_TIME_NONE, "directives that, for example, determine whether parsing returns references to\n");
+    GMT_Message(API, GMT_TIME_NONE, "raw or processed data files. See the MB-System manual page for details\n");
+    GMT_Message(API, GMT_TIME_NONE, "on the format and structure of datalists.\n\n");
+    GMT_Message(API, GMT_TIME_NONE, "Usage:\n");
+    GMT_Message(API, GMT_TIME_NONE, "  %s [options]\n\n", program_name);
+    GMT_Message(API, GMT_TIME_NONE, "Options (short and long forms are equivalent):\n");
+    GMT_Message(API, GMT_TIME_NONE, "  -B size,  --min-size=size        Minimum file size in KB; smaller files are ignored\n");
+    GMT_Message(API, GMT_TIME_NONE, "  -F format,--format=format        Format id assigned to all files (default: inferred)\n");
+    GMT_Message(API, GMT_TIME_NONE, "  -I dir,   --input=dir            Directory to scan (default: current directory)\n");
+    GMT_Message(API, GMT_TIME_NONE, "  -L,       --skip-latest          Omit the last file in the listing\n");
+    GMT_Message(API, GMT_TIME_NONE, "  -O file,  --output=file          Output datalist filename (default: datalist.mb-1)\n");
+    GMT_Message(API, GMT_TIME_NONE, "  -P,       --ignore-processed     Exclude processed files (e.g. *p.mb88)\n");
+    GMT_Message(API, GMT_TIME_NONE, "  -S suffix,--suffix=suffix        Consider only files with this suffix\n");
+    GMT_Message(API, GMT_TIME_NONE, "  -T,       --no-time-sort         Disable time-order sorting of Kongsberg files\n");
+    GMT_Message(API, GMT_TIME_NONE, "  -H,       --help                 Print this help message and exit\n");
+    GMT_Message(API, GMT_TIME_NONE, "  -V,       --verbose              Print verbose status messages\n");
+    GMT_Message(API, GMT_TIME_NONE, "\n");
 }
 
 /* --- Control structure ---------------------------------------------- */
 
 struct MBMAKEDATALIST_CTRL {
+	int verbose;	/* the program's -V/-v count */
 	struct mbmd_B { bool active; long size; } B;
 	struct mbmd_F { bool active; int format; } F;
 	struct mbmd_H { bool active; } H;
@@ -391,23 +394,30 @@ static void Free_mbmakedatalist_Ctrl(struct GMT_CTRL *GMT, struct MBMAKEDATALIST
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'B', "min-size",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "skip-latest",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "ignore-processed", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "suffix",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "no-time-sort",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'v', "verbose",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s [-Bsize] [-Fformat] [-Idirectory] [-L] [-Odatalist] [-P] [-Ssuffix] [-T] [-V] [-H]\n", program_name);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
-	GMT_Message(API, GMT_TIME_NONE,
-	            "\t-B Minimum file size in KB; smaller files are ignored.\n"
-	            "\t-F Format id assigned to all files (default: inferred).\n"
-	            "\t-I Directory to scan (default: current directory).\n"
-	            "\t-L Omit the last file in the listing.\n"
-	            "\t-O Output datalist filename (default: datalist.mb-1).\n"
-	            "\t-P Exclude processed files (e.g. *p.mb88).\n"
-	            "\t-S Consider only files with this suffix.\n"
-	            "\t-T Disable time-order sorting of Kongsberg files.\n"
-	            "\t-H Print the help message and exit.\n");
-	GMT_Option(API, "V");
-	return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
+	print_help(API);	/* the program's own help */
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse_mbmakedatalist(struct GMT_CTRL *GMT, struct MBMAKEDATALIST_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -415,7 +425,10 @@ static int parse_mbmakedatalist(struct GMT_CTRL *GMT, struct MBMAKEDATALIST_CTRL
 	struct GMT_OPTION *opt;
 	for (opt = options; opt; opt = opt->next) {
 		switch (opt->option) {
-		case 'B': case 'b': case 'A':	/* -B arrives as -A, see preparse_long_options() */
+		case 'V': case 'v':
+			Ctrl->verbose++;
+			break;
+		case 'B': case 'b':
 			if (opt->arg && opt->arg[0]) {
 				Ctrl->B.size = atol(opt->arg);
 				Ctrl->B.active = true;
@@ -451,7 +464,7 @@ static int parse_mbmakedatalist(struct GMT_CTRL *GMT, struct MBMAKEDATALIST_CTRL
 			}
 			else n_errors++;
 			break;
-		case 'P': case 'p': case 'Q':	/* -P arrives as -Q, see preparse_long_options() */
+		case 'P': case 'p':
 			Ctrl->P.active = true;
 			break;
 		case 'S': case 's':
@@ -462,89 +475,19 @@ static int parse_mbmakedatalist(struct GMT_CTRL *GMT, struct MBMAKEDATALIST_CTRL
 			}
 			else n_errors++;
 			break;
-		case 'T': case 't': case 'Z':	/* -T arrives as -Z, see preparse_long_options() */
+		case 'T': case 't':
 			Ctrl->T.active = true;
 			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
-}
-
-static char *join_args(int mode, void *args) {
-	char **argv = (char **)args, *joined;
-	size_t total = 1;
-	int i;
-	if (mode <= 0 || !args) return NULL;
-	for (i = 0; i < mode; i++) total += strlen(argv[i]) + 1;
-	joined = (char *)calloc(total, 1);
-	if (!joined) return NULL;
-	for (i = 0; i < mode; i++) { if (i) strcat(joined, " "); strcat(joined, argv[i]); }
-	return joined;
-}
-
-/* Rewrite the getopt_long options of mbmakedatalist.cc onto short options.
- * GMT reserves -B, -P and -T, so those are carried as -A, -Q and -Z.
- * getopt also accepted a separated value ("-I dir", as the usage shows);
- * GMT would read the value as a file argument, so it is glued back on. */
-static char *preparse_long_options(bool *help, const char *args) {
-	size_t length = args ? strlen(args) : 0, out = 0;
-	char *copy = (char *)calloc(length + 2, 1), *result = (char *)calloc(2 * length + 8, 1);
-	char *token, *saveptr = NULL, pending = '\0';
-	if (!copy || !result) { free(copy); free(result); return NULL; }
-	memcpy(copy, args, length);
-	for (token = strtok_r(copy, " \t", &saveptr); token; token = strtok_r(NULL, " \t", &saveptr)) {
-		char emit = '\0', *equals;
-		const char *value = NULL;
-		if (pending) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = pending;
-			memcpy(result + out, token, strlen(token)); out += strlen(token); pending = '\0'; continue;
-		}
-		if (strncmp(token, "--", 2) != 0) {
-			if (token[0] == '-' && (token[1] == 'B' || token[1] == 'b')) token[1] = 'A';
-			if (token[0] == '-' && (token[1] == 'P' || token[1] == 'p') && token[2] == '\0') token[1] = 'Q';
-			if (token[0] == '-' && (token[1] == 'T' || token[1] == 't') && token[2] == '\0') token[1] = 'Z';
-			if (token[0] == '-' && token[1] != '\0' && token[2] == '\0' && strchr("AFfIiOoSs", token[1])) {
-				pending = token[1];	/* the value is the next token */
-				continue;
-			}
-			if (out) result[out++] = ' ';
-			memcpy(result + out, token, strlen(token)); out += strlen(token); continue;
-		}
-		equals = strchr(token + 2, '=');
-		if (equals) { *equals = '\0'; value = equals + 1; }
-		if (!strcmp(token + 2, "help")) { *help = true; continue; }
-		if (!strcmp(token + 2, "verbose")) emit = 'V';
-		else if (!strcmp(token + 2, "min-size")) emit = 'A';
-		else if (!strcmp(token + 2, "format")) emit = 'F';
-		else if (!strcmp(token + 2, "input")) emit = 'I';
-		else if (!strcmp(token + 2, "skip-latest")) emit = 'L';
-		else if (!strcmp(token + 2, "output")) emit = 'O';
-		else if (!strcmp(token + 2, "ignore-processed")) emit = 'Q';
-		else if (!strcmp(token + 2, "suffix")) emit = 'S';
-		else if (!strcmp(token + 2, "no-time-sort")) emit = 'Z';
-		if (!emit) {
-			if (equals) *equals = '=';
-			if (out) result[out++] = ' ';
-			memcpy(result + out, token, strlen(token)); out += strlen(token);
-		} else if (strchr("VLQZ", emit)) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = emit;
-		} else if (value) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = emit;
-			memcpy(result + out, value, strlen(value)); out += strlen(value);
-		} else pending = emit;
-	}
-	free(copy);
-	return result;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code) { gmt_M_free_options(mode); return (code); }
-#define Return(code) { free(remaining_args); Free_mbmakedatalist_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code) { Free_mbmakedatalist_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 EXTERN_MSC int GMT_mbmakedatalist(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------
@@ -555,37 +498,28 @@ int GMT_mbmakedatalist(void *V_API, int mode, void *args) {
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION *options = NULL;
 	struct MBMAKEDATALIST_CTRL *Ctrl = NULL;
-	char *remaining_args = NULL;
-	bool staged_help = false;
 	int parse_error;
 
 	if (!API) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-	{
-		char *joined = join_args(mode, args);
-		const char *text = joined ? joined : (mode == GMT_MODULE_CMD ? (const char *)args : NULL);
-		if (text) remaining_args = preparse_long_options(&staged_help, text);
-		free(joined);
-	}
-	options = GMT_Create_Options(API, remaining_args ? GMT_MODULE_CMD : mode, remaining_args ? (void *)remaining_args : args);
-	if (API->error) { free(remaining_args); return API->error; }
-	/* no arguments is a valid run: mbmakedatalist scans the current directory */
-	if (options && options->option == GMT_OPT_USAGE) { free(remaining_args); bailout(usage(API, GMT_USAGE)); }
-	if (options && options->option == GMT_OPT_SYNOPSIS) { free(remaining_args); bailout(usage(API, GMT_SYNOPSIS)); }
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no arguments is a valid run: mbmakedatalist scans the current directory */
+	if ((parse_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(parse_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) { free(remaining_args); bailout(API->error); }
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	/* getopt's "-I dir" form, as the program's usage shows it */
+	mb_gmt_join_separated_values(API, &options, "BbFfIiOoSs");
+	/* -p (ignore processed) takes no argument: keep GMT from completing it as its -p from history */
+	mb_gmt_shorthand_guard(options, "p");
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 	Ctrl = (struct MBMAKEDATALIST_CTRL *)New_mbmakedatalist_Ctrl(GMT);
-	Ctrl->H.active = staged_help;
-	if ((parse_error = parse_mbmakedatalist(GMT, Ctrl, options)) != GMT_OK) {
-		fprintf(stderr, "Try '%s --help' for usage information.\n", program_name);
-		Return(1);
-	}
+	if ((parse_error = parse_mbmakedatalist(GMT, Ctrl, options)) != GMT_NOERROR) Return(parse_error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
     /* --- Option variables (mirrors the Perl variables) --- */
     long        size_threshold   = 0;      /* -B: minimum file size in KB       */
     int         format_specified = 0;      /* -F: use this format for all files */
-    bool        help             = false;  /* -H */
     char        directory[max_path] = ""; /* -I */
     bool        skiplatest       = false;  /* -L */
     char        datalist[max_path];        /* -O */
@@ -601,8 +535,6 @@ int GMT_mbmakedatalist(void *V_API, int mode, void *args) {
         size_threshold = Ctrl->B.size;
     if (Ctrl->F.active)
         format_specified = Ctrl->F.format;
-    if (Ctrl->H.active)
-        help = true;
     if (Ctrl->I.active) {
         strncpy(directory, Ctrl->I.directory, max_path - 1);
         directory[max_path - 1] = '\0';
@@ -621,13 +553,9 @@ int GMT_mbmakedatalist(void *V_API, int mode, void *args) {
     }
     if (Ctrl->T.active)
         disablesorting = true;
-    if (GMT->common.V.active)
-        verbose = 1;
+    if (Ctrl->verbose > 0)
+        verbose = Ctrl->verbose;
 
-    if (help) {
-        print_help();
-        Return(0);
-    }
 
     /* The Perl script doubles the threshold because `ls -s` reports sizes
      * in 512-byte blocks and the user supplies KB.  1 KB = 2 blocks of 512
@@ -638,36 +566,36 @@ int GMT_mbmakedatalist(void *V_API, int mode, void *args) {
 
     /* --- Verbose startup messages (mirrors Perl output exactly) --- */
     if (verbose) {
-        printf("\nRunning %s...\n\n", program_name);
+        fprintf(stderr, "\nRunning %s...\n\n", program_name);
         if (directory[0])
-            printf(" - Checking for swath files in directory %s\n", directory);
+            fprintf(stderr, " - Checking for swath files in directory %s\n", directory);
         else
-            printf(" - Checking for swath files in the current directory\n");
+            fprintf(stderr, " - Checking for swath files in the current directory\n");
 
         if (suffix[0]) {
-            printf(" - Checking for files with suffix %s\n", suffix);
+            fprintf(stderr, " - Checking for files with suffix %s\n", suffix);
             if (ignoreprocessed)
-                printf(" - Ignoring files with specified suffix preceded by letter p, e.g. p%s\n", suffix);
+                fprintf(stderr, " - Ignoring files with specified suffix preceded by letter p, e.g. p%s\n", suffix);
         } else {
-            printf(" - Checking all files for those that meet swath data naming conventions\n");
+            fprintf(stderr, " - Checking all files for those that meet swath data naming conventions\n");
         }
 
         if (disablesorting) {
             if (is_kongsberg_suffix(suffix))
-                printf(" - Sorting Kongsberg multibeam files into time order is disabled.\n");
+                fprintf(stderr, " - Sorting Kongsberg multibeam files into time order is disabled.\n");
             else
-                printf(" - Request to disable time sorting of Kongsberg multibeam files ignored"
+                fprintf(stderr, " - Request to disable time sorting of Kongsberg multibeam files ignored"
                        " because a Kongsberg multibeam file\n"
                        "   suffix (.all or .ALL) has not been specified with the -S option\n");
         } else {
             if (is_kongsberg_suffix(suffix))
-                printf(" - Attempting to sort Kongsberg multibeam files into time order based on filenames.\n");
+                fprintf(stderr, " - Attempting to sort Kongsberg multibeam files into time order based on filenames.\n");
         }
 
         if (format_specified)
-            printf(" - Assigning format id %d to all files\n", format_specified);
+            fprintf(stderr, " - Assigning format id %d to all files\n", format_specified);
         else
-            printf(" - Using format ids consistent with filenames\n");
+            fprintf(stderr, " - Using format ids consistent with filenames\n");
     }
 
     /* --- Scan directory --- */
@@ -676,13 +604,13 @@ int GMT_mbmakedatalist(void *V_API, int mode, void *args) {
     if (!dp) {
         fprintf(stderr, "\n%s:\nCannot open directory %s: %s\nExiting...\n",
                 program_name, scandir_path, strerror(errno));
-        Return(1);
+        Return(GMT_ERROR_ON_FOPEN);
     }
 
     FileList candidates;
     if (filelist_init(&candidates) != MB_SUCCESS) {
         closedir(dp);
-        Return(1);
+        Return(GMT_MEMORY_ERROR);
     }
 
     struct dirent *de;
@@ -726,7 +654,7 @@ int GMT_mbmakedatalist(void *V_API, int mode, void *args) {
         if (filelist_push(&candidates, &rec) != MB_SUCCESS) {
             closedir(dp);
             filelist_free(&candidates);
-            Return(1);
+            Return(GMT_MEMORY_ERROR);
         }
     }
     closedir(dp);
@@ -740,7 +668,7 @@ int GMT_mbmakedatalist(void *V_API, int mode, void *args) {
     FileList outlist;
     if (filelist_init(&outlist) != MB_SUCCESS) {
         filelist_free(&candidates);
-        Return(1);
+        Return(GMT_MEMORY_ERROR);
     }
 
     for (int i = 0; i < candidates.size; i++) {
@@ -760,7 +688,7 @@ int GMT_mbmakedatalist(void *V_API, int mode, void *args) {
 
         /* Skip Kongsberg junk files */
         if (is_kongsberg_suffix(suffix) && is_kongsberg_junk(rec->basename)) {
-            printf("File ignored:   file:%s format:%d\n", rec->path, fmt);
+            fprintf(stderr, "File ignored:   file:%s format:%d\n", rec->path, fmt);
             continue;
         }
 
@@ -772,12 +700,12 @@ int GMT_mbmakedatalist(void *V_API, int mode, void *args) {
         }
 
         if (verbose)
-            printf("Adding to list: file:%s format:%d\n", rec->path, fmt);
+            fprintf(stderr, "Adding to list: file:%s format:%d\n", rec->path, fmt);
 
         if (filelist_push(&outlist, rec) != MB_SUCCESS) {
             filelist_free(&candidates);
             filelist_free(&outlist);
-            Return(1);
+            Return(GMT_MEMORY_ERROR);
         }
     }
     filelist_free(&candidates);
@@ -801,14 +729,14 @@ int GMT_mbmakedatalist(void *V_API, int mode, void *args) {
             FileList sortable;
             if (filelist_init(&sortable) != MB_SUCCESS) {
                 filelist_free(&outlist);
-                Return(1);
+                Return(GMT_MEMORY_ERROR);
             }
             for (int i = 0; i < outlist.size; i++) {
                 if (outlist.data[i].sort_ok)
                     if (filelist_push(&sortable, &outlist.data[i]) != MB_SUCCESS) {
                         filelist_free(&sortable);
                         filelist_free(&outlist);
-                        Return(1);
+                        Return(GMT_MEMORY_ERROR);
                     }
             }
             qsort(sortable.data, sortable.size, sizeof(FileRecord), kongsberg_cmp);
@@ -817,7 +745,7 @@ int GMT_mbmakedatalist(void *V_API, int mode, void *args) {
             filelist_free(&outlist);
             if (filelist_init(&outlist) != MB_SUCCESS) {
                 filelist_free(&sortable);
-                Return(1);
+                Return(GMT_MEMORY_ERROR);
             }
             for (int i = 0; i < sortable.size; i++) {
                 FileRecord *rec = &sortable.data[i];
@@ -841,7 +769,7 @@ int GMT_mbmakedatalist(void *V_API, int mode, void *args) {
                 if (filelist_push(&outlist, rec) != MB_SUCCESS) {
                     filelist_free(&sortable);
                     filelist_free(&outlist);
-                    Return(1);
+                    Return(GMT_MEMORY_ERROR);
                 }
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
@@ -863,28 +791,28 @@ int GMT_mbmakedatalist(void *V_API, int mode, void *args) {
             fprintf(stderr, "\n%s:\nUnable to open output datalist file %s\nExiting...\n",
                     program_name, datalist);
             filelist_free(&outlist);
-            Return(1);
+            Return(GMT_ERROR_ON_FOPEN);
         }
 
         if (verbose)
-            printf("\nOutputting %d file listings to datalist file %s\n", count, datalist);
+            fprintf(stderr, "\nOutputting %d file listings to datalist file %s\n", count, datalist);
 
         for (int i = 0; i < count; i++) {
             fprintf(fp, "%s %d\n", outlist.data[i].path, outlist.data[i].format);
             if (verbose)
-                printf("%s %d\n", outlist.data[i].path, outlist.data[i].format);
+                fprintf(stderr, "%s %d\n", outlist.data[i].path, outlist.data[i].format);
         }
 
         if (verbose)
-            printf("\nAll done!\n\n");
+            fprintf(stderr, "\nAll done!\n\n");
 
         fclose(fp);
     } else {
         if (verbose)
-            printf("No swath files identified therefore no datalist created...\n");
+            fprintf(stderr, "No swath files identified therefore no datalist created...\n");
     }
 
     filelist_free(&outlist);
-    Return(0);
+    Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

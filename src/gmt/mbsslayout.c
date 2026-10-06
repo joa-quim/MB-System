@@ -30,11 +30,10 @@
  * Date:	April 21, 2014
  */
 /*
- * GMT-module port of src/utilities/mbsslayout.cc. The program's getopt_long() option loop
- * is kept as it is, running on the reentrant mb_getopt_long() (the state
- * lives in a local structure, so the module can run any number of times in
- * one GMT session), and main() becomes GMT_mbsslayout(), with every exit()
- * turned into Return().
+ * GMT-module port of src/utilities/mbsslayout.cc: the program's long options (it has no short ones)
+ * come from GMT's option list in command-line order through mb_gmt_mark_long_options() /
+ * mb_gmt_long_option(); main() becomes GMT_mbsslayout() and every exit() a Return() with a GMT
+ * error code. Its results are the program's own files; its messages go to stderr.
  */
 
 #define THIS_MODULE_NAME "mbsslayout"
@@ -66,8 +65,7 @@
 #include "mb_io.h"
 #include "mb_status.h"
 #include "mbsys_ldeoih.h"
-
-#include "mb_getopt.h"
+#include "mb_gmt_opts.h"
 
 enum { MBSSLAYOUT_ALLOC_CHUNK = 1024 };
 enum { MBSSLAYOUT_ALLOC_NUM = 128 };
@@ -192,71 +190,106 @@ static int mbsslayout_get_flatbottom_table(int verbose, int nangle, double angle
 /*--------------------------------------------------------------------*/
 
 
+/* The program's long options (it has no short ones) */
+static const struct MB_GMT_LONGOPT_DEF long_options[] = {
+	{"verbose", false},
+	{"help", false},
+	{"verbose", false},
+	{"input", true},
+	{"format", true},
+	{"platform-file", true},
+	{"platform-target-sensor", true},
+	{"output-source", true},
+	{"line-time-list", true},
+	{"line-position-list", true},
+	{"line-route", true},
+	{"line-range-threshold", true},
+	{"line-name1", true},
+	{"line-name2", true},
+	{"output-name1", true},
+	{"output-name2", true},
+	{"topo-grid-file", true},
+	{"altitude-altitude", false},
+	{"altitude-bottompick", false},
+	{"altitude-topo-grid", false},
+	{"altitude-bottompick-threshold", true},
+	{"channel-swap", true},
+	{"swath-width", true},
+	{"gain", true},
+	{"interpolation", true},
+	{"nav-file", true},
+	{"nav-file-format", true},
+	{"nav-async", true},
+	{"sensordepth-file", true},
+	{"sensordepth-file-format", true},
+	{"sensordepth-async", true},
+	{"altitude-file", true},
+	{"altitude-file-format", true},
+	{"altitude-async", true},
+	{"heading-file", true},
+	{"heading-file-format", true},
+	{"heading-async", true},
+	{"attitude-file", true},
+	{"attitude-file-format", true},
+	{"attitude-async", true},
+	{"soundspeed-constant", true},
+	{"soundspeed-file", true},
+	{"soundspeed-file-format", true},
+	{"soundspeed-async", true},
+	{"time-latency-file", true},
+	{"time-latency-constant", true},
+	{"time-latency-apply-nav", false},
+	{"time-latency-apply-sensordepth", false},
+	{"time-latency-apply-altitude", false},
+	{"time-latency-apply-heading", false},
+	{"time-latency-apply-attitude", false},
+	{"time-latency-apply-all-ancilliary", false},
+	{"time-latency-apply-survey", false},
+	{"time-latency-apply-all", false},
+	{"filter", true},
+	{"filter-apply-nav", false},
+	{"filter-apply-sensordepth", false},
+	{"filter-apply-altitude", false},
+	{"filter-apply-heading", false},
+	{"filter-apply-attitude", false},
+	{"filter-apply-all-ancilliary", false},
+	{NULL, false}};
+
 /* --- GMT front end ---------------------------------------------------- */
 
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
-	return GMT_PARSE_ERROR;
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
-/* The options GMT itself should see: -V (verbosity) and -I (the input the
- * module keys bind). Everything else, long options included, is parsed by
- * the program's own option loop below. */
-static char *mb_gmt_options_string(int argc, char **argv) {
-	size_t total = 1;
-	for (int i = 1; i < argc; i++)
-		total += strlen(argv[i]) + 1;
-	char *s = (char *)calloc(total + 8, 1);
-	if (s == NULL)
-		return NULL;
-	for (int i = 1; i < argc; i++) {
-		if (argv[i][0] == '-' && (argv[i][1] == 'V' || (argv[i][1] == 'I' && argv[i][2] != '\0'))) {
-			if (s[0] != '\0')
-				strcat(s, " ");
-			strcat(s, argv[i]);
-		}
-	}
-	return s;
-}
-
-/* gmt_M_free_options() hard-codes a variable named "options", which the
-   program's own option table shadows here, so destroy gmt_options directly */
-#define bailout(code) { mb_getopt_args_free(argc, argv); free(gmt_args); GMT_Destroy_Options(API, &gmt_options); return (code); }
+#define bailout(code) { gmt_M_free_options(mode); return code; }
 #define Return(code) { gmt_end_module(GMT, GMT_cpy); bailout(code); }
-EXTERN_MSC int GMT_mbsslayout(void *V_API, int gmt_mode, void *args);
+EXTERN_MSC int GMT_mbsslayout(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
 
-int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
+int GMT_mbsslayout(void *V_API, int mode, void *args) {
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
-	struct GMT_OPTION *gmt_options = NULL;
-	char *gmt_args = NULL;
-	char **argv = NULL;
-	int argc = 0;
-	struct mb_getopt_state getopt_state;
-	mb_getopt_init(&getopt_state);
+	struct GMT_OPTION *options = NULL;
+	int gmt_error;
 
-	if (!API) return GMT_NOT_A_SESSION;
-	if (gmt_mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-
-	/* the program's own argv[], whatever shape GMT handed us */
-	argc = mb_getopt_args_build(THIS_MODULE_NAME, gmt_mode, args, &argv);
-	if (argc == 2 && (strcmp(argv[1], "-") == 0 || strcmp(argv[1], "?") == 0))
-		bailout(usage(API, GMT_USAGE));
-	if (argc == 2 && strcmp(argv[1], "+") == 0)
-		bailout(usage(API, GMT_SYNOPSIS));
-
-	gmt_args = mb_gmt_options_string(argc, argv);
-	gmt_options = GMT_Create_Options(API, GMT_MODULE_CMD, (gmt_args != NULL && gmt_args[0] != '\0') ? gmt_args : NULL);
-	if (API->error) bailout(API->error);
+	if (API == NULL) return GMT_NOT_A_SESSION;
+	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a run of the program, which reports the missing input itself */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &gmt_options, &GMT_cpy)) == NULL) bailout(API->error);
-	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, gmt_options)) Return(API->error);
+	                           THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	/* the program's long options (it has no short ones) kept out of GMT's --PAR=value handling */
+	mb_gmt_mark_long_options(API, &options, long_options);
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	int verbose = 0;
 	int format = 0;
@@ -270,68 +303,6 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 	int status = mb_defaults(verbose, &format, &pings, &lonflip, bounds, btime_i, etime_i, &speedmin, &timegap);
 
 	/* command line option definitions */
-	static struct mb_getopt_option options[] = {{"verbose", mb_no_argument, NULL, 0},
-	                                  {"help", mb_no_argument, NULL, 0},
-	                                  {"verbose", mb_no_argument, NULL, 0},
-	                                  {"input", mb_required_argument, NULL, 0},
-	                                  {"format", mb_required_argument, NULL, 0},
-	                                  {"platform-file", mb_required_argument, NULL, 0},
-	                                  {"platform-target-sensor", mb_required_argument, NULL, 0},
-	                                  {"output-source", mb_required_argument, NULL, 0},
-	                                  {"line-time-list", mb_required_argument, NULL, 0},
-	                                  {"line-position-list", mb_required_argument, NULL, 0},
-	                                  {"line-route", mb_required_argument, NULL, 0},
-	                                  {"line-range-threshold", mb_required_argument, NULL, 0},
-	                                  {"line-name1", mb_required_argument, NULL, 0},
-	                                  {"line-name2", mb_required_argument, NULL, 0},
-	                                  {"output-name1", mb_required_argument, NULL, 0},
-	                                  {"output-name2", mb_required_argument, NULL, 0},
-	                                  {"topo-grid-file", mb_required_argument, NULL, 0},
-	                                  {"altitude-altitude", mb_no_argument, NULL, 0},
-	                                  {"altitude-bottompick", mb_no_argument, NULL, 0},
-	                                  {"altitude-topo-grid", mb_no_argument, NULL, 0},
-	                                  {"altitude-bottompick-threshold", mb_required_argument, NULL, 0},
-	                                  {"channel-swap", mb_required_argument, NULL, 0},
-	                                  {"swath-width", mb_required_argument, NULL, 0},
-	                                  {"gain", mb_required_argument, NULL, 0},
-	                                  {"interpolation", mb_required_argument, NULL, 0},
-	                                  {"nav-file", mb_required_argument, NULL, 0},
-	                                  {"nav-file-format", mb_required_argument, NULL, 0},
-	                                  {"nav-async", mb_required_argument, NULL, 0},
-	                                  {"sensordepth-file", mb_required_argument, NULL, 0},
-	                                  {"sensordepth-file-format", mb_required_argument, NULL, 0},
-	                                  {"sensordepth-async", mb_required_argument, NULL, 0},
-	                                  {"altitude-file", mb_required_argument, NULL, 0},
-	                                  {"altitude-file-format", mb_required_argument, NULL, 0},
-	                                  {"altitude-async", mb_required_argument, NULL, 0},
-	                                  {"heading-file", mb_required_argument, NULL, 0},
-	                                  {"heading-file-format", mb_required_argument, NULL, 0},
-	                                  {"heading-async", mb_required_argument, NULL, 0},
-	                                  {"attitude-file", mb_required_argument, NULL, 0},
-	                                  {"attitude-file-format", mb_required_argument, NULL, 0},
-	                                  {"attitude-async", mb_required_argument, NULL, 0},
-	                                  {"soundspeed-constant", mb_required_argument, NULL, 0},
-	                                  {"soundspeed-file", mb_required_argument, NULL, 0},
-	                                  {"soundspeed-file-format", mb_required_argument, NULL, 0},
-	                                  {"soundspeed-async", mb_required_argument, NULL, 0},
-	                                  {"time-latency-file", mb_required_argument, NULL, 0},
-	                                  {"time-latency-constant", mb_required_argument, NULL, 0},
-	                                  {"time-latency-apply-nav", mb_no_argument, NULL, 0},
-	                                  {"time-latency-apply-sensordepth", mb_no_argument, NULL, 0},
-	                                  {"time-latency-apply-altitude", mb_no_argument, NULL, 0},
-	                                  {"time-latency-apply-heading", mb_no_argument, NULL, 0},
-	                                  {"time-latency-apply-attitude", mb_no_argument, NULL, 0},
-	                                  {"time-latency-apply-all-ancilliary", mb_no_argument, NULL, 0},
-	                                  {"time-latency-apply-survey", mb_no_argument, NULL, 0},
-	                                  {"time-latency-apply-all", mb_no_argument, NULL, 0},
-	                                  {"filter", mb_required_argument, NULL, 0},
-	                                  {"filter-apply-nav", mb_no_argument, NULL, 0},
-	                                  {"filter-apply-sensordepth", mb_no_argument, NULL, 0},
-	                                  {"filter-apply-altitude", mb_no_argument, NULL, 0},
-	                                  {"filter-apply-heading", mb_no_argument, NULL, 0},
-	                                  {"filter-apply-attitude", mb_no_argument, NULL, 0},
-	                                  {"filter-apply-all-ancilliary", mb_no_argument, NULL, 0},
-	                                  {NULL, 0, NULL, 0}};
 
 	mb_path read_file = "datalist.mb-1";
 	mb_path platform_file = "";
@@ -398,165 +369,178 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 	{
 		int option_index;
 		bool errflg = false;
-		int c;
 		bool help = false;
-		while ((c = mb_getopt_long(&getopt_state, argc, argv, "", options, &option_index)) != -1)
-			switch (c) {
-			/* long options all return c=0 */
-			case 0:
-				if (strcmp("verbose", options[option_index].name) == 0) {
+		/* the program's long options from GMT's option list, in their command-line order; GMT's own
+		   -V counts as --verbose */
+		for (struct GMT_OPTION *opt = options; opt; opt = opt->next) {
+			const char *optarg_value = "";
+			if (opt->option == MB_GMT_LONGOPT) {
+				if ((option_index = mb_gmt_long_option(opt, long_options, &optarg_value)) == -2) {
+					GMT_Report(API, GMT_MSG_ERROR, "Option --%s requires an argument\n", opt->arg);
+					errflg = true;
+					continue;
+				}
+			}
+			else if (opt->option == 'V')
+				option_index = 0;	/* "verbose" */
+			else {
+				errflg |= (gmt_default_option_error(GMT, opt) != 0);
+				continue;
+			}
+			{
+				if (strcmp("verbose", long_options[option_index].name) == 0) {
 					verbose++;
 				}
-				else if (strcmp("help", options[option_index].name) == 0) {
+				else if (strcmp("help", long_options[option_index].name) == 0) {
 					help = true;
 				}
 				/*-------------------------------------------------------
 				 * Define input file and format (usually a datalist) */
-				else if (strcmp("input", options[option_index].name) == 0) {
-					snprintf(read_file, sizeof(read_file), "%s", getopt_state.optarg);
+				else if (strcmp("input", long_options[option_index].name) == 0) {
+					snprintf(read_file, sizeof(read_file), "%s", optarg_value);
 				}
-				else if (strcmp("format", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &format);
+				else if (strcmp("format", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &format);
 				}
-				else if (strcmp("platform-file", options[option_index].name) == 0) {
-					const int n = sscanf(getopt_state.optarg, "%1023s", platform_file);
+				else if (strcmp("platform-file", long_options[option_index].name) == 0) {
+					const int n = sscanf(optarg_value, "%1023s", platform_file);
 					if (n == 1)
 						use_platform_file = true;
 				}
-				else if (strcmp("platform-target-sensor", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &target_sensor);
+				else if (strcmp("platform-target-sensor", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &target_sensor);
 				}
-				else if (strcmp("output-source", options[option_index].name) == 0 ||
-					 strcmp("output_source", options[option_index].name) == 0) {
-                if (strcmp(getopt_state.optarg, "SIDESCAN") == 0 || strcmp(getopt_state.optarg, "sidescan") == 0)
+				else if (strcmp("output-source", long_options[option_index].name) == 0 ||
+					 strcmp("output_source", long_options[option_index].name) == 0) {
+                if (strcmp(optarg_value, "SIDESCAN") == 0 || strcmp(optarg_value, "sidescan") == 0)
                     output_source = MB_DATA_DATA;
-                else if (strcmp(getopt_state.optarg, "LOW") == 0 || strcmp(getopt_state.optarg, "low") == 0)
+                else if (strcmp(optarg_value, "LOW") == 0 || strcmp(optarg_value, "low") == 0)
                     output_source = MB_DATA_DATA;
-                else if (strcmp(getopt_state.optarg, "HIGH") == 0 || strcmp(getopt_state.optarg, "high") == 0)
+                else if (strcmp(optarg_value, "HIGH") == 0 || strcmp(optarg_value, "high") == 0)
                     output_source = MB_DATA_SIDESCAN2;
 					else
-                    /* n = */ sscanf(getopt_state.optarg, "%d", &output_source);
+                    /* n = */ sscanf(optarg_value, "%d", &output_source);
 				}
-				else if ((strcmp("line-name1", options[option_index].name) == 0)
-                     || (strcmp("line_name1", options[option_index].name) == 0)
-				         || (strcmp("output-name1", options[option_index].name) == 0)
-                     || (strcmp("output_name1", options[option_index].name) == 0)) {
-					snprintf(line_name1, sizeof(line_name1), "%s", getopt_state.optarg);
+				else if ((strcmp("line-name1", long_options[option_index].name) == 0)
+                     || (strcmp("line_name1", long_options[option_index].name) == 0)
+				         || (strcmp("output-name1", long_options[option_index].name) == 0)
+                     || (strcmp("output_name1", long_options[option_index].name) == 0)) {
+					snprintf(line_name1, sizeof(line_name1), "%s", optarg_value);
 				}
-				else if ((strcmp("line-name2", options[option_index].name) == 0)
-                    || (strcmp("line_name2", options[option_index].name) == 0)
-				        || (strcmp("output-name2", options[option_index].name) == 0)
-                    || (strcmp("output_name2", options[option_index].name) == 0)) {
-					snprintf(line_name2, sizeof(line_name2), "%s", getopt_state.optarg);
+				else if ((strcmp("line-name2", long_options[option_index].name) == 0)
+                    || (strcmp("line_name2", long_options[option_index].name) == 0)
+				        || (strcmp("output-name2", long_options[option_index].name) == 0)
+                    || (strcmp("output_name2", long_options[option_index].name) == 0)) {
+					snprintf(line_name2, sizeof(line_name2), "%s", optarg_value);
 				}
 				/*-------------------------------------------------------
 				 * Define survey line specification */
-				else if ((strcmp("line-time-list", options[option_index].name) == 0)
-                     || (strcmp("line_time_list", options[option_index].name) == 0)){
-					snprintf(line_time_list, sizeof(line_time_list), "%s", getopt_state.optarg);
+				else if ((strcmp("line-time-list", long_options[option_index].name) == 0)
+                     || (strcmp("line_time_list", long_options[option_index].name) == 0)){
+					snprintf(line_time_list, sizeof(line_time_list), "%s", optarg_value);
 					line_mode = MBSSLAYOUT_LINE_TIME;
 				}
-				else if (strcmp("line-route", options[option_index].name) == 0) {
-					snprintf(line_route, sizeof(line_route), "%s", getopt_state.optarg);
+				else if (strcmp("line-route", long_options[option_index].name) == 0) {
+					snprintf(line_route, sizeof(line_route), "%s", optarg_value);
 					line_mode = MBSSLAYOUT_LINE_ROUTE;
 				}
-				else if (strcmp("line-position-list", options[option_index].name) == 0) {
-					snprintf(line_position_list, sizeof(line_position_list), "%s", getopt_state.optarg);
+				else if (strcmp("line-position-list", long_options[option_index].name) == 0) {
+					snprintf(line_position_list, sizeof(line_position_list), "%s", optarg_value);
 					line_mode = MBSSLAYOUT_LINE_POSITION;
 				}
-				else if ((strcmp("line-range-threshold", options[option_index].name) == 0)
-                    || (strcmp("line_range_threshold", options[option_index].name) == 0)) {
-					/* n = */ sscanf(getopt_state.optarg, "%lf", &line_range_threshold);
+				else if ((strcmp("line-range-threshold", long_options[option_index].name) == 0)
+                    || (strcmp("line_range_threshold", long_options[option_index].name) == 0)) {
+					/* n = */ sscanf(optarg_value, "%lf", &line_range_threshold);
 				}
 				/*-------------------------------------------------------
 				 * Define sidescan layout algorithm parameters */
-				else if ((strcmp("topo-grid-file", options[option_index].name) == 0)
-                    || (strcmp("topo_grid_file", options[option_index].name) == 0)) {
-					snprintf(topo_grid_file, sizeof(topo_grid_file), "%s", getopt_state.optarg);
+				else if ((strcmp("topo-grid-file", long_options[option_index].name) == 0)
+                    || (strcmp("topo_grid_file", long_options[option_index].name) == 0)) {
+					snprintf(topo_grid_file, sizeof(topo_grid_file), "%s", optarg_value);
 					layout_mode = MBSSLAYOUT_LAYOUT_3DTOPO;
 					ss_altitude_mode = MBSSLAYOUT_ALTITUDE_TOPO_GRID;
 				}
-				else if (strcmp("altitude-altitude", options[option_index].name) == 0) {
+				else if (strcmp("altitude-altitude", long_options[option_index].name) == 0) {
 					ss_altitude_mode = MBSSLAYOUT_ALTITUDE_ALTITUDE;
 				}
-				else if (strcmp("altitude-bottompick", options[option_index].name) == 0) {
+				else if (strcmp("altitude-bottompick", long_options[option_index].name) == 0) {
 					ss_altitude_mode = MBSSLAYOUT_ALTITUDE_BOTTOMPICK;
 				}
-				else if (strcmp("altitude-bottompick-threshold", options[option_index].name) == 0) {
-					/*n = */ sscanf(getopt_state.optarg, "%lf/%lf", &bottompick_threshold, &bottompick_blank);
+				else if (strcmp("altitude-bottompick-threshold", long_options[option_index].name) == 0) {
+					/*n = */ sscanf(optarg_value, "%lf/%lf", &bottompick_threshold, &bottompick_blank);
 					ss_altitude_mode = MBSSLAYOUT_ALTITUDE_BOTTOMPICK;
 				}
-				else if ((strcmp("altitude-topo-grid", options[option_index].name) == 0)
-                    || (strcmp("altitude_topo_grid", options[option_index].name) == 0)) {
+				else if ((strcmp("altitude-topo-grid", long_options[option_index].name) == 0)
+                    || (strcmp("altitude_topo_grid", long_options[option_index].name) == 0)) {
 					ss_altitude_mode = MBSSLAYOUT_ALTITUDE_TOPO_GRID;
 				}
-				else if (strcmp("channel-swap", options[option_index].name) == 0) {
+				else if (strcmp("channel-swap", long_options[option_index].name) == 0) {
 					channel_swap = true;
 				}
-				else if (strcmp("swath-width", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%lf", &swath_width);
+				else if (strcmp("swath-width", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%lf", &swath_width);
 					swath_mode = MBSSLAYOUT_SWATHWIDTH_CONSTANT;
 				}
-				else if (strcmp("gain", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%lf", &gain);
+				else if (strcmp("gain", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%lf", &gain);
 					gain_mode = MBSSLAYOUT_GAIN_TVG;
 				}
-				else if (strcmp("interpolation", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &interpolation);
+				else if (strcmp("interpolation", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &interpolation);
 				}
 				/*-------------------------------------------------------
 				 * Define source of navigation - could be an external file
 				 * or an internal asynchronous record */
-				else if (strcmp("nav-file", options[option_index].name) == 0) {
-					snprintf(nav_file, sizeof(nav_file), "%s", getopt_state.optarg);
+				else if (strcmp("nav-file", long_options[option_index].name) == 0) {
+					snprintf(nav_file, sizeof(nav_file), "%s", optarg_value);
 					nav_mode = MBSSLAYOUT_MERGE_FILE;
 				}
-				else if (strcmp("nav-file-format", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &nav_file_format);
+				else if (strcmp("nav-file-format", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &nav_file_format);
 				}
-				else if (strcmp("nav-async", options[option_index].name) == 0) {
-					const int n = sscanf(getopt_state.optarg, "%d", &nav_async);
+				else if (strcmp("nav-async", long_options[option_index].name) == 0) {
+					const int n = sscanf(optarg_value, "%d", &nav_async);
 					if (n == 1)
 						nav_mode = MBSSLAYOUT_MERGE_ASYNC;
 				}
-				else if (strcmp("nav-sensor", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &nav_sensor);
+				else if (strcmp("nav-sensor", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &nav_sensor);
 				}
 				/*-------------------------------------------------------
 				 * Define source of sensordepth - could be an external file
 				 * or an internal asynchronous record */
-				else if (strcmp("sensordepth-file", options[option_index].name) == 0) {
-					snprintf(sensordepth_file, sizeof(sensordepth_file), "%s", getopt_state.optarg);
+				else if (strcmp("sensordepth-file", long_options[option_index].name) == 0) {
+					snprintf(sensordepth_file, sizeof(sensordepth_file), "%s", optarg_value);
 					sensordepth_mode = MBSSLAYOUT_MERGE_FILE;
 				}
-				else if (strcmp("sensordepth-file-format", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &sensordepth_file_format);
+				else if (strcmp("sensordepth-file-format", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &sensordepth_file_format);
 				}
-				else if (strcmp("sensordepth-async", options[option_index].name) == 0) {
-					const int n = sscanf(getopt_state.optarg, "%d", &sensordepth_async);
+				else if (strcmp("sensordepth-async", long_options[option_index].name) == 0) {
+					const int n = sscanf(optarg_value, "%d", &sensordepth_async);
 					if (n == 1)
 						sensordepth_mode = MBSSLAYOUT_MERGE_ASYNC;
 				}
-				else if (strcmp("sensordepth-sensor", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &sensordepth_sensor);
+				else if (strcmp("sensordepth-sensor", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &sensordepth_sensor);
 				}
 				/*-------------------------------------------------------
 				 * Define source of heading - could be an external file
 				 * or an internal asynchronous record */
-				else if (strcmp("heading-file", options[option_index].name) == 0) {
-					snprintf(heading_file, sizeof(heading_file), "%s", getopt_state.optarg);
+				else if (strcmp("heading-file", long_options[option_index].name) == 0) {
+					snprintf(heading_file, sizeof(heading_file), "%s", optarg_value);
 					heading_mode = MBSSLAYOUT_MERGE_FILE;
 				}
-				else if (strcmp("heading-file-format", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &heading_file_format);
+				else if (strcmp("heading-file-format", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &heading_file_format);
 				}
-				else if (strcmp("heading-async", options[option_index].name) == 0) {
-					const int n = sscanf(getopt_state.optarg, "%d", &heading_async);
+				else if (strcmp("heading-async", long_options[option_index].name) == 0) {
+					const int n = sscanf(optarg_value, "%d", &heading_async);
 					if (n == 1)
 						heading_mode = MBSSLAYOUT_MERGE_ASYNC;
 				}
-				else if (strcmp("heading-sensor", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &heading_sensor);
+				else if (strcmp("heading-sensor", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &heading_sensor);
 				}
 
 				/*-------------------------------------------------------
@@ -564,59 +548,59 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 				 * or an internal asynchronous record */
 
 				/* altitude-file */
-				else if (strcmp("altitude-file", options[option_index].name) == 0) {
-					snprintf(altitude_file, sizeof(altitude_file), "%s", getopt_state.optarg);
+				else if (strcmp("altitude-file", long_options[option_index].name) == 0) {
+					snprintf(altitude_file, sizeof(altitude_file), "%s", optarg_value);
 					altitude_mode = MBSSLAYOUT_MERGE_FILE;
 				}
 
 				/* altitude-file-format */
-				else if (strcmp("altitude-file-format", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &altitude_file_format);
+				else if (strcmp("altitude-file-format", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &altitude_file_format);
 				}
 
 				/* altitude-async */
-				else if (strcmp("altitude-async", options[option_index].name) == 0) {
-					const int n = sscanf(getopt_state.optarg, "%d", &altitude_async);
+				else if (strcmp("altitude-async", long_options[option_index].name) == 0) {
+					const int n = sscanf(optarg_value, "%d", &altitude_async);
 					if (n == 1)
 						altitude_mode = MBSSLAYOUT_MERGE_ASYNC;
 				}
-				else if (strcmp("altitude-sensor", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &altitude_sensor);
+				else if (strcmp("altitude-sensor", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &altitude_sensor);
 				}
 				/*-------------------------------------------------------
 				 * Define source of attitude - could be an external file
 				 * or an internal asynchronous record */
-				else if (strcmp("attitude-file", options[option_index].name) == 0) {
-					snprintf(attitude_file, sizeof(attitude_file), "%s", getopt_state.optarg);
+				else if (strcmp("attitude-file", long_options[option_index].name) == 0) {
+					snprintf(attitude_file, sizeof(attitude_file), "%s", optarg_value);
 					attitude_mode = MBSSLAYOUT_MERGE_FILE;
 				}
-				else if (strcmp("attitude-file-format", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &attitude_file_format);
+				else if (strcmp("attitude-file-format", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &attitude_file_format);
 				}
-				else if (strcmp("attitude-async", options[option_index].name) == 0) {
-					const int n = sscanf(getopt_state.optarg, "%d", &attitude_async);
+				else if (strcmp("attitude-async", long_options[option_index].name) == 0) {
+					const int n = sscanf(optarg_value, "%d", &attitude_async);
 					if (n == 1)
 						attitude_mode = MBSSLAYOUT_MERGE_ASYNC;
 				}
-				else if (strcmp("attitude-sensor", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &attitude_sensor);
+				else if (strcmp("attitude-sensor", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &attitude_sensor);
 				}
 				/*-------------------------------------------------------
 				 * Define source of sound speed - could be an external file
 				 * or an internal asynchronous record */
-				else if (strcmp("soundspeed-constant", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%lf", &soundspeed_constant);
+				else if (strcmp("soundspeed-constant", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%lf", &soundspeed_constant);
 					soundspeed_mode = MBSSLAYOUT_MERGE_OFF;
 				}
-				else if (strcmp("soundspeed-file", options[option_index].name) == 0) {
-					snprintf(soundspeed_file, sizeof(soundspeed_file), "%s", getopt_state.optarg);
+				else if (strcmp("soundspeed-file", long_options[option_index].name) == 0) {
+					snprintf(soundspeed_file, sizeof(soundspeed_file), "%s", optarg_value);
 					soundspeed_mode = MBSSLAYOUT_MERGE_FILE;
 				}
-				else if (strcmp("soundspeed-file-format", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &soundspeed_file_format);
+				else if (strcmp("soundspeed-file-format", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &soundspeed_file_format);
 				}
-				else if (strcmp("soundspeed-async", options[option_index].name) == 0) {
-					const int n = sscanf(getopt_state.optarg, "%d", &soundspeed_async);
+				else if (strcmp("soundspeed-async", long_options[option_index].name) == 0) {
+					const int n = sscanf(optarg_value, "%d", &soundspeed_async);
 					if (n == 1)
 						soundspeed_mode = MBSSLAYOUT_MERGE_ASYNC;
 				}
@@ -625,79 +609,76 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 				 * or single value. Also define which data the time_latency model
 				 * will be applied to - nav, sensordepth, heading, attitude,
 				 * or all. */
-				else if (strcmp("time-latency-file", options[option_index].name) == 0) {
-					snprintf(time_latency_file, sizeof(time_latency_file), "%s", getopt_state.optarg);
+				else if (strcmp("time-latency-file", long_options[option_index].name) == 0) {
+					snprintf(time_latency_file, sizeof(time_latency_file), "%s", optarg_value);
 					time_latency_mode = MB_SENSOR_TIME_LATENCY_MODEL;
 				}
-				else if (strcmp("time-latency-file-format", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%d", &time_latency_format);
+				else if (strcmp("time-latency-file-format", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%d", &time_latency_format);
 				}
-				else if (strcmp("time-latency-constant", options[option_index].name) == 0) {
-					const int n = sscanf(getopt_state.optarg, "%lf", &time_latency_constant);
+				else if (strcmp("time-latency-constant", long_options[option_index].name) == 0) {
+					const int n = sscanf(optarg_value, "%lf", &time_latency_constant);
 					if (n == 1)
 						time_latency_mode = MB_SENSOR_TIME_LATENCY_STATIC;
 				}
-				else if (strcmp("time-latency-apply-nav", options[option_index].name) == 0) {
+				else if (strcmp("time-latency-apply-nav", long_options[option_index].name) == 0) {
 					time_latency_apply = time_latency_apply | MBSSLAYOUT_TIME_LATENCY_APPLY_NAV;
 				}
-				else if (strcmp("time-latency-apply-sensordepth", options[option_index].name) == 0) {
+				else if (strcmp("time-latency-apply-sensordepth", long_options[option_index].name) == 0) {
 					time_latency_apply = time_latency_apply | MBSSLAYOUT_TIME_LATENCY_APPLY_SENSORDEPTH;
 				}
-				else if (strcmp("time-latency-apply-heading", options[option_index].name) == 0) {
+				else if (strcmp("time-latency-apply-heading", long_options[option_index].name) == 0) {
 					time_latency_apply = time_latency_apply | MBSSLAYOUT_TIME_LATENCY_APPLY_HEADING;
 				}
-				else if (strcmp("time-latency-apply-attitude", options[option_index].name) == 0) {
+				else if (strcmp("time-latency-apply-attitude", long_options[option_index].name) == 0) {
 					time_latency_apply = time_latency_apply | MBSSLAYOUT_TIME_LATENCY_APPLY_ATTITUDE;
 				}
-				else if (strcmp("time-latency-apply-altitude", options[option_index].name) == 0) {
+				else if (strcmp("time-latency-apply-altitude", long_options[option_index].name) == 0) {
 					time_latency_apply = time_latency_apply | MBSSLAYOUT_TIME_LATENCY_APPLY_ALTITUDE;
 				}
-				else if (strcmp("time-latency-apply-all-ancilliary", options[option_index].name) == 0) {
+				else if (strcmp("time-latency-apply-all-ancilliary", long_options[option_index].name) == 0) {
 					time_latency_apply = MBSSLAYOUT_TIME_LATENCY_APPLY_ALL_ANCILLIARY;
 				}
-				else if (strcmp("time-latency-apply-survey", options[option_index].name) == 0) {
+				else if (strcmp("time-latency-apply-survey", long_options[option_index].name) == 0) {
 					time_latency_apply = MBSSLAYOUT_TIME_LATENCY_APPLY_SURVEY;
 				}
-				else if (strcmp("time-latency-apply-all", options[option_index].name) == 0) {
+				else if (strcmp("time-latency-apply-all", long_options[option_index].name) == 0) {
 					time_latency_apply = MBSSLAYOUT_TIME_LATENCY_APPLY_ALL;
 				}
 				/*-------------------------------------------------------
 				 * Define time domain filtering of ancillary data such as
 				 * nav, sensordepth, heading, attitude, and altitude */
-				else if (strcmp("filter", options[option_index].name) == 0) {
-					/* n = */ sscanf(getopt_state.optarg, "%lf", &filter_length);
+				else if (strcmp("filter", long_options[option_index].name) == 0) {
+					/* n = */ sscanf(optarg_value, "%lf", &filter_length);
 				}
-				else if (strcmp("filter-apply-nav", options[option_index].name) == 0) {
+				else if (strcmp("filter-apply-nav", long_options[option_index].name) == 0) {
 					filter_apply = filter_apply | MBSSLAYOUT_TIME_LATENCY_APPLY_NAV;
 				}
-				else if (strcmp("filter-apply-sensordepth", options[option_index].name) == 0) {
+				else if (strcmp("filter-apply-sensordepth", long_options[option_index].name) == 0) {
 					filter_apply = filter_apply | MBSSLAYOUT_TIME_LATENCY_APPLY_SENSORDEPTH;
 				}
-				else if (strcmp("filter-apply-heading", options[option_index].name) == 0) {
+				else if (strcmp("filter-apply-heading", long_options[option_index].name) == 0) {
 					filter_apply = filter_apply | MBSSLAYOUT_TIME_LATENCY_APPLY_HEADING;
 				}
-				else if (strcmp("filter-apply-attitude", options[option_index].name) == 0) {
+				else if (strcmp("filter-apply-attitude", long_options[option_index].name) == 0) {
 					filter_apply = filter_apply | MBSSLAYOUT_TIME_LATENCY_APPLY_ATTITUDE;
 				}
-				else if (strcmp("filter-apply-altitude", options[option_index].name) == 0) {
+				else if (strcmp("filter-apply-altitude", long_options[option_index].name) == 0) {
 					filter_apply = filter_apply | MBSSLAYOUT_TIME_LATENCY_APPLY_ALTITUDE;
 				}
-				else if (strcmp("filter-apply-all-ancilliary", options[option_index].name) == 0) {
+				else if (strcmp("filter-apply-all-ancilliary", long_options[option_index].name) == 0) {
 					filter_apply = MBSSLAYOUT_TIME_LATENCY_APPLY_ALL_ANCILLIARY;
 				}
-
-				break;
-			case '?':
-				errflg = true;
 			}
-
-		if (errflg) {
-			fprintf(stderr, "usage: %s\n", usage_message);
-			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_BAD_USAGE);
 		}
 
-		if (verbose == 1 || help) {
+		if (errflg)
+			Return(GMT_PARSE_ERROR);
+
+		if (help)
+			Return(usage(API, GMT_USAGE));
+
+		if (verbose == 1) {
 			fprintf(stderr, "\nProgram %s\n", program_name);
 			fprintf(stderr, "MB-system Version %s\n", MB_VERSION);
 		}
@@ -797,11 +778,6 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 			fprintf(stderr, "dbg2       time_latency_apply:            %x\n", time_latency_apply);
 		}
 
-		if (help) {
-			fprintf(stderr, "\n%s\n", help_message);
-			fprintf(stderr, "\nusage: %s\n", usage_message);
-			Return(MB_ERROR_NO_ERROR);
-		}
 	}
 
 	if (verbose == 1) {
@@ -992,7 +968,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 		if (status == MB_FAILURE) {
 			fprintf(stderr, "\nUnable to open and parse platform file: %s\n", platform_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 
 		/* reset data sources according to commands */
@@ -1043,7 +1019,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 			fprintf(stderr, "\nMBIO Error loading topography grid: %s\n%s\n", topo_grid_file, message);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
 			mb_memory_clear(verbose, &error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 	}
 
@@ -1185,7 +1161,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 			error = MB_ERROR_OPEN_FAIL;
 			status = MB_FAILURE;
 			fprintf(stderr, "\nUnable to open time list file <%s> for reading\n", line_time_list);
-			Return(status);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		// bool rawroutefile = false;
 		int ntimepointalloc = 0;
@@ -1214,7 +1190,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 						mb_error(verbose, error, &message);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -1254,7 +1230,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 			error = MB_ERROR_OPEN_FAIL;
 			status = MB_FAILURE;
 			fprintf(stderr, "\nUnable to open route file <%s> for reading\n", line_route);
-			Return(status);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		bool rawroutefile = false;
 		char *result = NULL;
@@ -1292,7 +1268,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 						mb_error(verbose, error, &message);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -1332,7 +1308,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 			error = MB_ERROR_OPEN_FAIL;
 			status = MB_FAILURE;
 			fprintf(stderr, "\nUnable to open position list file <%s> for reading\n", line_position_list);
-			Return(status);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		char *result = NULL;
 		while ((result = fgets(comment, MB_PATH_MAXLINE, fp)) == comment) {
@@ -1356,7 +1332,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 						mb_error(verbose, error, &message);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -1394,7 +1370,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 		error = MB_ERROR_OPEN_FAIL;
 		status = MB_FAILURE;
 		fprintf(stderr, "\nUnable to open plotting script file <%s> \n", scriptfile);
-		Return(status);
+		Return(GMT_ERROR_ON_FOPEN);
 	} else {
     char user[256], host[256], date[32];
     status = mb_user_host_date(verbose, user, host, date, &error);
@@ -1427,7 +1403,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		read_data = mb_datalist_read(verbose, datalist, ifile, dfile, &iformat, &file_weight, &error) == MB_SUCCESS;
 	} else {
@@ -1522,7 +1498,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 			fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 			fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", ifile);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		beamflag = NULL;
@@ -1558,7 +1534,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 			mb_error(verbose, error, &message);
 			fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			Return(GMT_MEMORY_ERROR);
 		}
 
 		/* zero file count records */
@@ -1651,7 +1627,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 						mb_error(verbose, error, &message);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -1685,7 +1661,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 						mb_error(verbose, error, &message);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -1718,7 +1694,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 						mb_error(verbose, error, &message);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -1748,7 +1724,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 						mb_error(verbose, error, &message);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -1784,7 +1760,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 						mb_error(verbose, error, &message);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -1818,7 +1794,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 						mb_error(verbose, error, &message);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -2082,7 +2058,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		read_data = mb_datalist_read(verbose, datalist, ifile, dfile, &iformat, &file_weight, &error) == MB_SUCCESS;
 	} else {
@@ -2162,7 +2138,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 			fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 			fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", ifile);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		int interp_error = MB_ERROR_NO_ERROR;
@@ -2229,7 +2205,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 			mb_error(verbose, error, &message);
 			fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			Return(GMT_MEMORY_ERROR);
 		}
 
 		/* zero file count records */
@@ -2347,10 +2323,10 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 
 						/* output counts */
 						if (verbose > 0) {
-							fprintf(stdout, "\nPass 2: Closing output file: %s\n", output_file);
-							fprintf(stdout, "Pass 2: Records written to output file %s\n", output_file);
-							fprintf(stdout, "     %d survey records\n", n_wf_data);
-							fprintf(stdout, "     %d comment records\n", n_wf_comment);
+							fprintf(stderr, "\nPass 2: Closing output file: %s\n", output_file);
+							fprintf(stderr, "Pass 2: Records written to output file %s\n", output_file);
+							fprintf(stderr, "     %d survey records\n", n_wf_data);
+							fprintf(stderr, "     %d comment records\n", n_wf_comment);
 						}
 
 						/* output commands to first cut plotting script file */
@@ -2377,7 +2353,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 						fprintf(stderr, "\nMBIO Error returned from function <mb_write_init>:\n%s\n", message);
 						fprintf(stderr, "\nMultibeam File <%s> not initialized for writing\n", output_file);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					/* get pointers to data storage */
@@ -2409,7 +2385,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 						mb_error(verbose, error, &message);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 				if (num_samples_stbd > num_samples_stbd_alloc) {
@@ -2421,7 +2397,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 						mb_error(verbose, error, &message);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -2771,7 +2747,7 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 					fprintf(stderr, "\nMBIO Error returned from function <mb_put>:\n%s\n", message);
 					fprintf(stderr, "\nMultibeam Data Not Written To File <%s>\n", ofile);
 					fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-					Return(error);
+					Return(GMT_RUNTIME_ERROR);
 				}
 
 				/* count records */
@@ -2831,10 +2807,10 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 
 		/* output counts */
 		if (verbose > 0) {
-			fprintf(stdout, "\nClosing output file: %s\n", output_file);
-			fprintf(stdout, "Pass 2: Records written to output file %s\n", output_file);
-			fprintf(stdout, "     %d survey records\n", n_wf_data);
-			fprintf(stdout, "     %d comment records\n", n_wf_comment);
+			fprintf(stderr, "\nClosing output file: %s\n", output_file);
+			fprintf(stderr, "Pass 2: Records written to output file %s\n", output_file);
+			fprintf(stderr, "     %d survey records\n", n_wf_data);
+			fprintf(stderr, "     %d comment records\n", n_wf_comment);
 		}
 
 		/* output commands to first cut plotting script file */
@@ -2942,6 +2918,14 @@ int GMT_mbsslayout(void *V_API, int gmt_mode, void *args) {
 		fprintf(stderr, "dbg2       status:  %d\n", status);
 	}
 
-	Return(error);
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+	   The end of the data (EOF) is how every read finishes, not an error. */
+	if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

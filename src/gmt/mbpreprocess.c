@@ -60,7 +60,9 @@
 #include "mb_io.h"
 #include "mb_process.h"
 #include "mb_status.h"
+#include "mb_gmt_opts.h"
 #include "mbsys_ldeoih.h"
+#include "mb_gmt_simrad.h"
 
 const int MBPREPROCESS_ALLOC_CHUNK = 1000;
 
@@ -191,6 +193,7 @@ struct MBPREPROCESS_CTRL {
 	bool output_sensor_fnv;
 	bool skip_existing;
 	bool help;
+	int  verbose;	/* the program's --verbose count (and GMT's -V) */
 
 	/* nav */
 	merge_t nav_mode;
@@ -322,148 +325,114 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "\n%s\n", help_message);
 	GMT_Message(API, GMT_TIME_NONE, "MB-System Version %s\n", MB_VERSION);
-	return GMT_PARSE_ERROR;
+	GMT_Message(API, GMT_TIME_NONE, "\t-I<datalist> and -F<format> are short forms of --input and --format.\n\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 /*--------------------------------------------------------------------
- * Canonical long-option table -- mirrors the static struct option[]
- * used by the original src/utilities/mbpreprocess.cc with getopt_long().
- * Kept here as the authoritative list of valid options and their
- * required-/no-argument expectation. parse() below uses it to validate
- * option names that arrive pre-tokenized through the GMT_OPTION linked
- * list (GMT modules cannot use getopt_long since argv is already
- * consumed by the GMT API). */
-enum mbpp_arg { MBPP_NO_ARG = 0, MBPP_REQ_ARG = 1 };
-struct mbpp_longopt { const char *name; enum mbpp_arg has_arg; };
-static const struct mbpp_longopt mbpp_options[] = {
-	{"verbose",                                          MBPP_NO_ARG},
-	{"help",                                             MBPP_NO_ARG},
-	{"input",                                            MBPP_REQ_ARG},
-	{"format",                                           MBPP_REQ_ARG},
-	{"output-directory",                                 MBPP_REQ_ARG},
-	{"output-datalist",                                  MBPP_REQ_ARG},
-	{"platform-file",                                    MBPP_REQ_ARG},
-	{"platform-target-sensor",                           MBPP_REQ_ARG},
-	{"output-sensor-fnv",                                MBPP_NO_ARG},
-	{"skip-existing",                                    MBPP_NO_ARG},
-	{"nav-file",                                         MBPP_REQ_ARG},
-	{"nav-file-format",                                  MBPP_REQ_ARG},
-	{"nav-async",                                        MBPP_REQ_ARG},
-	{"nav-sensor",                                       MBPP_REQ_ARG},
-	{"sensordepth-file",                                 MBPP_REQ_ARG},
-	{"sensordepth-file-format",                          MBPP_REQ_ARG},
-	{"sensordepth-async",                                MBPP_REQ_ARG},
-	{"sensordepth-sensor",                               MBPP_REQ_ARG},
-	{"heading-file",                                     MBPP_REQ_ARG},
-	{"heading-file-format",                              MBPP_REQ_ARG},
-	{"heading-async",                                    MBPP_REQ_ARG},
-	{"heading-sensor",                                   MBPP_REQ_ARG},
-	{"altitude-file",                                    MBPP_REQ_ARG},
-	{"altitude-file-format",                             MBPP_REQ_ARG},
-	{"altitude-async",                                   MBPP_REQ_ARG},
-	{"altitude-sensor",                                  MBPP_REQ_ARG},
-	{"attitude-file",                                    MBPP_REQ_ARG},
-	{"attitude-file-format",                             MBPP_REQ_ARG},
-	{"attitude-async",                                   MBPP_REQ_ARG},
-	{"attitude-sensor",                                  MBPP_REQ_ARG},
-	{"attitude-zero-heave",                              MBPP_NO_ARG},
-	{"soundspeed-file",                                  MBPP_REQ_ARG},
-	{"soundspeed-file-format",                           MBPP_REQ_ARG},
-	{"soundspeed-async",                                 MBPP_REQ_ARG},
-	{"soundspeed-sensor",                                MBPP_REQ_ARG},
-	{"time-latency-file",                                MBPP_REQ_ARG},
-	{"time-latency-file-format",                         MBPP_REQ_ARG},
-	{"time-latency-constant",                            MBPP_REQ_ARG},
-	{"time-latency-apply-nav",                           MBPP_NO_ARG},
-	{"time-latency-apply-sensordepth",                   MBPP_NO_ARG},
-	{"time-latency-apply-heading",                       MBPP_NO_ARG},
-	{"time-latency-apply-attitude",                      MBPP_NO_ARG},
-	{"time-latency-apply-altitude",                      MBPP_NO_ARG},
-	{"time-latency-apply-all-ancilliary",                MBPP_NO_ARG},
-	{"time-latency-apply-survey",                        MBPP_NO_ARG},
-	{"time-latency-apply-all",                           MBPP_NO_ARG},
-	{"filter",                                           MBPP_REQ_ARG},
-	{"filter-apply-nav",                                 MBPP_NO_ARG},
-	{"filter-apply-sensordepth",                         MBPP_NO_ARG},
-	{"filter-apply-heading",                             MBPP_NO_ARG},
-	{"filter-apply-attitude",                            MBPP_NO_ARG},
-	{"filter-apply-altitude",                            MBPP_NO_ARG},
-	{"filter-apply-all-ancilliary",                      MBPP_NO_ARG},
-	{"recalculate-bathymetry",                           MBPP_NO_ARG},
-	{"no-change-survey",                                 MBPP_NO_ARG},
-	{"multibeam-sidescan-source",                        MBPP_REQ_ARG},
-	{"sounding-amplitude-filter",                        MBPP_REQ_ARG},
-	{"sounding-altitude-filter",                         MBPP_REQ_ARG},
-	{"ignore-water-column",                              MBPP_NO_ARG},
-	{"head1-offsets",                                    MBPP_REQ_ARG},
-	{"head2-offsets",                                    MBPP_REQ_ARG},
-	{"kluge-time-jumps",                                 MBPP_REQ_ARG},
-	{"kluge-fix-7k-timestamps",                          MBPP_REQ_ARG},
-	{"kluge-ancilliary-time-jumps",                      MBPP_REQ_ARG},
-	{"kluge-mbaripressure-time-jumps",                   MBPP_REQ_ARG},
-	{"kluge-beam-tweak",                                 MBPP_REQ_ARG},
-	{"kluge-soundspeed-tweak",                           MBPP_REQ_ARG},
-	{"kluge-zero-attitude-correction",                   MBPP_NO_ARG},
-	{"kluge-zero-alongtrack-angles",                     MBPP_NO_ARG},
-	{"kluge-fix-wissl-timestamps",                       MBPP_NO_ARG},
-	{"kluge-auv-sentry-sensordepth",                     MBPP_NO_ARG},
-	{"kluge-ignore-snippets",                            MBPP_NO_ARG},
-	{"kluge-sensordepth-from-heave",                     MBPP_NO_ARG},
-	{"kluge-early-MBARI-Mapping-AUV",                    MBPP_NO_ARG},
-	{"kluge-flipsign-roll",                              MBPP_NO_ARG},
-	{"kluge-flipsign-pitch",                             MBPP_NO_ARG},
-	{"kluge-set-beamwidths",                             MBPP_REQ_ARG},
-	{"kluge-set-beamwidth-acrosstrack",                  MBPP_REQ_ARG},
-	{"kluge-set-beamwidth-alongtrack",                   MBPP_REQ_ARG},
-	{"kluge-ignore-duplicate-pings",                     MBPP_NO_ARG},
-	{"kluge-xducer-depth-from-heave",                    MBPP_NO_ARG},
-	{"kluge-xducer-depth-from-sensordepth",              MBPP_NO_ARG},
-	{"kluge-xducer-depth-from-heave-and-sensordepth",    MBPP_NO_ARG},
-	{"kluge-rangescale",                                 MBPP_REQ_ARG},
-	{"kluge-fix-wissl2-ranges",                          MBPP_NO_ARG},
-	{NULL, MBPP_NO_ARG}
+ * The long-option table of the original src/utilities/mbpreprocess.cc (it
+ * has no short options): mb_gmt_mark_long_options() marks each of these
+ * names before GMT_Parse_Common, so GMT's own --PAR=value settings still
+ * work, and parse() reads them in command-line order. */
+static const struct MB_GMT_LONGOPT_DEF long_options[] = {
+	{"verbose",                                          false},
+	{"help",                                             false},
+	{"input",                                            true},
+	{"format",                                           true},
+	{"output-directory",                                 true},
+	{"output-datalist",                                  true},
+	{"platform-file",                                    true},
+	{"platform-target-sensor",                           true},
+	{"output-sensor-fnv",                                false},
+	{"skip-existing",                                    false},
+	{"nav-file",                                         true},
+	{"nav-file-format",                                  true},
+	{"nav-async",                                        true},
+	{"nav-sensor",                                       true},
+	{"sensordepth-file",                                 true},
+	{"sensordepth-file-format",                          true},
+	{"sensordepth-async",                                true},
+	{"sensordepth-sensor",                               true},
+	{"heading-file",                                     true},
+	{"heading-file-format",                              true},
+	{"heading-async",                                    true},
+	{"heading-sensor",                                   true},
+	{"altitude-file",                                    true},
+	{"altitude-file-format",                             true},
+	{"altitude-async",                                   true},
+	{"altitude-sensor",                                  true},
+	{"attitude-file",                                    true},
+	{"attitude-file-format",                             true},
+	{"attitude-async",                                   true},
+	{"attitude-sensor",                                  true},
+	{"attitude-zero-heave",                              false},
+	{"soundspeed-file",                                  true},
+	{"soundspeed-file-format",                           true},
+	{"soundspeed-async",                                 true},
+	{"soundspeed-sensor",                                true},
+	{"time-latency-file",                                true},
+	{"time-latency-file-format",                         true},
+	{"time-latency-constant",                            true},
+	{"time-latency-apply-nav",                           false},
+	{"time-latency-apply-sensordepth",                   false},
+	{"time-latency-apply-heading",                       false},
+	{"time-latency-apply-attitude",                      false},
+	{"time-latency-apply-altitude",                      false},
+	{"time-latency-apply-all-ancilliary",                false},
+	{"time-latency-apply-survey",                        false},
+	{"time-latency-apply-all",                           false},
+	{"filter",                                           true},
+	{"filter-apply-nav",                                 false},
+	{"filter-apply-sensordepth",                         false},
+	{"filter-apply-heading",                             false},
+	{"filter-apply-attitude",                            false},
+	{"filter-apply-altitude",                            false},
+	{"filter-apply-all-ancilliary",                      false},
+	{"recalculate-bathymetry",                           false},
+	{"no-change-survey",                                 false},
+	{"multibeam-sidescan-source",                        true},
+	{"sounding-amplitude-filter",                        true},
+	{"sounding-altitude-filter",                         true},
+	{"ignore-water-column",                              false},
+	{"head1-offsets",                                    true},
+	{"head2-offsets",                                    true},
+	{"kluge-time-jumps",                                 true},
+	{"kluge-fix-7k-timestamps",                          true},
+	{"kluge-ancilliary-time-jumps",                      true},
+	{"kluge-mbaripressure-time-jumps",                   true},
+	{"kluge-beam-tweak",                                 true},
+	{"kluge-soundspeed-tweak",                           true},
+	{"kluge-zero-attitude-correction",                   false},
+	{"kluge-zero-alongtrack-angles",                     false},
+	{"kluge-fix-wissl-timestamps",                       false},
+	{"kluge-auv-sentry-sensordepth",                     false},
+	{"kluge-ignore-snippets",                            false},
+	{"kluge-sensordepth-from-heave",                     false},
+	{"kluge-early-MBARI-Mapping-AUV",                    false},
+	{"kluge-flipsign-roll",                              false},
+	{"kluge-flipsign-pitch",                             false},
+	{"kluge-set-beamwidths",                             true},
+	{"kluge-set-beamwidth-acrosstrack",                  true},
+	{"kluge-set-beamwidth-alongtrack",                   true},
+	{"kluge-ignore-duplicate-pings",                     false},
+	{"kluge-xducer-depth-from-heave",                    false},
+	{"kluge-xducer-depth-from-sensordepth",              false},
+	{"kluge-xducer-depth-from-heave-and-sensordepth",    false},
+	{"kluge-rangescale",                                 true},
+	{"kluge-fix-wissl2-ranges",                          false},
+	{NULL, false}
 };
-
-static const struct mbpp_longopt *mbpp_find_opt(const char *name) {
-	for (const struct mbpp_longopt *o = mbpp_options; o->name; o++)
-		if (strcmp(o->name, name) == 0) return o;
-	return NULL;
-}
-
-/* split "name=value" or "name" into name + value (value may be empty string) */
-static void split_longopt(const char *s, char *name, size_t name_sz, const char **val_out) {
-	const char *eq = strchr(s, '=');
-	if (eq) {
-		size_t n = (size_t)(eq - s);
-		if (n >= name_sz) n = name_sz - 1;
-		memcpy(name, s, n);
-		name[n] = '\0';
-		*val_out = eq + 1;
-	} else {
-		strncpy(name, s, name_sz - 1);
-		name[name_sz - 1] = '\0';
-		*val_out = "";
-	}
-}
 
 #define MATCH(s) (strcmp(name, (s)) == 0)
 
 /*--------------------------------------------------------------------
- * parse() -- long-option dispatch
- *
- * Original src/utilities/mbpreprocess.cc used a standalone main() with
- * getopt_long() driving a switch on c=0 + strcmp(option_index name).
- * As a GMT module, argv has already been consumed by the GMT API and
- * options arrive as a GMT_OPTION linked list, so getopt_long() cannot
- * be used here. Semantics preserved by:
- *   - validating each option name against mbpp_options[] above,
- *   - dispatching via MATCH() (strcmp) on the name,
- *   - extracting any "=value" tail through split_longopt().
- * Set of accepted option names and their required-/no-argument
- * expectations match the original .cc options[] table exactly. */
+ * parse() -- the original's getopt_long() switch on c=0 +
+ * strcmp(option_index name), reached through mb_gmt_long_option(); -I and
+ * -F are the module's own short forms of --input and --format. */
 static int parse(struct GMT_CTRL *GMT, struct MBPREPROCESS_CTRL *Ctrl, struct GMT_OPTION *options) {
 	unsigned int n_errors = 0;
 	struct GMT_OPTION *opt;
@@ -472,41 +441,24 @@ static int parse(struct GMT_CTRL *GMT, struct MBPREPROCESS_CTRL *Ctrl, struct GM
 
 	for (opt = options; opt; opt = opt->next) {
 		switch (opt->option) {
-		case '<':
-			/* positional input file or long option arriving as positional */
-			if (opt->arg && opt->arg[0] == '-' && opt->arg[1] == '-') {
-				/* long option as positional -- dispatch below */
-			} else if (opt->arg) {
-				strcpy(Ctrl->read_file, opt->arg);
-				Ctrl->I_active = true;
-				continue;
-			} else {
-				continue;
+		case '<':	/* positional input file */
+			strcpy(Ctrl->read_file, opt->arg);
+			Ctrl->I_active = true;
+			break;
+		case 'V':	/* GMT's -V counts as the program's --verbose */
+			Ctrl->verbose++;
+			break;
+		case MB_GMT_LONGOPT: {
+			const char *val;
+			const int k = mb_gmt_long_option(opt, long_options, &val);
+			if (k < 0) {
+				GMT_Report(API, GMT_MSG_ERROR, "Option --%s %s\n", opt->arg, k == -2 ? "requires an argument" : "is not recognized");
+				n_errors++;
+				break;
 			}
-			/* fall through into '-' handling */
-		case '-': {
-			char name[64];
-			const char *val = "";
-			const char *src = opt->arg;
-			if (opt->option == '<' && src && src[0] == '-' && src[1] == '-')
-				src += 2;
-			split_longopt(src ? src : "", name, sizeof(name), &val);
+			const char *name = long_options[k].name;
 
-			{
-				const struct mbpp_longopt *od = mbpp_find_opt(name);
-				if (od == NULL) {
-					GMT_Report(API, GMT_MSG_NORMAL, "Unknown option --%s\n", name);
-					{ GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
-					break;
-				}
-				if (od->has_arg == MBPP_REQ_ARG && (val == NULL || val[0] == '\0')) {
-					GMT_Report(API, GMT_MSG_NORMAL, "Option --%s requires an argument (use --%s=value)\n", name, name);
-					{ GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
-					break;
-				}
-			}
-
-			if      (MATCH("verbose"))                    { /* handled via -V */ }
+			if      (MATCH("verbose"))                    { Ctrl->verbose++; }
 			else if (MATCH("help"))                       { Ctrl->help = true; }
 			/*-------------------------------------------------------
 			 * Define input file and format (usually a datalist) */
@@ -790,7 +742,7 @@ static int parse(struct GMT_CTRL *GMT, struct MBPREPROCESS_CTRL *Ctrl, struct GM
 			if (sscanf(opt->arg, "%d", &Ctrl->format) == 1) Ctrl->F_active = true;
 			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
@@ -803,6 +755,8 @@ static int parse(struct GMT_CTRL *GMT, struct MBPREPROCESS_CTRL *Ctrl, struct GM
 
 /*--------------------------------------------------------------------*/
 
+EXTERN_MSC int GMT_mbpreprocess(void *V_API, int mode, void *args);
+
 int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 	int error = MB_ERROR_NO_ERROR;
 	struct MBPREPROCESS_CTRL *Ctrl = NULL;
@@ -814,20 +768,23 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
-	if (!options || options->option == GMT_OPT_USAGE) bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS)          bailout(usage(API, GMT_SYNOPSIS));
+	/* 1: no options is a run of the program (on datalist.mb-1) */
+	if ((error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(error);
 
 #if GMT_MAJOR_VERSION >= 6
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
 #else
 	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
 #endif
+	/* the program's long options kept out of GMT's --PAR=value handling */
+	mb_gmt_mark_long_options(API, &options, long_options);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = New_mbpreprocess_Ctrl(GMT);
 	if ((error = parse(GMT, Ctrl, options)) != 0) Return (error);
+	if (Ctrl->help) Return(usage(API, GMT_USAGE));
 
-	int verbose = 0;
+	int verbose = Ctrl->verbose;
 	int format = 0;
 	int pings;
 	int lonflip;
@@ -1027,12 +984,6 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 		fprintf(stderr, "\nProgram %s\n", THIS_MODULE_NAME);
 		fprintf(stderr, "MB-system Version %s\n", MB_VERSION);
 	}
-	if (Ctrl->help) {
-		GMT_Message(API, GMT_TIME_NONE, "\n%s\n", help_message);
-		GMT_Message(API, GMT_TIME_NONE, "\nusage: %s\n", usage_message);
-		Return(GMT_NOERROR);
-	}
-
 	/* swallow original getopt_long block -- replaced by parse() above */
 
 	/* if no affected data have been specified apply time_latency to all */
@@ -1062,153 +1013,153 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 	const bool read_datalist = format < 0;
 
 	if (verbose >= 2) {
-		GMT_Report(API, GMT_MSG_NORMAL, "\ndbg2  Program <%s>\n", THIS_MODULE_NAME);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  MB-system Version %s\n", MB_VERSION);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Default MB-System Parameters:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       verbose:                      %d\n", verbose);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       format:                       %d\n", format);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       pings:                        %d\n", pings);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       lonflip:                      %d\n", lonflip);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       bounds[0]:                    %f\n", bounds[0]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       bounds[1]:                    %f\n", bounds[1]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       bounds[2]:                    %f\n", bounds[2]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       bounds[3]:                    %f\n", bounds[3]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       btime_i[0]:                   %d\n", btime_i[0]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       btime_i[1]:                   %d\n", btime_i[1]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       btime_i[2]:                   %d\n", btime_i[2]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       btime_i[3]:                   %d\n", btime_i[3]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       btime_i[4]:                   %d\n", btime_i[4]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       btime_i[5]:                   %d\n", btime_i[5]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       btime_i[6]:                   %d\n", btime_i[6]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       etime_i[0]:                   %d\n", etime_i[0]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       etime_i[1]:                   %d\n", etime_i[1]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       etime_i[2]:                   %d\n", etime_i[2]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       etime_i[3]:                   %d\n", etime_i[3]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       etime_i[4]:                   %d\n", etime_i[4]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       etime_i[5]:                   %d\n", etime_i[5]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       etime_i[6]:                   %d\n", etime_i[6]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       speedmin:                     %f\n", speedmin);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       timegap:                      %f\n", timegap);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Input survey data to be preprocessed:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       read_file:                    %s\n", read_file);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       format:                       %d\n", format);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Output directory:\n");
+		fprintf(stderr, "\ndbg2  Program <%s>\n", THIS_MODULE_NAME);
+		fprintf(stderr, "dbg2  MB-system Version %s\n", MB_VERSION);
+		fprintf(stderr, "dbg2  Default MB-System Parameters:\n");
+		fprintf(stderr, "dbg2       verbose:                      %d\n", verbose);
+		fprintf(stderr, "dbg2       format:                       %d\n", format);
+		fprintf(stderr, "dbg2       pings:                        %d\n", pings);
+		fprintf(stderr, "dbg2       lonflip:                      %d\n", lonflip);
+		fprintf(stderr, "dbg2       bounds[0]:                    %f\n", bounds[0]);
+		fprintf(stderr, "dbg2       bounds[1]:                    %f\n", bounds[1]);
+		fprintf(stderr, "dbg2       bounds[2]:                    %f\n", bounds[2]);
+		fprintf(stderr, "dbg2       bounds[3]:                    %f\n", bounds[3]);
+		fprintf(stderr, "dbg2       btime_i[0]:                   %d\n", btime_i[0]);
+		fprintf(stderr, "dbg2       btime_i[1]:                   %d\n", btime_i[1]);
+		fprintf(stderr, "dbg2       btime_i[2]:                   %d\n", btime_i[2]);
+		fprintf(stderr, "dbg2       btime_i[3]:                   %d\n", btime_i[3]);
+		fprintf(stderr, "dbg2       btime_i[4]:                   %d\n", btime_i[4]);
+		fprintf(stderr, "dbg2       btime_i[5]:                   %d\n", btime_i[5]);
+		fprintf(stderr, "dbg2       btime_i[6]:                   %d\n", btime_i[6]);
+		fprintf(stderr, "dbg2       etime_i[0]:                   %d\n", etime_i[0]);
+		fprintf(stderr, "dbg2       etime_i[1]:                   %d\n", etime_i[1]);
+		fprintf(stderr, "dbg2       etime_i[2]:                   %d\n", etime_i[2]);
+		fprintf(stderr, "dbg2       etime_i[3]:                   %d\n", etime_i[3]);
+		fprintf(stderr, "dbg2       etime_i[4]:                   %d\n", etime_i[4]);
+		fprintf(stderr, "dbg2       etime_i[5]:                   %d\n", etime_i[5]);
+		fprintf(stderr, "dbg2       etime_i[6]:                   %d\n", etime_i[6]);
+		fprintf(stderr, "dbg2       speedmin:                     %f\n", speedmin);
+		fprintf(stderr, "dbg2       timegap:                      %f\n", timegap);
+		fprintf(stderr, "dbg2  Input survey data to be preprocessed:\n");
+		fprintf(stderr, "dbg2       read_file:                    %s\n", read_file);
+		fprintf(stderr, "dbg2       format:                       %d\n", format);
+		fprintf(stderr, "dbg2  Output directory:\n");
 		if (output_directory_set)
-			GMT_Report(API, GMT_MSG_NORMAL, "dbg2       output_directory:             %s\n", output_directory);
+			fprintf(stderr, "dbg2       output_directory:             %s\n", output_directory);
 		else
-			GMT_Report(API, GMT_MSG_NORMAL, "dbg2       output_directory:             not specified, use working directory\n");
+			fprintf(stderr, "dbg2       output_directory:             not specified, use working directory\n");
 		if (output_datalist_set)
-			GMT_Report(API, GMT_MSG_NORMAL, "dbg2       output_datalist:             %s\n", output_datalist);
+			fprintf(stderr, "dbg2       output_datalist:             %s\n", output_datalist);
 		else
-			GMT_Report(API, GMT_MSG_NORMAL, "dbg2       output_datalist:             not specified, use default: %s\n", output_datalist);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Source of platform model:\n");
+			fprintf(stderr, "dbg2       output_datalist:             not specified, use default: %s\n", output_datalist);
+		fprintf(stderr, "dbg2  Source of platform model:\n");
 		if (use_platform_file)
-			GMT_Report(API, GMT_MSG_NORMAL, "dbg2       platform_file:                %s\n", platform_file);
+			fprintf(stderr, "dbg2       platform_file:                %s\n", platform_file);
 		else
-			GMT_Report(API, GMT_MSG_NORMAL, "dbg2       platform_file:              not specified\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       target_sensor:                %d\n", target_sensor);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Source of navigation data:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       nav_mode:                     %d\n", nav_mode);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       nav_file:                     %s\n", nav_file);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       nav_file_format:              %d\n", nav_file_format);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       nav_async:                    %d\n", nav_async);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       nav_sensor:                   %d\n", nav_sensor);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Source of sensor depth data:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       sensordepth_mode:             %d\n", sensordepth_mode);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       sensordepth_file:             %s\n", sensordepth_file);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       sensordepth_file_format:      %d\n", sensordepth_file_format);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       sensordepth_async:            %d\n", sensordepth_async);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       sensordepth_sensor:           %d\n", sensordepth_sensor);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Source of heading data:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       heading_mode:                 %d\n", heading_mode);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       heading_file:                 %s\n", heading_file);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       heading_file_format:          %d\n", heading_file_format);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       heading_async:                %d\n", heading_async);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       heading_sensor:               %d\n", heading_sensor);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Source of altitude data:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       altitude_mode:                %d\n", altitude_mode);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       altitude_file:                %s\n", altitude_file);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       altitude_file_format:         %d\n", altitude_file_format);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       altitude_async:               %d\n", altitude_async);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       altitude_sensor:              %d\n", altitude_sensor);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Source of attitude data:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       attitude_mode:                %d\n", attitude_mode);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       attitude_file:                %s\n", attitude_file);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       attitude_file_format:         %d\n", attitude_file_format);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       attitude_async:               %d\n", attitude_async);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       attitude_sensor:              %d\n", attitude_sensor);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       attitude_zero_heave:          %d\n", zero_heave);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Source of soundspeed data:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       soundspeed_mode:              %d\n", soundspeed_mode);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       soundspeed_file:              %s\n", soundspeed_file);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       soundspeed_file_format:       %d\n", soundspeed_file_format);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       soundspeed_async:             %d\n", soundspeed_async);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       soundspeed_sensor:            %d\n", soundspeed_sensor);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Time latency correction:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       time_latency_mode:            %d\n", time_latency_mode);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       time_latency_constant:        %f\n", time_latency_constant);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       time_latency_file:            %s\n", time_latency_file);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       time_latency_format:          %d\n", time_latency_format);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       time_latency_apply:           %x\n", time_latency_apply);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Time domain filtering:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       filter_length:                %f\n", filter_length);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       filter_apply:                 %x\n", filter_apply);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Miscellaneous controls:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       no_change_survey:             %d\n", preprocess_pars.no_change_survey);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       multibeam_sidescan_source:    %d\n", preprocess_pars.multibeam_sidescan_source);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       recalculate_bathymetry:       %d\n", preprocess_pars.recalculate_bathymetry);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       sounding_amplitude_filter:    %d\n", preprocess_pars.sounding_amplitude_filter);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       sounding_amplitude_threshold: %f\n", preprocess_pars.sounding_amplitude_threshold);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       sounding_altitude_filter:     %d\n", preprocess_pars.sounding_altitude_filter);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       sounding_target_altitude:     %f\n", preprocess_pars.sounding_target_altitude);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       ignore_water_column:          %d\n", preprocess_pars.ignore_water_column);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       head1_offsets:                %d\n", preprocess_pars.head1_offsets);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       head1_offsets_x:              %f\n", preprocess_pars.head1_offsets_x);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       head1_offsets_y:              %f\n", preprocess_pars.head1_offsets_y);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       head1_offsets_z:              %f\n", preprocess_pars.head1_offsets_z);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       head1_offsets_heading:        %f\n", preprocess_pars.head1_offsets_heading);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       head1_offsets_roll:           %f\n", preprocess_pars.head1_offsets_roll);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       head1_offsets_pitch:          %f\n", preprocess_pars.head1_offsets_pitch);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       head2_offsets:                %d\n", preprocess_pars.head2_offsets);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       head2_offsets_x:              %f\n", preprocess_pars.head2_offsets_x);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       head2_offsets_y:              %f\n", preprocess_pars.head2_offsets_y);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       head2_offsets_z:              %f\n", preprocess_pars.head2_offsets_z);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       head2_offsets_heading:        %f\n", preprocess_pars.head2_offsets_heading);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       head2_offsets_roll:           %f\n", preprocess_pars.head2_offsets_roll);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       head2_offsets_pitch:          %f\n", preprocess_pars.head2_offsets_pitch);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Various data fixes (kluges):\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_timejumps:                     %d\n", kluge_timejumps);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_timejumps_threshold:           %f\n", kluge_timejumps_threshold);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_timejumps_ancilliary:          %d\n", kluge_timejumps_ancilliary);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_fix7ktimestamps:               %d\n", kluge_fix7ktimestamps);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_fix7ktimestamps_targetoffset:  %f\n", kluge_fix7ktimestamps_targetoffset);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_timejumps_anc_threshold:       %f\n", kluge_timejumps_anc_threshold);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_timejumps_mbaripressure:       %d\n", kluge_timejumps_mbaripressure);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_timejumps_mba_threshold:       %f\n", kluge_timejumps_mba_threshold);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_beamtweak:                     %d\n", kluge_beamtweak);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_beamtweak_factor:              %f\n", kluge_beamtweak_factor);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_soundspeedtweak:               %d\n", kluge_soundspeedtweak);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_soundspeedtweak_factor:        %f\n", kluge_soundspeedtweak_factor);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_fix_wissl_timestamps:          %d\n", kluge_fix_wissl_timestamps);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_auv_sentry_sensordepth:        %d\n", kluge_auv_sentry_sensordepth);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_ignore_snippets:               %d\n", kluge_ignore_snippets);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_sensordepth_from_heave         %d\n", kluge_sensordepth_from_heave);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_early_mbari_mapping_auv        %d\n", kluge_early_mbari_mapping_auv);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_flipsign_roll                  %d\n", kluge_flipsign_roll);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_flipsign_pitch                 %d\n", kluge_flipsign_pitch);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_setbeamwidthacrosstrack        %d\n", kluge_setbeamwidthacrosstrack);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_setbeamwidthalongtrack         %d\n", kluge_setbeamwidthalongtrack);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_ignore_duplicate_pings         %d\n", kluge_ignore_duplicate_pings);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_xducer_depth_from_heave        %d\n", kluge_xducer_depth_from_heave);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_xducer_depth_from_sensordepth  %d\n", kluge_xducer_depth_from_sensordepth);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_xducer_depth_from_heaveandsensordepth  %d\n", kluge_xducer_depth_from_heaveandsensordepth);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_rangescale                     %d\n", kluge_rangescale);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_rangescale_factor              %f\n", kluge_rangescale_factor);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kluge_fix_wissl2_ranges              %d\n", kluge_fix_wissl2_ranges);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Additional output:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       output_sensor_fnv:            %d\n", output_sensor_fnv);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Skip existing output files:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       skip_existing:                %d\n", skip_existing);
+			fprintf(stderr, "dbg2       platform_file:              not specified\n");
+		fprintf(stderr, "dbg2       target_sensor:                %d\n", target_sensor);
+		fprintf(stderr, "dbg2  Source of navigation data:\n");
+		fprintf(stderr, "dbg2       nav_mode:                     %d\n", nav_mode);
+		fprintf(stderr, "dbg2       nav_file:                     %s\n", nav_file);
+		fprintf(stderr, "dbg2       nav_file_format:              %d\n", nav_file_format);
+		fprintf(stderr, "dbg2       nav_async:                    %d\n", nav_async);
+		fprintf(stderr, "dbg2       nav_sensor:                   %d\n", nav_sensor);
+		fprintf(stderr, "dbg2  Source of sensor depth data:\n");
+		fprintf(stderr, "dbg2       sensordepth_mode:             %d\n", sensordepth_mode);
+		fprintf(stderr, "dbg2       sensordepth_file:             %s\n", sensordepth_file);
+		fprintf(stderr, "dbg2       sensordepth_file_format:      %d\n", sensordepth_file_format);
+		fprintf(stderr, "dbg2       sensordepth_async:            %d\n", sensordepth_async);
+		fprintf(stderr, "dbg2       sensordepth_sensor:           %d\n", sensordepth_sensor);
+		fprintf(stderr, "dbg2  Source of heading data:\n");
+		fprintf(stderr, "dbg2       heading_mode:                 %d\n", heading_mode);
+		fprintf(stderr, "dbg2       heading_file:                 %s\n", heading_file);
+		fprintf(stderr, "dbg2       heading_file_format:          %d\n", heading_file_format);
+		fprintf(stderr, "dbg2       heading_async:                %d\n", heading_async);
+		fprintf(stderr, "dbg2       heading_sensor:               %d\n", heading_sensor);
+		fprintf(stderr, "dbg2  Source of altitude data:\n");
+		fprintf(stderr, "dbg2       altitude_mode:                %d\n", altitude_mode);
+		fprintf(stderr, "dbg2       altitude_file:                %s\n", altitude_file);
+		fprintf(stderr, "dbg2       altitude_file_format:         %d\n", altitude_file_format);
+		fprintf(stderr, "dbg2       altitude_async:               %d\n", altitude_async);
+		fprintf(stderr, "dbg2       altitude_sensor:              %d\n", altitude_sensor);
+		fprintf(stderr, "dbg2  Source of attitude data:\n");
+		fprintf(stderr, "dbg2       attitude_mode:                %d\n", attitude_mode);
+		fprintf(stderr, "dbg2       attitude_file:                %s\n", attitude_file);
+		fprintf(stderr, "dbg2       attitude_file_format:         %d\n", attitude_file_format);
+		fprintf(stderr, "dbg2       attitude_async:               %d\n", attitude_async);
+		fprintf(stderr, "dbg2       attitude_sensor:              %d\n", attitude_sensor);
+		fprintf(stderr, "dbg2       attitude_zero_heave:          %d\n", zero_heave);
+		fprintf(stderr, "dbg2  Source of soundspeed data:\n");
+		fprintf(stderr, "dbg2       soundspeed_mode:              %d\n", soundspeed_mode);
+		fprintf(stderr, "dbg2       soundspeed_file:              %s\n", soundspeed_file);
+		fprintf(stderr, "dbg2       soundspeed_file_format:       %d\n", soundspeed_file_format);
+		fprintf(stderr, "dbg2       soundspeed_async:             %d\n", soundspeed_async);
+		fprintf(stderr, "dbg2       soundspeed_sensor:            %d\n", soundspeed_sensor);
+		fprintf(stderr, "dbg2  Time latency correction:\n");
+		fprintf(stderr, "dbg2       time_latency_mode:            %d\n", time_latency_mode);
+		fprintf(stderr, "dbg2       time_latency_constant:        %f\n", time_latency_constant);
+		fprintf(stderr, "dbg2       time_latency_file:            %s\n", time_latency_file);
+		fprintf(stderr, "dbg2       time_latency_format:          %d\n", time_latency_format);
+		fprintf(stderr, "dbg2       time_latency_apply:           %x\n", time_latency_apply);
+		fprintf(stderr, "dbg2  Time domain filtering:\n");
+		fprintf(stderr, "dbg2       filter_length:                %f\n", filter_length);
+		fprintf(stderr, "dbg2       filter_apply:                 %x\n", filter_apply);
+		fprintf(stderr, "dbg2  Miscellaneous controls:\n");
+		fprintf(stderr, "dbg2       no_change_survey:             %d\n", preprocess_pars.no_change_survey);
+		fprintf(stderr, "dbg2       multibeam_sidescan_source:    %d\n", preprocess_pars.multibeam_sidescan_source);
+		fprintf(stderr, "dbg2       recalculate_bathymetry:       %d\n", preprocess_pars.recalculate_bathymetry);
+		fprintf(stderr, "dbg2       sounding_amplitude_filter:    %d\n", preprocess_pars.sounding_amplitude_filter);
+		fprintf(stderr, "dbg2       sounding_amplitude_threshold: %f\n", preprocess_pars.sounding_amplitude_threshold);
+		fprintf(stderr, "dbg2       sounding_altitude_filter:     %d\n", preprocess_pars.sounding_altitude_filter);
+		fprintf(stderr, "dbg2       sounding_target_altitude:     %f\n", preprocess_pars.sounding_target_altitude);
+		fprintf(stderr, "dbg2       ignore_water_column:          %d\n", preprocess_pars.ignore_water_column);
+		fprintf(stderr, "dbg2       head1_offsets:                %d\n", preprocess_pars.head1_offsets);
+		fprintf(stderr, "dbg2       head1_offsets_x:              %f\n", preprocess_pars.head1_offsets_x);
+		fprintf(stderr, "dbg2       head1_offsets_y:              %f\n", preprocess_pars.head1_offsets_y);
+		fprintf(stderr, "dbg2       head1_offsets_z:              %f\n", preprocess_pars.head1_offsets_z);
+		fprintf(stderr, "dbg2       head1_offsets_heading:        %f\n", preprocess_pars.head1_offsets_heading);
+		fprintf(stderr, "dbg2       head1_offsets_roll:           %f\n", preprocess_pars.head1_offsets_roll);
+		fprintf(stderr, "dbg2       head1_offsets_pitch:          %f\n", preprocess_pars.head1_offsets_pitch);
+		fprintf(stderr, "dbg2       head2_offsets:                %d\n", preprocess_pars.head2_offsets);
+		fprintf(stderr, "dbg2       head2_offsets_x:              %f\n", preprocess_pars.head2_offsets_x);
+		fprintf(stderr, "dbg2       head2_offsets_y:              %f\n", preprocess_pars.head2_offsets_y);
+		fprintf(stderr, "dbg2       head2_offsets_z:              %f\n", preprocess_pars.head2_offsets_z);
+		fprintf(stderr, "dbg2       head2_offsets_heading:        %f\n", preprocess_pars.head2_offsets_heading);
+		fprintf(stderr, "dbg2       head2_offsets_roll:           %f\n", preprocess_pars.head2_offsets_roll);
+		fprintf(stderr, "dbg2       head2_offsets_pitch:          %f\n", preprocess_pars.head2_offsets_pitch);
+		fprintf(stderr, "dbg2  Various data fixes (kluges):\n");
+		fprintf(stderr, "dbg2       kluge_timejumps:                     %d\n", kluge_timejumps);
+		fprintf(stderr, "dbg2       kluge_timejumps_threshold:           %f\n", kluge_timejumps_threshold);
+		fprintf(stderr, "dbg2       kluge_timejumps_ancilliary:          %d\n", kluge_timejumps_ancilliary);
+		fprintf(stderr, "dbg2       kluge_fix7ktimestamps:               %d\n", kluge_fix7ktimestamps);
+		fprintf(stderr, "dbg2       kluge_fix7ktimestamps_targetoffset:  %f\n", kluge_fix7ktimestamps_targetoffset);
+		fprintf(stderr, "dbg2       kluge_timejumps_anc_threshold:       %f\n", kluge_timejumps_anc_threshold);
+		fprintf(stderr, "dbg2       kluge_timejumps_mbaripressure:       %d\n", kluge_timejumps_mbaripressure);
+		fprintf(stderr, "dbg2       kluge_timejumps_mba_threshold:       %f\n", kluge_timejumps_mba_threshold);
+		fprintf(stderr, "dbg2       kluge_beamtweak:                     %d\n", kluge_beamtweak);
+		fprintf(stderr, "dbg2       kluge_beamtweak_factor:              %f\n", kluge_beamtweak_factor);
+		fprintf(stderr, "dbg2       kluge_soundspeedtweak:               %d\n", kluge_soundspeedtweak);
+		fprintf(stderr, "dbg2       kluge_soundspeedtweak_factor:        %f\n", kluge_soundspeedtweak_factor);
+		fprintf(stderr, "dbg2       kluge_fix_wissl_timestamps:          %d\n", kluge_fix_wissl_timestamps);
+		fprintf(stderr, "dbg2       kluge_auv_sentry_sensordepth:        %d\n", kluge_auv_sentry_sensordepth);
+		fprintf(stderr, "dbg2       kluge_ignore_snippets:               %d\n", kluge_ignore_snippets);
+		fprintf(stderr, "dbg2       kluge_sensordepth_from_heave         %d\n", kluge_sensordepth_from_heave);
+		fprintf(stderr, "dbg2       kluge_early_mbari_mapping_auv        %d\n", kluge_early_mbari_mapping_auv);
+		fprintf(stderr, "dbg2       kluge_flipsign_roll                  %d\n", kluge_flipsign_roll);
+		fprintf(stderr, "dbg2       kluge_flipsign_pitch                 %d\n", kluge_flipsign_pitch);
+		fprintf(stderr, "dbg2       kluge_setbeamwidthacrosstrack        %d\n", kluge_setbeamwidthacrosstrack);
+		fprintf(stderr, "dbg2       kluge_setbeamwidthalongtrack         %d\n", kluge_setbeamwidthalongtrack);
+		fprintf(stderr, "dbg2       kluge_ignore_duplicate_pings         %d\n", kluge_ignore_duplicate_pings);
+		fprintf(stderr, "dbg2       kluge_xducer_depth_from_heave        %d\n", kluge_xducer_depth_from_heave);
+		fprintf(stderr, "dbg2       kluge_xducer_depth_from_sensordepth  %d\n", kluge_xducer_depth_from_sensordepth);
+		fprintf(stderr, "dbg2       kluge_xducer_depth_from_heaveandsensordepth  %d\n", kluge_xducer_depth_from_heaveandsensordepth);
+		fprintf(stderr, "dbg2       kluge_rangescale                     %d\n", kluge_rangescale);
+		fprintf(stderr, "dbg2       kluge_rangescale_factor              %f\n", kluge_rangescale_factor);
+		fprintf(stderr, "dbg2       kluge_fix_wissl2_ranges              %d\n", kluge_fix_wissl2_ranges);
+		fprintf(stderr, "dbg2  Additional output:\n");
+		fprintf(stderr, "dbg2       output_sensor_fnv:            %d\n", output_sensor_fnv);
+		fprintf(stderr, "dbg2  Skip existing output files:\n");
+		fprintf(stderr, "dbg2       skip_existing:                %d\n", skip_existing);
 	}
 
 	else if (verbose > 0) {
@@ -1354,7 +1305,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 		if (status == MB_FAILURE) {
 			fprintf(stderr, "\nUnable to open and parse platform file: %s\n", platform_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		/* reset data sources according to commands */
@@ -1579,12 +1530,12 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 		if (status == MB_FAILURE) {
 			fprintf(stderr, "\nUnable to open and parse time latency file: %s\n", time_latency_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		else if (time_latency_num < 1) {
 			fprintf(stderr, "\nNo time latency values read from: %s\n", time_latency_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		else if (verbose > 0)
 			fprintf(stderr, "%d time_latency records loaded from file %s\n", time_latency_num, time_latency_file);
@@ -1598,12 +1549,12 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 		if (status == MB_FAILURE) {
 			fprintf(stderr, "\nUnable to open and parse nav file: %s\n", nav_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		else if (n_nav < 1) {
 			fprintf(stderr, "\nNo nav values read from: %s\n", nav_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		else if (verbose > 0)
 			fprintf(stderr, "%d navigation records loaded from file %s\n", n_nav, nav_file);
@@ -1615,12 +1566,12 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 		if (status == MB_FAILURE) {
 			fprintf(stderr, "\nUnable to open and parse sensordepth file: %s\n", sensordepth_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		else if (n_sensordepth < 1) {
 			fprintf(stderr, "\nNo sensordepth values read from: %s\n", sensordepth_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		else if (verbose > 0)
 			fprintf(stderr, "%d sensordepth records loaded from file %s\n", n_sensordepth, sensordepth_file);
@@ -1632,12 +1583,12 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 		if (status == MB_FAILURE) {
 			fprintf(stderr, "\nUnable to open and parse heading file: %s\n", heading_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		else if (n_heading < 1) {
 			fprintf(stderr, "\nNo heading values read from: %s\n", heading_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		else if (verbose > 0)
 			fprintf(stderr, "%d heading records loaded from file %s\n", n_heading, heading_file);
@@ -1649,12 +1600,12 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 		if (status == MB_FAILURE) {
 			fprintf(stderr, "\nUnable to open and parse altitude file: %s\n", altitude_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		else if (n_altitude < 1) {
 			fprintf(stderr, "\nNo altitude values read from: %s\n", altitude_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		else if (verbose > 0)
 			fprintf(stderr, "%d altitude records loaded from file %s\n", n_altitude, altitude_file);
@@ -1666,12 +1617,12 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 		if (status == MB_FAILURE) {
 			fprintf(stderr, "\nUnable to open and parse attitude file: %s\n", attitude_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		else if (n_attitude < 1) {
 			fprintf(stderr, "\nNo attitude values read from: %s\n", attitude_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		else if (verbose > 0)
 			fprintf(stderr, "%d attitude records loaded from file %s\n", n_attitude, attitude_file);
@@ -1683,12 +1634,12 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 		if (status == MB_FAILURE) {
 			fprintf(stderr, "\nUnable to open and parse soundspeed file: %s\n", soundspeed_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		else if (n_soundspeed < 1) {
 			fprintf(stderr, "\nNo soundspeed values read from: %s\n", soundspeed_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		else if (verbose > 0)
 			fprintf(stderr, "%d soundspeed records loaded from file %s\n", n_soundspeed, soundspeed_file);
@@ -1705,7 +1656,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		read_data = mb_datalist_read(verbose, datalist, ifile, dfile, &iformat, &file_weight, &error) == MB_SUCCESS;
 	}  else {
@@ -1878,7 +1829,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 				fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 				fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", ifile);
 				fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-				Return(error);
+				Return(GMT_RUNTIME_ERROR);
 			}
 	
 			/* call preprocess function with pars settings before reading any data
@@ -1922,7 +1873,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 				fprintf(stderr, "%s:%d:%s\n", __FILE__, __LINE__, __FUNCTION__);
 				fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 				fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-				Return(error);
+				Return(GMT_RUNTIME_ERROR);
 			}
 	
 			/* zero file count records */
@@ -1954,10 +1905,10 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 				}
 	
 				if (verbose >= 2) {
-					GMT_Report(API, GMT_MSG_NORMAL, "\ndbg2  Data record read in program <%s>\n", THIS_MODULE_NAME);
-					GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kind:           %d\n", kind);
-					GMT_Report(API, GMT_MSG_NORMAL, "dbg2       error:          %d\n", error);
-					GMT_Report(API, GMT_MSG_NORMAL, "dbg2       status:         %d\n", status);
+					fprintf(stderr, "\ndbg2  Data record read in program <%s>\n", THIS_MODULE_NAME);
+					fprintf(stderr, "dbg2       kind:           %d\n", kind);
+					fprintf(stderr, "dbg2       error:          %d\n", error);
+					fprintf(stderr, "dbg2       status:         %d\n", status);
 				}
 	
 				/* count records */
@@ -2022,7 +1973,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 							fprintf(stderr, "%s:%d:%s\n", __FILE__, __LINE__, __FUNCTION__);
 							fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 							fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-							Return(error);
+							Return(GMT_RUNTIME_ERROR);
 						}
 					}
 	
@@ -2060,7 +2011,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 							fprintf(stderr, "%s:%d:%s\n", __FILE__, __LINE__, __FUNCTION__);
 							fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 							fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-							Return(error);
+							Return(GMT_RUNTIME_ERROR);
 						}
 					}
 	
@@ -2094,7 +2045,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 							fprintf(stderr, "%s:%d:%s\n", __FILE__, __LINE__, __FUNCTION__);
 							fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 							fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-							Return(error);
+							Return(GMT_RUNTIME_ERROR);
 						}
 					}
 	
@@ -2127,7 +2078,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 							fprintf(stderr, "%s:%d:%s\n", __FILE__, __LINE__, __FUNCTION__);
 							fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 							fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-							Return(error);
+							Return(GMT_RUNTIME_ERROR);
 						}
 					}
 	
@@ -2163,7 +2114,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 							fprintf(stderr, "%s:%d:%s\n", __FILE__, __LINE__, __FUNCTION__);
 							fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 							fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-							Return(error);
+							Return(GMT_RUNTIME_ERROR);
 						}
 					}
 	
@@ -2195,7 +2146,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 						fprintf(stderr, "%s:%d:%s\n", __FILE__, __LINE__, __FUNCTION__);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 				}
 	
@@ -2858,7 +2809,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 					if ((platform->sensors[isensor].offsets[ioffset].ofp = fopen(fnvfile, "wb")) == NULL) {
 						fprintf(stderr, "\nUnable to open sensor fnv data file <%s> for writing\n", fnvfile);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-						Return(MB_ERROR_OPEN_FAIL);
+						Return(GMT_RUNTIME_ERROR);
 					}
 				}
 			//}
@@ -2871,7 +2822,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		read_data = mb_datalist_read(verbose, datalist, ifile, dfile, &iformat, &file_weight, &error) == MB_SUCCESS;
 	} else {
@@ -2970,7 +2921,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 				fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 				fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", ifile);
 				fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-				Return(error);
+				Return(GMT_RUNTIME_ERROR);
 			}
 
 			/* call preprocess function with pars settings before reading any data
@@ -2995,8 +2946,15 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 				fprintf(stderr, "\nMBIO Error returned from function <mb_write_init>:\n%s\n", message);
 				fprintf(stderr, "\nMultibeam File <%s> not initialized for writing\n", ofile);
 				fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-				Return(error);
+				Return(GMT_RUNTIME_ERROR);
 			}
+
+			/* An old Simrad file (formats 51, 53, 54) is written as MBF_EM300MBA (format 57) above,
+			   whose store is a Simrad2 one: each record is translated into the output's own store
+			   (mb_gmt_simrad_to_simrad2, as mbcopy does) rather than handing the Simrad store to the
+			   Simrad2 writer, which crashes (the program's bug, see UPSTREAM_mbpreprocess_simrad.md). */
+			const bool simrad_to_simrad2 = ((struct mb_io_struct *)imbio_ptr)->system == MB_SYS_SIMRAD &&
+			                               oformat == MBF_EM300MBA;
 
 			/* initialize writing the output fast bathymetry *fbt file */
 			bool make_fbt = false;
@@ -3020,7 +2978,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 					fprintf(stderr, "\nMBIO Error returned from function <mb_write_init>:\n%s\n", message);
 					fprintf(stderr, "\nMultibeam File <%s> not initialized for writing\n", ofile);
 					fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-					Return(error);
+					Return(GMT_RUNTIME_ERROR);
 				}
 				fmb_io_ptr = (struct mb_io_struct *)fmbio_ptr;
 				fstore = (struct mbsys_ldeoih_struct *) fmb_io_ptr->store_data;
@@ -3038,7 +2996,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 						fprintf(stderr, "\nUnable to open output *.fnv file <%s> for reading\n",
 						fnvfile);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-						Return(MB_ERROR_OPEN_FAIL);
+						Return(GMT_RUNTIME_ERROR);
 				}
 				make_fnv = true;
 				fprintf(nfp,  "## <yyyy mm dd hh mm ss.ssssss> <epoch seconds> "
@@ -3085,7 +3043,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 				fprintf(stderr, "%s:%d:%s\n", __FILE__, __LINE__, __FUNCTION__);
 				fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 				fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-				Return(error);
+				Return(GMT_RUNTIME_ERROR);
 			}
 
 			/* delete old synchronous and synchronous files */
@@ -3143,7 +3101,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 			if ((afp = fopen(afile, "wb")) == NULL) {
 				fprintf(stderr, "\nUnable to open synchronous attitude data file <%s> for writing\n", afile);
 				fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-				Return(MB_ERROR_OPEN_FAIL);
+				Return(GMT_RUNTIME_ERROR);
 			}
 
 			/* zero file count records */
@@ -3545,7 +3503,14 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 
 				/* write some data */
 				if (error == MB_ERROR_NO_ERROR && output_ok) {
-					status = mb_put_all(verbose, ombio_ptr, istore_ptr, false, kind, time_i, time_d, navlon, navlat, speed, heading,
+					/* the store the output is written from: the input's own, or its Simrad2 translation */
+					void *ostore_ptr = istore_ptr;
+					if (simrad_to_simrad2) {
+						ostore_ptr = ((struct mb_io_struct *)ombio_ptr)->store_data;
+						status = mb_gmt_simrad_to_simrad2(API, verbose, (struct mbsys_simrad_struct *)istore_ptr,
+						                                  (struct mbsys_simrad2_struct *)ostore_ptr, &error);
+					}
+					status = mb_put_all(verbose, ombio_ptr, ostore_ptr, false, kind, time_i, time_d, navlon, navlat, speed, heading,
 										obeams_bath, obeams_amp, opixels_ss, beamflag, bath, amp, bathacrosstrack, bathalongtrack, ss,
 										ssacrosstrack, ssalongtrack, comment, &error);
 					if (status != MB_SUCCESS) {
@@ -3555,21 +3520,21 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 						fprintf(stderr, "\nMBIO Error returned from function <mb_put_all>:\n%s\n", message);
 						fprintf(stderr, "\nMultibeam Data Not Written To File <%s>\n", ofile);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					// output ancilliary files
 					if (kind == MB_DATA_DATA) {
 
-						status = mb_extract(verbose, ombio_ptr, istore_ptr, &kind, time_i, &time_d,
+						status = mb_extract(verbose, ombio_ptr, ostore_ptr, &kind, time_i, &time_d,
 																&navlon, &navlat, &speed, &heading,
 																&obeams_bath, &obeams_amp, &opixels_ss,
 																beamflag, bath, amp, bathacrosstrack, bathalongtrack,
 																ss, ssacrosstrack, ssalongtrack, comment, &error);
-						status = mb_extract_nav(verbose, ombio_ptr, istore_ptr, &kind, time_i, &time_d,
+						status = mb_extract_nav(verbose, ombio_ptr, ostore_ptr, &kind, time_i, &time_d,
 																&navlon, &navlat, &speed, &heading, &draft,
 																&roll, &pitch, &heave, &error);
-						status = mb_extract_altitude(verbose, ombio_ptr, istore_ptr, &kind,
+						status = mb_extract_altitude(verbose, ombio_ptr, ostore_ptr, &kind,
 																&sensordepth, &altitude, &error);
 
 
@@ -3851,7 +3816,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 						if ((afp = fopen(afile, "wb")) == NULL) {
 							fprintf(stderr, "\nUnable to open asynchronous heading data file <%s> for writing\n", afile);
 							fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-							Return(MB_ERROR_OPEN_FAIL);
+							Return(GMT_RUNTIME_ERROR);
 						}
 						if (verbose > 0)
 							fprintf(stderr, "Generating bah file for %s using samples %d:%d out of %d\n", ofile, istart, iend, n_heading);
@@ -3887,7 +3852,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 						if ((afp = fopen(afile, "wb")) == NULL) {
 							fprintf(stderr, "\nUnable to open asynchronous sensordepth data file <%s> for writing\n", afile);
 							fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-							Return(MB_ERROR_OPEN_FAIL);
+							Return(GMT_RUNTIME_ERROR);
 						}
 						if (verbose > 0)
 							fprintf(stderr, "Generating bas file for %s using samples %d:%d out of %d\n", ofile, istart, iend,
@@ -3924,7 +3889,7 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 						if ((afp = fopen(afile, "wb")) == NULL) {
 							fprintf(stderr, "\nUnable to open asynchronous attitude data file <%s> for writing\n", afile);
 							fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-							Return(MB_ERROR_OPEN_FAIL);
+							Return(GMT_RUNTIME_ERROR);
 						}
 						if (verbose > 0)
 							fprintf(stderr, "Generating baa file for %s using samples %d:%d out of %d\n", ofile, istart, iend,
@@ -4042,11 +4007,17 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 		status &= mb_memory_list(verbose, &error);
 
 	if (verbose >= 2) {
-		GMT_Report(API, GMT_MSG_NORMAL, "\ndbg2  Program <%s> completed\n", THIS_MODULE_NAME);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Ending status:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       status:  %d\n", status);
+		fprintf(stderr, "\ndbg2  Program <%s> completed\n", THIS_MODULE_NAME);
+		fprintf(stderr, "dbg2  Ending status:\n");
+		fprintf(stderr, "dbg2       status:  %d\n", status);
 	}
 
-	Return(error);
+	if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

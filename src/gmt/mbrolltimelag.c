@@ -35,11 +35,9 @@
  * Date:	November 11, 2005
  */
 /*
- * GMT-module port of src/utilities/mbrolltimelag.cc. The program's getopt_long() option loop
- * is kept as it is, running on the reentrant mb_getopt_long() (the state
- * lives in a local structure, so the module can run any number of times in
- * one GMT session), and main() becomes GMT_mbrolltimelag(), with every exit()
- * turned into Return().
+ * GMT-module port of src/utilities/mbrolltimelag.cc: options from GMT's option list (long options
+ * through module_kw, lower-case aliases kept), main() becomes GMT_mbrolltimelag() and every exit() a
+ * Return() with a GMT error code. Its results are the program's own files.
  */
 
 #define THIS_MODULE_NAME "mbrolltimelag"
@@ -63,8 +61,6 @@
 #include <unistd.h>
 #endif
 #include "mb_define.h"
-
-#include "mb_getopt.h"
 
 #include "mb_format.h"
 #include "mb_status.h"
@@ -95,69 +91,54 @@ static const char usage_message[] =
 
 /* --- GMT front end ---------------------------------------------------- */
 
+/* Translation table from the program's long options to its short ones (each one has a short twin) */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",                  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "correlation-threshold", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",                 "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "lag-range",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "nav-channel",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "npings",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'K', "roll-source",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
-	return GMT_PARSE_ERROR;
+	GMT_Message(API, GMT_TIME_NONE, "Every option also has the program's lower-case and long forms.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
-/* The options GMT itself should see: -V (verbosity) and -I (the input the
- * module keys bind). Everything else, long options included, is parsed by
- * the program's own option loop below. */
-static char *mb_gmt_options_string(int argc, char **argv) {
-	size_t total = 1;
-	for (int i = 1; i < argc; i++)
-		total += strlen(argv[i]) + 1;
-	char *s = (char *)calloc(total + 8, 1);
-	if (s == NULL)
-		return NULL;
-	for (int i = 1; i < argc; i++) {
-		if (argv[i][0] == '-' && (argv[i][1] == 'V' || (argv[i][1] == 'I' && argv[i][2] != '\0'))) {
-			if (s[0] != '\0')
-				strcat(s, " ");
-			strcat(s, argv[i]);
-		}
-	}
-	return s;
-}
-
-/* gmt_M_free_options() hard-codes a variable named "options", which the
-   program's own option table shadows here, so destroy gmt_options directly */
-#define bailout(code) { mb_getopt_args_free(argc, argv); free(gmt_args); GMT_Destroy_Options(API, &gmt_options); return (code); }
+#define bailout(code) { gmt_M_free_options(mode); return code; }
 #define Return(code) { gmt_end_module(GMT, GMT_cpy); bailout(code); }
-EXTERN_MSC int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args);
+EXTERN_MSC int GMT_mbrolltimelag(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
 
-int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
+int GMT_mbrolltimelag(void *V_API, int mode, void *args) {
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
-	struct GMT_OPTION *gmt_options = NULL;
-	char *gmt_args = NULL;
-	char **argv = NULL;
-	int argc = 0;
-	struct mb_getopt_state getopt_state;
-	mb_getopt_init(&getopt_state);
+	struct GMT_OPTION *options = NULL;
+	int gmt_error;
 
-	if (!API) return GMT_NOT_A_SESSION;
-	if (gmt_mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-
-	/* the program's own argv[], whatever shape GMT handed us */
-	argc = mb_getopt_args_build(THIS_MODULE_NAME, gmt_mode, args, &argv);
-	if (argc == 2 && (strcmp(argv[1], "-") == 0 || strcmp(argv[1], "?") == 0))
-		bailout(usage(API, GMT_USAGE));
-	if (argc == 2 && strcmp(argv[1], "+") == 0)
-		bailout(usage(API, GMT_SYNOPSIS));
-
-	gmt_args = mb_gmt_options_string(argc, argv);
-	gmt_options = GMT_Create_Options(API, GMT_MODULE_CMD, (gmt_args != NULL && gmt_args[0] != '\0') ? gmt_args : NULL);
-	if (API->error) bailout(API->error);
+	if (API == NULL) return GMT_NOT_A_SESSION;
+	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a valid run -- the program then works on ./datalist.mb-1 */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &gmt_options, &GMT_cpy)) == NULL) bailout(API->error);
-	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, gmt_options)) Return(API->error);
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	int verbose = 0;
 	double rthreshold = 0.9;
@@ -175,59 +156,12 @@ int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
 	strcpy(swathdata, "datalist.mb-1");
 
 	{
-		static struct mb_getopt_option options[] = {{"verbose", mb_no_argument, NULL, 0},
-		                                   {"help", mb_no_argument, NULL, 0},
-		                                   {"correlation-threshold", mb_required_argument, NULL, 0},
-		                                   {"format", mb_required_argument, NULL, 0},
-		                                   {"input", mb_required_argument, NULL, 0},
-		                                   {"lag-range", mb_required_argument, NULL, 0},
-		                                   {"nav-channel", mb_required_argument, NULL, 0},
-		                                   {"npings", mb_required_argument, NULL, 0},
-		                                   {"output", mb_required_argument, NULL, 0},
-		                                   {"roll-source", mb_required_argument, NULL, 0},
-		                                   {NULL, 0, NULL, 0}};
-
-		int option_index;
 		bool errflg = false;
-		int c;
 		bool help = false;
-		while ((c = mb_getopt_long(&getopt_state, argc, argv, "VvHhC:c:F:f:I:i:K:k:O:o:N:n:S:s:T:t:", options, &option_index)) != -1)
-			switch (c) {
-			case 0:
-				if (strcmp("verbose", options[option_index].name) == 0) {
-					verbose++;
-				}
-				else if (strcmp("help", options[option_index].name) == 0) {
-					help = true;
-				}
-				else if (strcmp("correlation-threshold", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%lf", &rthreshold);
-				}
-				else if (strcmp("format", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d", &format);
-				}
-				else if (strcmp("input", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", swathdata);
-				}
-				else if (strcmp("lag-range", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d/%lf/%lf", &nlag, &lagstart, &lagend);
-				}
-				else if (strcmp("nav-channel", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d", &navchannel);
-					if (navchannel > 0)
-						kind = MB_DATA_NONE;
-				}
-				else if (strcmp("npings", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d", &npings);
-				}
-				else if (strcmp("output", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", outroot);
-					outroot_defined = true;
-				}
-				else if (strcmp("roll-source", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d", &kind);
-				}
-				break;
+		/* the program's options from GMT's option list (long options come in as their short twins
+		   through module_kw; lower-case aliases kept) */
+		for (struct GMT_OPTION *opt = options; opt; opt = opt->next)
+			switch (opt->option) {
 			case 'H':
 			case 'h':
 				help = true;
@@ -238,48 +172,46 @@ int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
 				break;
 			case 'C':
 			case 'c':
-				sscanf(getopt_state.optarg, "%lf", &rthreshold);
+				sscanf(opt->arg, "%lf", &rthreshold);
 				break;
 			case 'F':
 			case 'f':
-				sscanf(getopt_state.optarg, "%d", &format);
+				sscanf(opt->arg, "%d", &format);
 				break;
 			case 'I':
 			case 'i':
-				sscanf(getopt_state.optarg, "%1023s", swathdata);
+				sscanf(opt->arg, "%1023s", swathdata);
 				break;
 			case 'K':
 			case 'k':
-				sscanf(getopt_state.optarg, "%d", &kind);
+				sscanf(opt->arg, "%d", &kind);
 				break;
 			case 'N':
 			case 'n':
-				sscanf(getopt_state.optarg, "%d", &npings);
+				sscanf(opt->arg, "%d", &npings);
 				break;
 			case 'O':
 			case 'o':
-				sscanf(getopt_state.optarg, "%1023s", outroot);
+				sscanf(opt->arg, "%1023s", outroot);
 				outroot_defined = true;
 				break;
 			case 'S':
 			case 's':
-				sscanf(getopt_state.optarg, "%d", &navchannel);
+				sscanf(opt->arg, "%d", &navchannel);
 				if (navchannel > 0)
 					kind = MB_DATA_NONE;
 				break;
 			case 'T':
 			case 't':
-				sscanf(getopt_state.optarg, "%d/%lf/%lf", &nlag, &lagstart, &lagend);
+				sscanf(opt->arg, "%d/%lf/%lf", &nlag, &lagstart, &lagend);
 				break;
-			case '?':
-				errflg = true;
+			default:
+				errflg |= (gmt_default_option_error(GMT, opt) != 0);
+				break;
 			}
 
-		if (errflg) {
-			fprintf(stderr, "usage: %s\n", usage_message);
-			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_BAD_USAGE);
-		}
+		if (errflg)
+			Return(GMT_PARSE_ERROR);
 
 		if (verbose == 1 || help) {
 			fprintf(stderr, "\nProgram %s\n", program_name);
@@ -303,11 +235,8 @@ int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
 			fprintf(stderr, "dbg2       kind:            %d\n", kind);
 		}
 
-		if (help) {
-			fprintf(stderr, "\n%s\n", help_message);
-			fprintf(stderr, "\nusage: %s\n", usage_message);
-			Return(MB_ERROR_NO_ERROR);
-		}
+		if (help)
+			Return(usage(API, GMT_USAGE));
 	}
 
 	int error = MB_ERROR_NO_ERROR;
@@ -340,7 +269,7 @@ int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
 	if (status != MB_SUCCESS) {
 		fprintf(stderr, "\nUnable to allocate cross correlation arrays for nlag=%d\n", nlag);
 		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-		Return(MB_ERROR_MEMORY_FAIL);
+		Return(GMT_MEMORY_ERROR);
 	}
 
 	if (verbose > 0) {
@@ -378,7 +307,7 @@ int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
 			if (status != MB_SUCCESS) {
 				fprintf(stderr, "\nUnable to allocate roll data arrays\n");
 				fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-				Return(MB_ERROR_MEMORY_FAIL);
+				Return(GMT_MEMORY_ERROR);
 			}
 		}
 		if (nroll == 0 || time_d > roll_time_d[nroll - 1]) {
@@ -398,7 +327,7 @@ int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
 		if ((fpt = fopen(xcorfiletot, "w")) == NULL) {
 			fprintf(stderr, "\nUnable to open cross correlation output: %s\n", xcorfiletot);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 	}
 
@@ -409,7 +338,7 @@ int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
 	if (fpe == NULL) {
 		fprintf(stderr, "\nUnable to open estimate output: %s\n", estimatefile);
 		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-		Return(MB_ERROR_OPEN_FAIL);
+		Return(GMT_ERROR_ON_FOPEN);
 	}
 
 	/* open time lag histogram file */
@@ -419,7 +348,7 @@ int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
 	if (fph == NULL) {
 		fprintf(stderr, "\nUnable to open histogram output: %s\n", histfile);
 		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-		Return(MB_ERROR_OPEN_FAIL);
+		Return(GMT_ERROR_ON_FOPEN);
 	}
 
 	/* open time lag model file */
@@ -429,7 +358,7 @@ int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
 	if (fpm == NULL) {
 		fprintf(stderr, "\nUnable to open time lag model output: %s\n", modelfile);
 		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-		Return(MB_ERROR_OPEN_FAIL);
+		Return(GMT_ERROR_ON_FOPEN);
 	}
 
 	/* open file list */
@@ -441,7 +370,7 @@ int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
 		if (mb_datalist_open(verbose, &datalist, swathdata, look_processed, &error) != MB_SUCCESS) {
 			fprintf(stderr, "\nUnable to open data list file: %s\n", swathdata);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		double file_weight;
 		read_data = mb_datalist_read(verbose, datalist, swathfile, dfile, &format, &file_weight, &error) == MB_SUCCESS;
@@ -505,7 +434,7 @@ int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
 				if (status != MB_SUCCESS) {
 					fprintf(stderr, "\nUnable to allocate slope data arrays\n");
 					fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-					Return(MB_ERROR_MEMORY_FAIL);
+					Return(GMT_MEMORY_ERROR);
 				}
 			}
 			if (nslope == 0 || time_d > slope_time_d[nslope - 1]) {
@@ -529,7 +458,7 @@ int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
 		if (fpf == NULL) {
 			fprintf(stderr, "\nUnable to open histogram output: %s\n", fhistfile);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 
 		/* open cross correlation file */
@@ -539,7 +468,7 @@ int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
 		if (fpx == NULL) {
 			fprintf(stderr, "\nUnable to open cross correlation output: %s\n", xcorfile);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 
 		/* initialize time lag histogram */
@@ -787,6 +716,13 @@ int GMT_mbrolltimelag(void *V_API, int gmt_mode, void *args) {
 		fprintf(stderr, "WARNING: status is MB_FAILURE\n");
 	}
 
-	Return(error);
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one */
+	if (error != MB_ERROR_NO_ERROR) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

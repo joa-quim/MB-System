@@ -575,6 +575,7 @@
 
 #ifndef MB_PROCESS_H_
 #define MB_PROCESS_H_
+#include "mbio_export.h"
 
 /* mbprocess value defines */
 #define MBP_FILENAMESIZE MB_PATH_MAXLINE
@@ -1040,18 +1041,18 @@ struct mb_esf_struct {
 extern "C" {
 #endif
 
-int mb_pr_checkstatus(int verbose, char *file, int *prstatus, int *error);
-int mb_pr_readpar(int verbose, char *file, int lookforfiles, struct mb_process_struct *process, int *error);
-int mb_pr_writepar(int verbose, char *file, struct mb_process_struct *process, int *error);
-int mb_pr_compare(int verbose, struct mb_process_struct *process1,
+MBIO_API int mb_pr_checkstatus(int verbose, char *file, int *prstatus, int *error);
+MBIO_API int mb_pr_readpar(int verbose, char *file, int lookforfiles, struct mb_process_struct *process, int *error);
+MBIO_API int mb_pr_writepar(int verbose, char *file, struct mb_process_struct *process, int *error);
+MBIO_API int mb_pr_compare(int verbose, struct mb_process_struct *process1,
                   struct mb_process_struct *process2, int *num_difference, int *error);
-int mb_pr_bathmode(int verbose, struct mb_process_struct *process, int *error);
-int mb_pr_default_output(int verbose, struct mb_process_struct *process, int *error);
-int mb_pr_get_output(int verbose, int *format, char *ifile, char *ofile, int *error);
-int mb_pr_check(int verbose, char *ifile, int *nparproblem, int *ndataproblem, int *error);
+MBIO_API int mb_pr_bathmode(int verbose, struct mb_process_struct *process, int *error);
+MBIO_API int mb_pr_default_output(int verbose, struct mb_process_struct *process, int *error);
+MBIO_API int mb_pr_get_output(int verbose, int *format, char *ifile, char *ofile, int *error);
+MBIO_API int mb_pr_check(int verbose, char *ifile, int *nparproblem, int *ndataproblem, int *error);
 int mb_pr_update_ofile(int verbose, char *file, int mbp_ofile_specified, char *mbp_ofile, int *error);
-int mb_pr_update_format(int verbose, char *file, int mbp_format_specified, int mbp_format, int *error);
-int mb_pr_update_rollbias(int verbose, char *file, int mbp_rollbias_mode, double mbp_rollbias, double mbp_rollbias_port,
+MBIO_API int mb_pr_update_format(int verbose, char *file, int mbp_format_specified, int mbp_format, int *error);
+MBIO_API int mb_pr_update_rollbias(int verbose, char *file, int mbp_rollbias_mode, double mbp_rollbias, double mbp_rollbias_port,
                           double mbp_rollbias_stbd, int *error);
 int mb_pr_update_pitchbias(int verbose, char *file, int mbp_pitchbias_mode, double mbp_pitchbias, int *error);
 int mb_pr_update_draft(int verbose, char *file, int mbp_draft_mode, double mbp_draft, double mbp_draft_offset,
@@ -1060,13 +1061,13 @@ int mb_pr_update_heave(int verbose, char *file, int mbp_heave_mode, double mbp_h
 int mb_pr_update_lever(int verbose, char *file, int mbp_lever_mode, double mbp_vru_offsetx, double mbp_vru_offsety,
                        double mbp_vru_offsetz, double mbp_sonar_offsetx, double mbp_sonar_offsety, double mbp_sonar_offsetz,
                        int *error);
-int mb_pr_update_tide(int verbose, char *file, int mbp_tide_mode, char *mbp_tidefile, int mbp_tide_format, int *error);
+MBIO_API int mb_pr_update_tide(int verbose, char *file, int mbp_tide_mode, char *mbp_tidefile, int mbp_tide_format, int *error);
 int mb_pr_update_tt(int verbose, char *file, int mbp_tt_mode, double mbp_tt_mult, int *error);
 int mb_pr_update_ssv(int verbose, char *file, int mbp_ssv_mode, double mbp_ssv, int *error);
-int mb_pr_update_svp(int verbose, char *file, int mbp_svp_mode, char *mbp_svpfile, int mbp_angle_mode, int mbp_corrected,
+MBIO_API int mb_pr_update_svp(int verbose, char *file, int mbp_svp_mode, char *mbp_svpfile, int mbp_angle_mode, int mbp_corrected,
                      int *error);
-int mb_pr_update_static(int verbose, char *file, int mbp_static_mode, char *mbp_staticfile, int *error);
-int mb_pr_update_navadj(int verbose, char *file, int mbp_navadj_mode, char *mbp_navadjfile, int mbp_navadj_algorithm, int *error);
+MBIO_API int mb_pr_update_static(int verbose, char *file, int mbp_static_mode, char *mbp_staticfile, int *error);
+MBIO_API int mb_pr_update_navadj(int verbose, char *file, int mbp_navadj_mode, char *mbp_navadjfile, int mbp_navadj_algorithm, int *error);
 int mb_pr_update_nav(int verbose, char *file, int mbp_nav_mode, char *mbp_navfile, int mbp_nav_format, int mbp_nav_heading,
                      int mbp_nav_speed, int mbp_nav_draft, int mbp_nav_attitude, int mbp_nav_algorithm, double mbp_nav_timeshift,
                      int *error);
@@ -1077,14 +1078,14 @@ int mb_pr_update_sensordepth(int verbose, char *file, int mbp_sensordepth_mode, 
 int mb_pr_update_navshift(int verbose, char *file, int mbp_nav_shift, double mbp_nav_offsetx, double mbp_nav_offsety,
                           double mbp_nav_offsetz, double mbp_nav_shiftlon, double mbp_nav_shiftlat, double mbp_nav_shiftx,
                           double mbp_nav_shifty, int *error);
-int mb_pr_update_heading(int verbose, char *file, int mbp_heading_mode, double mbp_headingbias, int *error);
+MBIO_API int mb_pr_update_heading(int verbose, char *file, int mbp_heading_mode, double mbp_headingbias, int *error);
 int mb_pr_update_datacut(int verbose, char *file, int mbp_cut_num, int *mbp_cut_kind, int *mbp_cut_mode, double *mbp_cut_min,
                          double *mbp_cut_max, int *error);
-int mb_pr_update_edit(int verbose, char *file, int mbp_edit_mode, char *mbp_editfile, int *error);
-int mb_pr_update_ampcorr(int verbose, char *file, int mbp_ampcorr_mode, char *mbp_ampcorrfile, int mbp_ampcorr_type,
+MBIO_API int mb_pr_update_edit(int verbose, char *file, int mbp_edit_mode, char *mbp_editfile, int *error);
+MBIO_API int mb_pr_update_ampcorr(int verbose, char *file, int mbp_ampcorr_mode, char *mbp_ampcorrfile, int mbp_ampcorr_type,
                          int mbp_ampcorr_symmetry, double mbp_ampcorr_angle, int mbp_ampcorr_slope, char *mbp_ampcorr_topofile,
                          int *error);
-int mb_pr_update_sscorr(int verbose, char *file, int mbp_sscorr_mode, char *mbp_sscorrfile, int mbp_sscorr_type,
+MBIO_API int mb_pr_update_sscorr(int verbose, char *file, int mbp_sscorr_mode, char *mbp_sscorrfile, int mbp_sscorr_type,
                         int mbp_sscorr_symmetry, double mbp_sscorr_angle, int mbp_sscorr_slope, char *mbp_sscorr_topofile,
                         int *error);
 int mb_pr_update_ssrecalc(int verbose, char *file, int mbp_ssrecalc_mode, double mbp_ssrecalc_pixelsize,
@@ -1098,9 +1099,9 @@ int mb_pr_update_metadata(int verbose, char *file, char *mbp_meta_vessel, char *
 int mb_pr_update_kluges(int verbose, char *file, int mbp_kluge001, int mbp_kluge002, int mbp_kluge003, int mbp_kluge004,
                         int mbp_kluge005, int mbp_kluge006, int mbp_kluge007, int mbp_kluge008, int mbp_kluge009,
                         int mbp_kluge010, int *error);
-int mb_pr_get_ofile(int verbose, char *file, int *mbp_ofile_specified, char *mbp_ofile, int *error);
+MBIO_API int mb_pr_get_ofile(int verbose, char *file, int *mbp_ofile_specified, char *mbp_ofile, int *error);
 int mb_pr_get_format(int verbose, char *file, int *mbp_format_specified, int *mbp_format, int *error);
-int mb_pr_get_rollbias(int verbose, char *file, int *mbp_rollbias_mode, double *mbp_rollbias, double *mbp_rollbias_port,
+MBIO_API int mb_pr_get_rollbias(int verbose, char *file, int *mbp_rollbias_mode, double *mbp_rollbias, double *mbp_rollbias_port,
                        double *mbp_rollbias_stbd, int *error);
 int mb_pr_get_pitchbias(int verbose, char *file, int *mbp_pitchbias_mode, double *mbp_pitchbias, int *error);
 int mb_pr_get_draft(int verbose, char *file, int *mbp_draft_mode, double *mbp_draft, double *mbp_draft_offset,
@@ -1112,9 +1113,9 @@ int mb_pr_get_lever(int verbose, char *file, int *mbp_lever_mode, double *mbp_vr
 int mb_pr_get_tide(int verbose, char *file, int *mbp_tide_mode, char *mbp_tidefile, int *mbp_tide_format, int *error);
 int mb_pr_get_tt(int verbose, char *file, int *mbp_tt_mode, double *mbp_tt_mult, int *error);
 int mb_pr_get_ssv(int verbose, char *file, int *mbp_ssv_mode, double *mbp_ssv, int *error);
-int mb_pr_get_svp(int verbose, char *file, int *mbp_svp_mode, char *mbp_svpfile, int *mbp_angle_mode, int *mbp_corrected,
+MBIO_API int mb_pr_get_svp(int verbose, char *file, int *mbp_svp_mode, char *mbp_svpfile, int *mbp_angle_mode, int *mbp_corrected,
                   int *error);
-int mb_pr_get_static(int verbose, char *file, int *mbp_static_mode, char *mbp_staticfile, int *error);
+MBIO_API int mb_pr_get_static(int verbose, char *file, int *mbp_static_mode, char *mbp_staticfile, int *error);
 int mb_pr_get_navadj(int verbose, char *file, int *mbp_navadj_mode, char *mbp_navadjfile, int *mbp_navadj_algorithm, int *error);
 int mb_pr_get_nav(int verbose, char *file, int *mbp_nav_mode, char *mbp_navfile, int *mbp_nav_format, int *mbp_nav_heading,
                   int *mbp_nav_speed, int *mbp_nav_draft, int *mbp_nav_attitude, int *mbp_nav_algorithm,
@@ -1126,7 +1127,7 @@ int mb_pr_get_sensordepth(int verbose, char *file, int *mbp_sensordepth_mode, ch
 int mb_pr_get_navshift(int verbose, char *file, int *mbp_nav_shift, double *mbp_nav_offsetx, double *mbp_nav_offsety,
                        double *mbp_nav_offsetz, double *mbp_nav_shiftlon, double *mbp_nav_shiftlat, double *mbp_nav_shiftx,
                        double *mbp_nav_shifty, int *error);
-int mb_pr_get_heading(int verbose, char *file, int *mbp_heading_mode, double *mbp_headingbias, int *error);
+MBIO_API int mb_pr_get_heading(int verbose, char *file, int *mbp_heading_mode, double *mbp_headingbias, int *error);
 int mb_pr_get_datacut(int verbose, char *file, int *mbp_cut_num, int *mbp_cut_kind, int *mbp_cut_mode, double *mbp_cut_min,
                       double *mbp_cut_max, int *error);
 int mb_pr_get_edit(int verbose, char *file, int *mbp_edit_mode, char *mbp_editfile, int *error);
@@ -1147,32 +1148,32 @@ int mb_pr_get_metadata(int verbose, char *file, char *mbp_meta_vessel, char *mbp
 int mb_pr_get_kluges(int verbose, char *file, int *mbp_kluge001, int *mbp_kluge002, int *mbp_kluge003, int *mbp_kluge004,
                      int *mbp_kluge005, int *mbp_kluge006, int *mbp_kluge007, int *mbp_kluge008, int *mbp_kluge009,
                      int *mbp_kluge010, int *error);
-int mb_pr_set_bathyslope(int verbose, int nsmooth, int nbath, char *beamflag, double *bath, double *bathacrosstrack, int *ndepths,
+MBIO_API int mb_pr_set_bathyslope(int verbose, int nsmooth, int nbath, char *beamflag, double *bath, double *bathacrosstrack, int *ndepths,
                          double *depths, double *depthacrosstrack, int *nslopes, double *slopes, double *slopeacrosstrack,
                          double *depthsmooth, int *error);
 int mb_pr_set_bathyslopenew(int verbose, int nsmooth, int nbath, char *beamflag, double *bath, double *bathacrosstrack,
                             int *ndepths, double *depths, double *depthacrosstrack, int *nslopes, double *slopes,
                             double *slopeacrosstrack, double *depthsmooth, int *error);
-int mb_pr_get_bathyslope(int verbose, int ndepths, double *depths, double *depthacrosstrack, int nslopes, double *slopes,
+MBIO_API int mb_pr_get_bathyslope(int verbose, int ndepths, double *depths, double *depthacrosstrack, int nslopes, double *slopes,
                          double *slopeacrosstrack, double acrosstrack, double *depth, double *slope, int *error);
-int mb_pr_point_in_quad(int verbose, double px, double py, double *x, double *y, int *error);
+MBIO_API int mb_pr_point_in_quad(int verbose, double px, double py, double *x, double *y, int *error);
 int mb_esf_check(int verbose, char *swathfile, char *esffile, int *found, int *error);
-int mb_esf_load(int verbose, const char *program_name, char *swathfile, bool load, int output, char *esffile, struct mb_esf_struct *esf,
+MBIO_API int mb_esf_load(int verbose, const char *program_name, char *swathfile, bool load, int output, char *esffile, struct mb_esf_struct *esf,
                 int *error);
-int mb_esf_open(int verbose, const char *program_name, char *esffile, bool load, int output, struct mb_esf_struct *esf, int *error);
-int mb_esf_fixtimestamps(int verbose, struct mb_esf_struct *esf, double time_d, double tolerance, int *error);
-int mb_esf_apply(int verbose, struct mb_esf_struct *esf, double time_d, int pingmultiplicity, int nbath, char *beamflag,
+MBIO_API int mb_esf_open(int verbose, const char *program_name, char *esffile, bool load, int output, struct mb_esf_struct *esf, int *error);
+MBIO_API int mb_esf_fixtimestamps(int verbose, struct mb_esf_struct *esf, double time_d, double tolerance, int *error);
+MBIO_API int mb_esf_apply(int verbose, struct mb_esf_struct *esf, double time_d, int pingmultiplicity, int nbath, char *beamflag,
                  int *error);
-int mb_esf_save(int verbose, struct mb_esf_struct *esf, double time_d, int beam, int action, int *error);
-int mb_ess_save(int verbose, struct mb_esf_struct *esf, double time_d, int beam, int action, int *error);
-int mb_esf_close(int verbose, struct mb_esf_struct *esf, int *error);
-int mb_mergesort(void *base, size_t nmemb, size_t size, int (*cmp)(const void *, const void *));
+MBIO_API int mb_esf_save(int verbose, struct mb_esf_struct *esf, double time_d, int beam, int action, int *error);
+MBIO_API int mb_ess_save(int verbose, struct mb_esf_struct *esf, double time_d, int beam, int action, int *error);
+MBIO_API int mb_esf_close(int verbose, struct mb_esf_struct *esf, int *error);
+MBIO_API int mb_mergesort(void *base, size_t nmemb, size_t size, int (*cmp)(const void *, const void *));
 void mb_mergesort_setup(mb_u_char *list1, mb_u_char *list2, size_t n, size_t size, int (*cmp)(const void *, const void *));
 void mb_mergesort_insertionsort(mb_u_char *a, size_t n, size_t size, int (*cmp)(const void *, const void *));
 
-int mb_pr_lockswathfile(int verbose, const char *file, int purpose, const char *program_name, int *error);
-int mb_pr_unlockswathfile(int verbose, const char *file, int purpose, const char *program_name, int *error);
-int mb_pr_lockinfo(int verbose, const char *file, bool *locked, int *purpose,
+MBIO_API int mb_pr_lockswathfile(int verbose, const char *file, int purpose, const char *program_name, int *error);
+MBIO_API int mb_pr_unlockswathfile(int verbose, const char *file, int purpose, const char *program_name, int *error);
+MBIO_API int mb_pr_lockinfo(int verbose, const char *file, bool *locked, int *purpose,
                    char *program, char *user, char *cpu, char *date, int *error);
 
 #ifdef __cplusplus

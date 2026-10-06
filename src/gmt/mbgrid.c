@@ -54,7 +54,9 @@
 #define THIS_MODULE_NAME    "mbgrid"
 #define THIS_MODULE_LIB     "mbsystem"
 #define THIS_MODULE_PURPOSE "grid bathymetry, amplitude, or sidescan data of a set of swath sonar data files"
-#define THIS_MODULE_KEYS    "ID{,OG}"
+/* -I is the input datalist; -O is the fileroot of the grids mbgrid writes itself (with its own
+   grid writer, as the program), not a grid handed back through the API */
+#define THIS_MODULE_KEYS    "ID{"
 #define THIS_MODULE_NEEDS   ""
 #define THIS_MODULE_OPTIONS "->V"
 
@@ -74,6 +76,7 @@
 #include "mb_format.h"
 #include "mb_io.h"
 #include "mb_status.h"
+#include "mb_gmt_opts.h"
 
 /* gridding algorithms */
 #define MBGRID_WEIGHTED_MEAN              1
@@ -410,6 +413,8 @@ struct MBGRID_CTRL {
 	struct mbgrid_W { bool active; double scale; } W;
 	struct mbgrid_X { bool active; double extend; } X;
 	struct mbgrid_Y { bool active; double shift_x, shift_y; int shift_mode; } Y;
+	struct mbgrid_H { bool active; } H;
+	int verbose;	/* the program's -V/-v count */
 };
 
 /*--------------------------------------------------------------------*/
@@ -451,12 +456,54 @@ static void Free_mbgrid_Ctrl(struct GMT_CTRL *GMT, struct MBGRID_CTRL *Ctrl) {
 }
 
 /*--------------------------------------------------------------------*/
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'A', "data-type",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'B', "border",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "clip",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "dimensions",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'E', "spacing",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "algorithm",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'G', "output-format",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'J', "projection",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'K', "background-data",  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "longitude-domain", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'M', "extra-grids",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "use-nan",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "pings",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Q', "use-feet",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "bounds",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "speed-minimum",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "tension",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'U', "time-difference",  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'v', "verbose",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'W', "gaussian-scale",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'X', "extend",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Y', "shift",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
+/* The program's CUBE long options have no short letter; they set what the -F9 modifiers set */
+static const struct MB_GMT_LONGOPT_DEF long_options[] = {
+	{"cube-iho-order", true},     /* +o */
+	{"cube-method", true},        /* +m */
+	{"cube-no-queue", false},     /* +q */
+	{"cube-parameters", true},    /* +p */
+	{"cube-uncertainty", true},   /* +u */
+	{"cube-variance", true},      /* +v */
+	{NULL, false}};
+static const char long_modifier[] = "omqpuv";
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n\n", help_message);
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return EXIT_FAILURE;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "\n\tOPTIONS:\n");
 	GMT_Message(API, GMT_TIME_NONE, "\t-A<datatype>\n");
 	GMT_Message(API, GMT_TIME_NONE, "\t-B<border>\n");
@@ -487,7 +534,15 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	GMT_Message(API, GMT_TIME_NONE, "\t-W<scale>\n");
 	GMT_Message(API, GMT_TIME_NONE, "\t-X<extend>\n");
 	GMT_Message(API, GMT_TIME_NONE, "\t-Y<shift_x>/<shift_y>[/<shift_mode>]\n");
-	return EXIT_FAILURE;
+	GMT_Message(API, GMT_TIME_NONE, "\t-V -H\n");
+	GMT_Message(API, GMT_TIME_NONE,
+		"\n\tThe program's long options are kept: --data-type --border --clip --dimensions --spacing\n"
+		"\t--algorithm --output-format --input --projection --background-data --longitude-domain\n"
+		"\t--extra-grids --use-nan --output --pings --use-feet --bounds --speed-minimum --tension\n"
+		"\t--time-difference --gaussian-scale --extend --shift --verbose --help, and for CUBE\n"
+		"\t--cube-iho-order --cube-method --cube-no-queue --cube-parameters --cube-uncertainty --cube-variance.\n\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 /*--------------------------------------------------------------------*/
@@ -549,31 +604,45 @@ static unsigned int parse_cube_modifiers(struct GMTAPI_CTRL *API, struct MBGRID_
 /*--------------------------------------------------------------------*/
 static int parse_mbgrid(struct GMT_CTRL *GMT, struct MBGRID_CTRL *Ctrl, struct GMT_OPTION *options) {
 	unsigned int n_errors = 0;
-	unsigned int n_files = 0;
 	struct GMT_OPTION *opt = NULL;
 	struct GMTAPI_CTRL *API = GMT->parent;
 
 	for (opt = options; opt; opt = opt->next) {
 		int n;
+		if (opt->option == MB_GMT_LONGOPT) {	/* a CUBE long option: the -F9 modifier it is */
+			const char *value;
+			char modifier[MB_PATH_MAXLINE];
+			const int k = mb_gmt_long_option(opt, long_options, &value);
+			if (k < 0) {
+				GMT_Report(API, GMT_MSG_ERROR, "Option --%s %s\n", opt->arg, k == -2 ? "requires an argument" : "is not recognized");
+				n_errors++;
+				continue;
+			}
+			snprintf(modifier, sizeof(modifier), "+%c%s", long_modifier[k], value);
+			n_errors += parse_cube_modifiers(API, Ctrl, modifier);
+			continue;
+		}
 		switch (opt->option) {
 			case '<':
 				Ctrl->I.active = true;
 				strncpy(Ctrl->I.inputfile, opt->arg, MB_PATH_MAXLINE - 1);
-				n_files = 1;
 				break;
 
+			case 'a':
 			case 'A':
 				n = sscanf(opt->arg, "%d", &Ctrl->A.datatype);
 				if (n > 0) Ctrl->A.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -A option\n"); n_errors++; }
 				break;
 
+			case 'b':
 			case 'B':
 				n = sscanf(opt->arg, "%lf", &Ctrl->B.border);
 				if (n > 0) Ctrl->B.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -B option\n"); n_errors++; }
 				break;
 
+			case 'c':
 			case 'C':
 				Ctrl->C.active = true;
 				n = sscanf(opt->arg, "%d/%d/%lf", &Ctrl->C.clip, &Ctrl->C.clipmode, &Ctrl->C.tension);
@@ -596,12 +665,14 @@ static int parse_mbgrid(struct GMT_CTRL *GMT, struct MBGRID_CTRL *Ctrl, struct G
 				}
 				break;
 
+			case 'd':
 			case 'D':
 				n = sscanf(opt->arg, "%d/%d", &Ctrl->D.xdim, &Ctrl->D.ydim);
 				if (n > 0) Ctrl->D.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -D option\n"); n_errors++; }
 				break;
 
+			case 'e':
 			case 'E':
 				if (opt->arg[strlen(opt->arg) - 1] == '!') {
 					Ctrl->E.spacing_priority = true;
@@ -615,6 +686,7 @@ static int parse_mbgrid(struct GMT_CTRL *GMT, struct MBGRID_CTRL *Ctrl, struct G
 				} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -E option\n"); n_errors++; }
 				break;
 
+			case 'f':
 			case 'F': {
 				int tmp;
 				double dvalue;
@@ -643,6 +715,7 @@ static int parse_mbgrid(struct GMT_CTRL *GMT, struct MBGRID_CTRL *Ctrl, struct G
 				break;
 			}
 
+			case 'g':
 			case 'G':
 				if (opt->arg[0] == '=') {
 					Ctrl->G.gridkind = MBGRID_GMTGRD;
@@ -671,23 +744,25 @@ static int parse_mbgrid(struct GMT_CTRL *GMT, struct MBGRID_CTRL *Ctrl, struct G
 				}
 				break;
 
+			case 'i':
 			case 'I':
 				if (!gmt_access(GMT, opt->arg, R_OK)) {
 					strncpy(Ctrl->I.inputfile, opt->arg, MB_PATH_MAXLINE - 1);
 					Ctrl->I.active = true;
-					n_files = 1;
 				} else {
 					GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -I option: cannot access file %s\n", opt->arg);
 					{ GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 				}
 				break;
 
+			case 'j':
 			case 'J':
 				n = sscanf(opt->arg, "%s", Ctrl->J.projection_pars);
 				if (n > 0) Ctrl->J.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -J option\n"); n_errors++; }
 				break;
 
+			case 'k':
 			case 'K':
 				n = sscanf(opt->arg, "%s", Ctrl->K.backgroundfile);
 				if (n > 0) {
@@ -697,37 +772,44 @@ static int parse_mbgrid(struct GMT_CTRL *GMT, struct MBGRID_CTRL *Ctrl, struct G
 				} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -K option\n"); n_errors++; }
 				break;
 
+			case 'l':
 			case 'L':
 				n = sscanf(opt->arg, "%d", &Ctrl->L.lonflip);
 				if (n > 0) Ctrl->L.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -L option\n"); n_errors++; }
 				break;
 
+			case 'm':
 			case 'M':
 				Ctrl->M.active = true;
 				Ctrl->M.more = true;
 				break;
 
+			case 'n':
 			case 'N':
 				Ctrl->N.active = true;
 				break;
 
+			case 'o':
 			case 'O':
 				n = sscanf(opt->arg, "%s", Ctrl->O.fileroot);
 				if (n > 0) Ctrl->O.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -O option\n"); n_errors++; }
 				break;
 
+			case 'p':
 			case 'P':
 				n = sscanf(opt->arg, "%d", &Ctrl->P.pings);
 				if (n > 0) Ctrl->P.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -P option\n"); n_errors++; }
 				break;
 
+			case 'q':
 			case 'Q':
 				Ctrl->Q.active = true;
 				break;
 
+			case 'r':
 			case 'R':
 				Ctrl->R.active = true;
 				if (strchr(opt->arg, '/') == NULL) {
@@ -739,18 +821,21 @@ static int parse_mbgrid(struct GMT_CTRL *GMT, struct MBGRID_CTRL *Ctrl, struct G
 				}
 				break;
 
+			case 's':
 			case 'S':
 				n = sscanf(opt->arg, "%lf", &Ctrl->S.speedmin);
 				if (n > 0) Ctrl->S.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -S option\n"); n_errors++; }
 				break;
 
+			case 't':
 			case 'T':
 				n = sscanf(opt->arg, "%lf", &Ctrl->T.tension);
 				if (n > 0) Ctrl->T.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -T option\n"); n_errors++; }
 				break;
 
+			case 'u':
 			case 'U':
 				n = sscanf(opt->arg, "%lf", &Ctrl->U.timediff);
 				if (n > 0) {
@@ -766,18 +851,21 @@ static int parse_mbgrid(struct GMT_CTRL *GMT, struct MBGRID_CTRL *Ctrl, struct G
 				} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -U option\n"); n_errors++; }
 				break;
 
+			case 'w':
 			case 'W':
 				n = sscanf(opt->arg, "%lf", &Ctrl->W.scale);
 				if (n > 0) Ctrl->W.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -W option\n"); n_errors++; }
 				break;
 
+			case 'x':
 			case 'X':
 				n = sscanf(opt->arg, "%lf", &Ctrl->X.extend);
 				if (n > 0) Ctrl->X.active = true;
 				else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -X option\n"); n_errors++; }
 				break;
 
+			case 'y':
 			case 'Y':
 				n = sscanf(opt->arg, "%lf/%lf/%d", &Ctrl->Y.shift_x, &Ctrl->Y.shift_y, &Ctrl->Y.shift_mode);
 				if (n >= 2) {
@@ -786,13 +874,22 @@ static int parse_mbgrid(struct GMT_CTRL *GMT, struct MBGRID_CTRL *Ctrl, struct G
 				} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -Y option\n"); n_errors++; }
 				break;
 
+			case 'v':
+			case 'V':
+				Ctrl->verbose++;
+				break;
+
+			case 'h':
+			case 'H':
+				Ctrl->H.active = true;
+				break;
+
 			default:
-				n_errors += gmt_default_error(GMT, opt->option);
+				n_errors += gmt_default_option_error(GMT, opt);
 				break;
 		}
 	}
 
-	n_errors += gmt_M_check_condition(GMT, n_files != 1, "Syntax error: Must specify one input file\n");
 	return (n_errors ? GMT_PARSE_ERROR : GMT_OK);
 }
 
@@ -848,9 +945,11 @@ static void mbgrid_cube_buf_free(struct mbgrid_cube_buf *b) {
 }
 
 #define bailout(code) {gmt_M_free_options(mode); return (code);}
-#define Return(code) {Free_mbgrid_Ctrl (GMT, Ctrl); gmt_end_module (GMT, GMT_cpy); bailout (code);}
+#define Return(code) {mb_gmt_history_free(API, hist_argc, hist_argv); Free_mbgrid_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code);}
 
 /*--------------------------------------------------------------------*/
+EXTERN_MSC int GMT_mbgrid(void *V_API, int mode, void *args);
+
 int GMT_mbgrid(void *V_API, int mode, void *args) {
 	int error = MB_ERROR_NO_ERROR;
 
@@ -858,17 +957,22 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION *options = NULL;
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
+	char **hist_argv = NULL;	/* the command line, for the grids' history (the program's argc/argv) */
+	int hist_argc = 0;
 
 	if (API == NULL) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
 
-	if (!options || options->option == GMT_OPT_USAGE) bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS) bailout(usage(API, GMT_SYNOPSIS));
+	/* 1: no options is a run of the program (on datalist.mb-1) */
+	if ((error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(error);
 
+	/* the program's CUBE long options (no short letter) kept out of the keyword translation and of
+	   GMT's --PAR=value handling */
+	mb_gmt_mark_long_options(API, &options, long_options);
 #if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 #else
 	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
 #endif
@@ -876,9 +980,11 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 	Ctrl = (struct MBGRID_CTRL *)New_mbgrid_Ctrl(GMT);
 	if ((error = parse_mbgrid(GMT, Ctrl, options))) Return (error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
+	hist_argc = mb_gmt_history_args(API, options, THIS_MODULE_NAME, &hist_argv);
 
 	/* MBIO status variables */
-	int verbose = GMT->common.V.active ? GMT->current.setting.verbose : 0;
+	int verbose = Ctrl->verbose;
 	int status = MB_SUCCESS;
 	int memclear_error = MB_ERROR_NO_ERROR;
 	char *message = NULL;
@@ -967,58 +1073,58 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 	if (Ctrl->S.active) speedmin = Ctrl->S.speedmin;
 
 	if (verbose >= 2) {
-		GMT_Report(API, GMT_MSG_NORMAL, "\ndbg2  Program <%s>\n", THIS_MODULE_NAME);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  MB-system Version %s\n", MB_VERSION);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Control Parameters:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       verbose:              %d\n", verbose);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       pings:                %d\n", pings);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       lonflip:              %d\n", lonflip);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       speedmin:             %f\n", speedmin);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       timegap:              %f\n", timegap);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       file list:            %s\n", filelist);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       output file root:     %s\n", fileroot);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       grid x dimension:     %d\n", xdim);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       grid y dimension:     %d\n", ydim);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       grid bounds[0..3]:    %f %f %f %f\n", gbnd[0], gbnd[1], gbnd[2], gbnd[3]);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       boundsfactor:         %f\n", boundsfactor);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       clipmode:             %d\n", clipmode);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       clip:                 %d\n", clip);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       tension:              %f\n", tension);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       grdraster background: %d\n", grdrasterid);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       backgroundfile:       %s\n", backgroundfile);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       more:                 %d\n", more);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       use_NaN:              %d\n", use_NaN);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       grid_mode:            %d\n", grid_mode);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       cube_iho_order:       %s\n", mb_cube_iho_name(cube_iho_order));
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       cube_method:          %s\n", mb_cube_method_name(cube_method));
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       cube_variance:        %s\n", mb_cube_variance_name(cube_variance));
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       cube_use_queue:       %d\n", cube_use_queue);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       cube_uncertainty_set: %d\n", cube_uncertainty_set);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       cube_tvu_a/b:         %f %f\n", cube_tvu_a, cube_tvu_b);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       cube_thu_a/b:         %f %f\n", cube_thu_a, cube_thu_b);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       cube_paramfile:       %s\n", cube_paramfile);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       data type:            %d\n", datatype);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       grid format:          %d\n", gridkind);
+		fprintf(stderr, "\ndbg2  Program <%s>\n", THIS_MODULE_NAME);
+		fprintf(stderr, "dbg2  MB-system Version %s\n", MB_VERSION);
+		fprintf(stderr, "dbg2  Control Parameters:\n");
+		fprintf(stderr, "dbg2       verbose:              %d\n", verbose);
+		fprintf(stderr, "dbg2       pings:                %d\n", pings);
+		fprintf(stderr, "dbg2       lonflip:              %d\n", lonflip);
+		fprintf(stderr, "dbg2       speedmin:             %f\n", speedmin);
+		fprintf(stderr, "dbg2       timegap:              %f\n", timegap);
+		fprintf(stderr, "dbg2       file list:            %s\n", filelist);
+		fprintf(stderr, "dbg2       output file root:     %s\n", fileroot);
+		fprintf(stderr, "dbg2       grid x dimension:     %d\n", xdim);
+		fprintf(stderr, "dbg2       grid y dimension:     %d\n", ydim);
+		fprintf(stderr, "dbg2       grid bounds[0..3]:    %f %f %f %f\n", gbnd[0], gbnd[1], gbnd[2], gbnd[3]);
+		fprintf(stderr, "dbg2       boundsfactor:         %f\n", boundsfactor);
+		fprintf(stderr, "dbg2       clipmode:             %d\n", clipmode);
+		fprintf(stderr, "dbg2       clip:                 %d\n", clip);
+		fprintf(stderr, "dbg2       tension:              %f\n", tension);
+		fprintf(stderr, "dbg2       grdraster background: %d\n", grdrasterid);
+		fprintf(stderr, "dbg2       backgroundfile:       %s\n", backgroundfile);
+		fprintf(stderr, "dbg2       more:                 %d\n", more);
+		fprintf(stderr, "dbg2       use_NaN:              %d\n", use_NaN);
+		fprintf(stderr, "dbg2       grid_mode:            %d\n", grid_mode);
+		fprintf(stderr, "dbg2       cube_iho_order:       %s\n", mb_cube_iho_name(cube_iho_order));
+		fprintf(stderr, "dbg2       cube_method:          %s\n", mb_cube_method_name(cube_method));
+		fprintf(stderr, "dbg2       cube_variance:        %s\n", mb_cube_variance_name(cube_variance));
+		fprintf(stderr, "dbg2       cube_use_queue:       %d\n", cube_use_queue);
+		fprintf(stderr, "dbg2       cube_uncertainty_set: %d\n", cube_uncertainty_set);
+		fprintf(stderr, "dbg2       cube_tvu_a/b:         %f %f\n", cube_tvu_a, cube_tvu_b);
+		fprintf(stderr, "dbg2       cube_thu_a/b:         %f %f\n", cube_thu_a, cube_thu_b);
+		fprintf(stderr, "dbg2       cube_paramfile:       %s\n", cube_paramfile);
+		fprintf(stderr, "dbg2       data type:            %d\n", datatype);
+		fprintf(stderr, "dbg2       grid format:          %d\n", gridkind);
 		if (gridkind == MBGRID_GMTGRD)
-			GMT_Report(API, GMT_MSG_NORMAL, "dbg2       gmt grid format id:   %s\n", gridkindstring);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       scale:                %f\n", scale);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       timediff:             %f\n", timediff);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       setborder:            %d\n", setborder);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       border:               %f\n", border);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       extend:               %f\n", extend);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       shift_mode:           %d\n", shift_mode);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       shift_x:              %f\n", shift_x);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       shift_y:              %f\n", shift_y);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       bathy_in_feet:        %d\n", bathy_in_feet);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       projection_pars:      %s\n", projection_pars);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       projection_pars_f:    %d\n", projection_pars_f);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       projection_id:        %s\n", projection_id);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       minormax_weighted_mean_threshold: %f\n", minormax_weighted_mean_threshold);
+			fprintf(stderr, "dbg2       gmt grid format id:   %s\n", gridkindstring);
+		fprintf(stderr, "dbg2       scale:                %f\n", scale);
+		fprintf(stderr, "dbg2       timediff:             %f\n", timediff);
+		fprintf(stderr, "dbg2       setborder:            %d\n", setborder);
+		fprintf(stderr, "dbg2       border:               %f\n", border);
+		fprintf(stderr, "dbg2       extend:               %f\n", extend);
+		fprintf(stderr, "dbg2       shift_mode:           %d\n", shift_mode);
+		fprintf(stderr, "dbg2       shift_x:              %f\n", shift_x);
+		fprintf(stderr, "dbg2       shift_y:              %f\n", shift_y);
+		fprintf(stderr, "dbg2       bathy_in_feet:        %d\n", bathy_in_feet);
+		fprintf(stderr, "dbg2       projection_pars:      %s\n", projection_pars);
+		fprintf(stderr, "dbg2       projection_pars_f:    %d\n", projection_pars_f);
+		fprintf(stderr, "dbg2       projection_id:        %s\n", projection_id);
+		fprintf(stderr, "dbg2       minormax_weighted_mean_threshold: %f\n", minormax_weighted_mean_threshold);
 	}
 
 	if (verbose == 1) {
-		GMT_Report(API, GMT_MSG_NORMAL, "\nProgram %s\n", THIS_MODULE_NAME);
-		GMT_Report(API, GMT_MSG_NORMAL, "MB-system Version %s\n", MB_VERSION);
+		fprintf(stderr, "\nProgram %s\n", THIS_MODULE_NAME);
+		fprintf(stderr, "MB-system Version %s\n", MB_VERSION);
 	}
 
 	/* if bounds not set get bounds of input data */
@@ -1026,6 +1132,7 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		struct mb_info_struct mb_info;
 		int formatread = -1;
 		int formatmakeinf = formatread;
+		if (!mb_gmt_datalist_opens(API, verbose, filelist, formatmakeinf)) Return(GMT_RUNTIME_ERROR);
 		mb_make_info_datalist(verbose, false, filelist, &formatmakeinf, &error);
 		status = mb_get_info_datalist(verbose, filelist, &formatread, &mb_info, lonflip, &error);
 
@@ -1189,9 +1296,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 	/* if bounds not specified then quit */
 	if (gbnd[0] >= gbnd[1] || gbnd[2] >= gbnd[3]) {
-		GMT_Report(API, GMT_MSG_NORMAL, "\nGrid bounds not properly specified:\n\t%f %f %f %f\n", gbnd[0], gbnd[1], gbnd[2], gbnd[3]);
-		GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-		Return(MB_ERROR_BAD_PARAMETER);
+		fprintf(stderr, "\nGrid bounds not properly specified:\n\t%f %f %f %f\n", gbnd[0], gbnd[1], gbnd[2], gbnd[3]);
+		fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
+		Return(GMT_RUNTIME_ERROR);
 	}
 
 	/* footprint option only for bathymetry */
@@ -1202,7 +1309,7 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 	/* CUBE option only for bathymetry */
 	if (grid_mode == MBGRID_CUBE && datatype != MBGRID_DATA_TOPOGRAPHY && datatype != MBGRID_DATA_BATHYMETRY) {
-		GMT_Report(API, GMT_MSG_NORMAL, "\nCUBE (-F9) grids bathymetry or topography only; using the Gaussian weighted mean\n");
+		fprintf(stderr, "\nCUBE (-F9) grids bathymetry or topography only; using the Gaussian weighted mean\n");
 		grid_mode = MBGRID_WEIGHTED_MEAN;
 	}
 
@@ -1261,10 +1368,10 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		const int proj_status = mb_proj_init(verbose, projection_id, &pjptr, &error);
 
 		if (proj_status != MB_SUCCESS) {
-			GMT_Report(API, GMT_MSG_NORMAL, "\nOutput projection %s not found in database\n", projection_id);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
+			fprintf(stderr, "\nOutput projection %s not found in database\n", projection_id);
+			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(MB_ERROR_BAD_PARAMETER);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		/* translate lon lat bounds from UTM if required */
@@ -1399,9 +1506,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		topofactor /= 0.3048;
 
 	if (gridkind == MBGRID_ARCASCII && fabs(dx - dy) > MBGRID_TINY) {
-		GMT_Report(API, GMT_MSG_NORMAL, "\nArc Ascii grid output (-G4) requires square cells, but grid intervals dx:%f dy:%f differ...\n", dx, dy);
-		GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-		Return(MB_ERROR_BAD_PARAMETER);
+		fprintf(stderr, "\nArc Ascii grid output (-G4) requires square cells, but grid intervals dx:%f dy:%f differ...\n", dx, dy);
+		fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
+		Return(GMT_RUNTIME_ERROR);
 	}
 
 	/* get data input bounds in lon lat */
@@ -1490,141 +1597,141 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 	/* output info */
 	if (verbose >= 0) {
-		GMT_Report(API, GMT_MSG_NORMAL, "\nMBGRID Parameters:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "List of input files: %s\n", filelist);
-		GMT_Report(API, GMT_MSG_NORMAL, "Output fileroot:     %s\n", fileroot);
-		GMT_Report(API, GMT_MSG_NORMAL, "Input Data Type:     ");
+		fprintf(stderr, "\nMBGRID Parameters:\n");
+		fprintf(stderr, "List of input files: %s\n", filelist);
+		fprintf(stderr, "Output fileroot:     %s\n", fileroot);
+		fprintf(stderr, "Input Data Type:     ");
 		if (datatype == MBGRID_DATA_BATHYMETRY) {
-			GMT_Report(API, GMT_MSG_NORMAL, "Bathymetry\n");
-			if (bathy_in_feet) GMT_Report(API, GMT_MSG_NORMAL, "Bathymetry gridded in feet\n");
+			fprintf(stderr, "Bathymetry\n");
+			if (bathy_in_feet) fprintf(stderr, "Bathymetry gridded in feet\n");
 		} else if (datatype == MBGRID_DATA_TOPOGRAPHY) {
-			GMT_Report(API, GMT_MSG_NORMAL, "Topography\n");
-			if (bathy_in_feet) GMT_Report(API, GMT_MSG_NORMAL, "Topography gridded in feet\n");
-		} else if (datatype == MBGRID_DATA_AMPLITUDE) GMT_Report(API, GMT_MSG_NORMAL, "Amplitude\n");
-		else if (datatype == MBGRID_DATA_SIDESCAN) GMT_Report(API, GMT_MSG_NORMAL, "Sidescan\n");
-		else GMT_Report(API, GMT_MSG_NORMAL, "Unknown?\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "Gridding algorithm:  ");
-		if (grid_mode == MBGRID_MEDIAN_FILTER) GMT_Report(API, GMT_MSG_NORMAL, "Median Filter\n");
-		else if (grid_mode == MBGRID_MINIMUM_FILTER) GMT_Report(API, GMT_MSG_NORMAL, "Minimum Filter\n");
-		else if (grid_mode == MBGRID_MAXIMUM_FILTER) GMT_Report(API,GMT_MSG_NORMAL, "Maximum Filter\n");
-		else if (grid_mode == MBGRID_WEIGHTED_FOOTPRINT_SLOPE) GMT_Report(API, GMT_MSG_NORMAL, "Footprint-Slope Weighted Mean\n");
-		else if (grid_mode == MBGRID_WEIGHTED_FOOTPRINT) GMT_Report(API, GMT_MSG_NORMAL, "Footprint Weighted Mean\n");
-		else if (grid_mode == MBGRID_MINIMUM_WEIGHTED_MEAN) GMT_Report(API, GMT_MSG_NORMAL, "Minimum Gaussian Weighted Mean\n");
-		else if (grid_mode == MBGRID_MAXIMUM_WEIGHTED_MEAN) GMT_Report(API, GMT_MSG_NORMAL, "Maximum Gaussian Weighted Mean\n");
-		else if (grid_mode == MBGRID_CUBE) GMT_Report(API, GMT_MSG_NORMAL, "CUBE (Combined Uncertainty and Bathymetry Estimator)\n");
-		else GMT_Report(API, GMT_MSG_NORMAL, "Gaussian Weighted Mean\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "Grid projection: %s\n", projection_id);
-		if (use_projection) GMT_Report(API, GMT_MSG_NORMAL, "Projection ID: %s\n", projection_id);
-		GMT_Report(API, GMT_MSG_NORMAL, "Grid dimensions: %d %d\n", xdim, ydim);
-		GMT_Report(API, GMT_MSG_NORMAL, "Grid bounds:\n");
+			fprintf(stderr, "Topography\n");
+			if (bathy_in_feet) fprintf(stderr, "Topography gridded in feet\n");
+		} else if (datatype == MBGRID_DATA_AMPLITUDE) fprintf(stderr, "Amplitude\n");
+		else if (datatype == MBGRID_DATA_SIDESCAN) fprintf(stderr, "Sidescan\n");
+		else fprintf(stderr, "Unknown?\n");
+		fprintf(stderr, "Gridding algorithm:  ");
+		if (grid_mode == MBGRID_MEDIAN_FILTER) fprintf(stderr, "Median Filter\n");
+		else if (grid_mode == MBGRID_MINIMUM_FILTER) fprintf(stderr, "Minimum Filter\n");
+		else if (grid_mode == MBGRID_MAXIMUM_FILTER) fprintf(stderr, "Maximum Filter\n");
+		else if (grid_mode == MBGRID_WEIGHTED_FOOTPRINT_SLOPE) fprintf(stderr, "Footprint-Slope Weighted Mean\n");
+		else if (grid_mode == MBGRID_WEIGHTED_FOOTPRINT) fprintf(stderr, "Footprint Weighted Mean\n");
+		else if (grid_mode == MBGRID_MINIMUM_WEIGHTED_MEAN) fprintf(stderr, "Minimum Gaussian Weighted Mean\n");
+		else if (grid_mode == MBGRID_MAXIMUM_WEIGHTED_MEAN) fprintf(stderr, "Maximum Gaussian Weighted Mean\n");
+		else if (grid_mode == MBGRID_CUBE) fprintf(stderr, "CUBE (Combined Uncertainty and Bathymetry Estimator)\n");
+		else fprintf(stderr, "Gaussian Weighted Mean\n");
+		fprintf(stderr, "Grid projection: %s\n", projection_id);
+		if (use_projection) fprintf(stderr, "Projection ID: %s\n", projection_id);
+		fprintf(stderr, "Grid dimensions: %d %d\n", xdim, ydim);
+		fprintf(stderr, "Grid bounds:\n");
 		if (use_projection) {
-			GMT_Report(API, GMT_MSG_NORMAL, "  Eastings:  %9.4f %9.4f\n", gbnd[0], gbnd[1]);
-			GMT_Report(API, GMT_MSG_NORMAL, "  Northings: %9.4f %9.4f\n", gbnd[2], gbnd[3]);
-			GMT_Report(API, GMT_MSG_NORMAL, "  Longitude: %9.4f %9.4f\n", obnd[0], obnd[1]);
-			GMT_Report(API, GMT_MSG_NORMAL, "  Latitude:  %9.4f %9.4f\n", obnd[2], obnd[3]);
+			fprintf(stderr, "  Eastings:  %9.4f %9.4f\n", gbnd[0], gbnd[1]);
+			fprintf(stderr, "  Northings: %9.4f %9.4f\n", gbnd[2], gbnd[3]);
+			fprintf(stderr, "  Longitude: %9.4f %9.4f\n", obnd[0], obnd[1]);
+			fprintf(stderr, "  Latitude:  %9.4f %9.4f\n", obnd[2], obnd[3]);
 		} else {
-			GMT_Report(API, GMT_MSG_NORMAL, "  Longitude: %9.4f %9.4f\n", gbnd[0], gbnd[1]);
-			GMT_Report(API, GMT_MSG_NORMAL, "  Latitude:  %9.4f %9.4f\n", gbnd[2], gbnd[3]);
+			fprintf(stderr, "  Longitude: %9.4f %9.4f\n", gbnd[0], gbnd[1]);
+			fprintf(stderr, "  Latitude:  %9.4f %9.4f\n", gbnd[2], gbnd[3]);
 		}
 		if (boundsfactor > 1.0)
-			GMT_Report(API, GMT_MSG_NORMAL, "  Grid bounds correspond to %f times actual data coverage\n", boundsfactor);
-		GMT_Report(API, GMT_MSG_NORMAL, "Working grid dimensions: %d %d\n", gxdim, gydim);
+			fprintf(stderr, "  Grid bounds correspond to %f times actual data coverage\n", boundsfactor);
+		fprintf(stderr, "Working grid dimensions: %d %d\n", gxdim, gydim);
 		if (use_projection) {
-			GMT_Report(API, GMT_MSG_NORMAL, "Working Grid bounds:\n");
-			GMT_Report(API, GMT_MSG_NORMAL, "  Eastings:  %9.4f %9.4f\n", wbnd[0], wbnd[1]);
-			GMT_Report(API, GMT_MSG_NORMAL, "  Northings: %9.4f %9.4f\n", wbnd[2], wbnd[3]);
-			GMT_Report(API, GMT_MSG_NORMAL, "Easting interval:  %f %s\n", dx, units);
-			GMT_Report(API, GMT_MSG_NORMAL, "Northing interval: %f %s\n", dy, units);
+			fprintf(stderr, "Working Grid bounds:\n");
+			fprintf(stderr, "  Eastings:  %9.4f %9.4f\n", wbnd[0], wbnd[1]);
+			fprintf(stderr, "  Northings: %9.4f %9.4f\n", wbnd[2], wbnd[3]);
+			fprintf(stderr, "Easting interval:  %f %s\n", dx, units);
+			fprintf(stderr, "Northing interval: %f %s\n", dy, units);
 			if (set_spacing) {
-				GMT_Report(API, GMT_MSG_NORMAL, "Specified Easting interval:  %f %s\n", dx_set, units);
-				GMT_Report(API, GMT_MSG_NORMAL, "Specified Northing interval: %f %s\n", dy_set, units);
+				fprintf(stderr, "Specified Easting interval:  %f %s\n", dx_set, units);
+				fprintf(stderr, "Specified Northing interval: %f %s\n", dy_set, units);
 			}
 		} else {
-			GMT_Report(API, GMT_MSG_NORMAL, "Working Grid bounds:\n");
-			GMT_Report(API, GMT_MSG_NORMAL, "  Longitude: %9.4f %9.4f\n", wbnd[0], wbnd[1]);
-			GMT_Report(API, GMT_MSG_NORMAL, "  Latitude:  %9.4f %9.4f\n", wbnd[2], wbnd[3]);
-			GMT_Report(API, GMT_MSG_NORMAL, "Longitude interval: %f degrees or %f m\n", dx, 1000 * dx * deglontokm);
-			GMT_Report(API, GMT_MSG_NORMAL, "Latitude interval:  %f degrees or %f m\n", dy, 1000 * dy * deglattokm);
+			fprintf(stderr, "Working Grid bounds:\n");
+			fprintf(stderr, "  Longitude: %9.4f %9.4f\n", wbnd[0], wbnd[1]);
+			fprintf(stderr, "  Latitude:  %9.4f %9.4f\n", wbnd[2], wbnd[3]);
+			fprintf(stderr, "Longitude interval: %f degrees or %f m\n", dx, 1000 * dx * deglontokm);
+			fprintf(stderr, "Latitude interval:  %f degrees or %f m\n", dy, 1000 * dy * deglattokm);
 			if (set_spacing) {
-				GMT_Report(API, GMT_MSG_NORMAL, "Specified Longitude interval: %f %s\n", dx_set, units);
-				GMT_Report(API, GMT_MSG_NORMAL, "Specified Latitude interval:  %f %s\n", dy_set, units);
+				fprintf(stderr, "Specified Longitude interval: %f %s\n", dx_set, units);
+				fprintf(stderr, "Specified Latitude interval:  %f %s\n", dy_set, units);
 			}
 		}
 		if (shift_mode == MBGRID_SHIFT_BOUNDS && use_projection) {
-			GMT_Report(API, GMT_MSG_NORMAL, "Grid shift (applied to the bounds of output grids):\n");
-			GMT_Report(API, GMT_MSG_NORMAL, "  East shift:   %9.4f m\n", shift_x);
-			GMT_Report(API, GMT_MSG_NORMAL, "  North shift:  %9.4f m\n", shift_y);
+			fprintf(stderr, "Grid shift (applied to the bounds of output grids):\n");
+			fprintf(stderr, "  East shift:   %9.4f m\n", shift_x);
+			fprintf(stderr, "  North shift:  %9.4f m\n", shift_y);
 		} else if (shift_mode == MBGRID_SHIFT_BOUNDS) {
-			GMT_Report(API, GMT_MSG_NORMAL, "Grid shift (applied to the bounds of output grids):\n");
-			GMT_Report(API, GMT_MSG_NORMAL, "  Longitude interval: %g degrees or %f m\n", shift_lon, shift_x);
-			GMT_Report(API, GMT_MSG_NORMAL, "  Latitude interval:  %g degrees or %f m\n", shift_lat, shift_y);
+			fprintf(stderr, "Grid shift (applied to the bounds of output grids):\n");
+			fprintf(stderr, "  Longitude interval: %g degrees or %f m\n", shift_lon, shift_x);
+			fprintf(stderr, "  Latitude interval:  %g degrees or %f m\n", shift_lat, shift_y);
 		} else if (shift_mode == MBGRID_SHIFT_DATA) {
-			GMT_Report(API, GMT_MSG_NORMAL, "Data shift (applied to the position of input data):\n");
-			GMT_Report(API, GMT_MSG_NORMAL, "  Longitude interval: %g degrees or %f m\n", shift_lon, shift_x);
-			GMT_Report(API, GMT_MSG_NORMAL, "  Latitude interval:  %g degrees or %f m\n", shift_lat, shift_y);
+			fprintf(stderr, "Data shift (applied to the position of input data):\n");
+			fprintf(stderr, "  Longitude interval: %g degrees or %f m\n", shift_lon, shift_x);
+			fprintf(stderr, "  Latitude interval:  %g degrees or %f m\n", shift_lat, shift_y);
 		}
-		GMT_Report(API, GMT_MSG_NORMAL, "Input data bounds:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "  Longitude: %9.4f %9.4f\n", bounds[0], bounds[1]);
-		GMT_Report(API, GMT_MSG_NORMAL, "  Latitude:  %9.4f %9.4f\n", bounds[2], bounds[3]);
+		fprintf(stderr, "Input data bounds:\n");
+		fprintf(stderr, "  Longitude: %9.4f %9.4f\n", bounds[0], bounds[1]);
+		fprintf(stderr, "  Latitude:  %9.4f %9.4f\n", bounds[2], bounds[3]);
 		if (grid_mode == MBGRID_WEIGHTED_MEAN)
-			GMT_Report(API, GMT_MSG_NORMAL, "Gaussian filter 1/e length: %f grid intervals\n", scale);
+			fprintf(stderr, "Gaussian filter 1/e length: %f grid intervals\n", scale);
 		if (grid_mode == MBGRID_WEIGHTED_FOOTPRINT_SLOPE || grid_mode == MBGRID_WEIGHTED_FOOTPRINT)
-			GMT_Report(API, GMT_MSG_NORMAL, "Footprint 1/e distance: %f times footprint\n", scale);
+			fprintf(stderr, "Footprint 1/e distance: %f times footprint\n", scale);
 		if (grid_mode == MBGRID_MINIMUM_WEIGHTED_MEAN)
-			GMT_Report(API, GMT_MSG_NORMAL, "Minimum filter threshold for Minimum Weighted Mean: %f\n", minormax_weighted_mean_threshold);
+			fprintf(stderr, "Minimum filter threshold for Minimum Weighted Mean: %f\n", minormax_weighted_mean_threshold);
 		if (grid_mode == MBGRID_CUBE) {
-			GMT_Report(API, GMT_MSG_NORMAL, "CUBE IHO order:               %s\n", mb_cube_iho_name(cube_iho_order));
-			GMT_Report(API, GMT_MSG_NORMAL, "CUBE hypothesis selection:    %s\n", mb_cube_method_name(cube_method));
-			GMT_Report(API, GMT_MSG_NORMAL, "CUBE reported variance:       %s\n", mb_cube_variance_name(cube_variance));
-			GMT_Report(API, GMT_MSG_NORMAL, "CUBE median pre-filter queue: %s\n", cube_use_queue ? "on" : "off");
-			GMT_Report(API, GMT_MSG_NORMAL, "CUBE sounding TVU (95%%):      sqrt(%g^2 + (%g * depth)^2) m\n", cube_tvu_a, cube_tvu_b);
-			GMT_Report(API, GMT_MSG_NORMAL, "CUBE sounding THU (95%%):      %g + %g * depth m\n", cube_thu_a, cube_thu_b);
+			fprintf(stderr, "CUBE IHO order:               %s\n", mb_cube_iho_name(cube_iho_order));
+			fprintf(stderr, "CUBE hypothesis selection:    %s\n", mb_cube_method_name(cube_method));
+			fprintf(stderr, "CUBE reported variance:       %s\n", mb_cube_variance_name(cube_variance));
+			fprintf(stderr, "CUBE median pre-filter queue: %s\n", cube_use_queue ? "on" : "off");
+			fprintf(stderr, "CUBE sounding TVU (95%%):      sqrt(%g^2 + (%g * depth)^2) m\n", cube_tvu_a, cube_tvu_b);
+			fprintf(stderr, "CUBE sounding THU (95%%):      %g + %g * depth m\n", cube_thu_a, cube_thu_b);
 			if (cube_paramfile[0] != '\0')
-				GMT_Report(API, GMT_MSG_NORMAL, "CUBE parameter file:          %s\n", cube_paramfile);
+				fprintf(stderr, "CUBE parameter file:          %s\n", cube_paramfile);
 		}
-		if (check_time && !first_in_stays) GMT_Report(API, GMT_MSG_NORMAL, "Swath overlap handling:       Last data used\n");
-		if (check_time && first_in_stays) GMT_Report(API, GMT_MSG_NORMAL, "Swath overlap handling:       First data used\n");
-		if (check_time) GMT_Report(API, GMT_MSG_NORMAL, "Swath overlap time threshold: %f minutes\n", timediff / 60.);
-		if (clipmode == MBGRID_INTERP_NONE) GMT_Report(API, GMT_MSG_NORMAL, "Spline interpolation not applied\n");
+		if (check_time && !first_in_stays) fprintf(stderr, "Swath overlap handling:       Last data used\n");
+		if (check_time && first_in_stays) fprintf(stderr, "Swath overlap handling:       First data used\n");
+		if (check_time) fprintf(stderr, "Swath overlap time threshold: %f minutes\n", timediff / 60.);
+		if (clipmode == MBGRID_INTERP_NONE) fprintf(stderr, "Spline interpolation not applied\n");
 		else if (clipmode == MBGRID_INTERP_GAP) {
-			GMT_Report(API, GMT_MSG_NORMAL, "Spline interpolation applied to fill data gaps\n");
-			GMT_Report(API, GMT_MSG_NORMAL, "Spline interpolation clipping dimension: %d\n", clip);
-			GMT_Report(API, GMT_MSG_NORMAL, "Spline tension (range 0.0 to infinity): %f\n", tension);
+			fprintf(stderr, "Spline interpolation applied to fill data gaps\n");
+			fprintf(stderr, "Spline interpolation clipping dimension: %d\n", clip);
+			fprintf(stderr, "Spline tension (range 0.0 to infinity): %f\n", tension);
 		} else if (clipmode == MBGRID_INTERP_NEAR) {
-			GMT_Report(API, GMT_MSG_NORMAL, "Spline interpolation applied near data\n");
-			GMT_Report(API, GMT_MSG_NORMAL, "Spline interpolation clipping dimension: %d\n", clip);
-			GMT_Report(API, GMT_MSG_NORMAL, "Spline tension (range 0.0 to infinity): %f\n", tension);
+			fprintf(stderr, "Spline interpolation applied near data\n");
+			fprintf(stderr, "Spline interpolation clipping dimension: %d\n", clip);
+			fprintf(stderr, "Spline tension (range 0.0 to infinity): %f\n", tension);
 		} else if (clipmode == MBGRID_INTERP_ALL) {
-			GMT_Report(API, GMT_MSG_NORMAL, "Spline interpolation applied to fill entire grid\n");
-			GMT_Report(API, GMT_MSG_NORMAL, "Spline tension (range 0.0 to infinity): %f\n", tension);
+			fprintf(stderr, "Spline interpolation applied to fill entire grid\n");
+			fprintf(stderr, "Spline tension (range 0.0 to infinity): %f\n", tension);
 		}
-		if (grdrasterid == 0) GMT_Report(API, GMT_MSG_NORMAL, "Background not applied\n");
-		else if (grdrasterid < 0) GMT_Report(API, GMT_MSG_NORMAL, "Background obtained using grd2xyz from GMT grid file: %s\n", backgroundfile);
-		else GMT_Report(API, GMT_MSG_NORMAL, "Background obtained using grdraster from dataset: %d\n", grdrasterid);
-		if (gridkind == MBGRID_ASCII) GMT_Report(API, GMT_MSG_NORMAL, "Grid format %d:  ascii table\n", gridkind);
-		else if (gridkind == MBGRID_CDFGRD) GMT_Report(API, GMT_MSG_NORMAL, "Grid format %d:  GMT version 2 grd (netCDF)\n", gridkind);
-		else if (gridkind == MBGRID_OLDGRD) GMT_Report(API, GMT_MSG_NORMAL, "Grid format %d:  GMT version 1 grd (binary)\n", gridkind);
-		else if (gridkind == MBGRID_ARCASCII) GMT_Report(API, GMT_MSG_NORMAL, "Grid format %d:  Arc/Info ascii table\n", gridkind);
+		if (grdrasterid == 0) fprintf(stderr, "Background not applied\n");
+		else if (grdrasterid < 0) fprintf(stderr, "Background obtained using grd2xyz from GMT grid file: %s\n", backgroundfile);
+		else fprintf(stderr, "Background obtained using grdraster from dataset: %d\n", grdrasterid);
+		if (gridkind == MBGRID_ASCII) fprintf(stderr, "Grid format %d:  ascii table\n", gridkind);
+		else if (gridkind == MBGRID_CDFGRD) fprintf(stderr, "Grid format %d:  GMT version 2 grd (netCDF)\n", gridkind);
+		else if (gridkind == MBGRID_OLDGRD) fprintf(stderr, "Grid format %d:  GMT version 1 grd (binary)\n", gridkind);
+		else if (gridkind == MBGRID_ARCASCII) fprintf(stderr, "Grid format %d:  Arc/Info ascii table\n", gridkind);
 		else if (gridkind == MBGRID_GMTGRD) {
-			GMT_Report(API, GMT_MSG_NORMAL, "Grid format %d:  GMT grid\n", gridkind);
-			if (strlen(gridkindstring) > 0) GMT_Report(API, GMT_MSG_NORMAL, "GMT Grid ID:     %s\n", gridkindstring);
+			fprintf(stderr, "Grid format %d:  GMT grid\n", gridkind);
+			if (strlen(gridkindstring) > 0) fprintf(stderr, "GMT Grid ID:     %s\n", gridkindstring);
 		}
-		if (use_NaN) GMT_Report(API, GMT_MSG_NORMAL, "NaN values used to flag regions with no data\n");
-		else GMT_Report(API, GMT_MSG_NORMAL, "Real value of %f used to flag regions with no data\n", outclipvalue);
-		if (more) GMT_Report(API, GMT_MSG_NORMAL, "Data density and sigma grids also created\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "MBIO parameters:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "  Ping averaging:       %d\n", pings);
-		GMT_Report(API, GMT_MSG_NORMAL, "  Longitude flipping:   %d\n", lonflip);
-		GMT_Report(API, GMT_MSG_NORMAL, "  Speed minimum:      %4.1f km/hr\n", speedmin);
+		if (use_NaN) fprintf(stderr, "NaN values used to flag regions with no data\n");
+		else fprintf(stderr, "Real value of %f used to flag regions with no data\n", outclipvalue);
+		if (more) fprintf(stderr, "Data density and sigma grids also created\n");
+		fprintf(stderr, "MBIO parameters:\n");
+		fprintf(stderr, "  Ping averaging:       %d\n", pings);
+		fprintf(stderr, "  Longitude flipping:   %d\n", lonflip);
+		fprintf(stderr, "  Speed minimum:      %4.1f km/hr\n", speedmin);
 	}
-	if (verbose > 0) GMT_Report(API, GMT_MSG_NORMAL, "\n");
+	if (verbose > 0) fprintf(stderr, "\n");
 
 	/* if grdrasterid set extract background data and interpolate later onto internal grid */
 	if (grdrasterid != 0) {
 		if (grdrasterid > 0)
-			GMT_Report(API, GMT_MSG_NORMAL, "\nExtracting background from grdraster dataset %d...\n", grdrasterid);
+			fprintf(stderr, "\nExtracting background from grdraster dataset %d...\n", grdrasterid);
 		else
-			GMT_Report(API, GMT_MSG_NORMAL, "\nExtracting background from grid file %s...\n", backgroundfile);
+			fprintf(stderr, "\nExtracting background from grid file %s...\n", backgroundfile);
 
 		int nbackground_alloc = 2 * gxdim * gydim;
 
@@ -1634,10 +1741,10 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		if (status == MB_SUCCESS) status = mb_mallocd(verbose, __FILE__, __LINE__, nbackground_alloc * sizeof(float), (void **)&bzdata, &error);
 		if (error != MB_ERROR_NO_ERROR) {
 			mb_error(verbose, MB_ERROR_MEMORY_FAIL, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating background data array:\n%s\n", message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
+			fprintf(stderr, "\nMBIO Error allocating background data array:\n%s\n", message);
+			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(MB_ERROR_MEMORY_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		memset((char *)bxdata, 0, nbackground_alloc * sizeof(float));
 		memset((char *)bydata, 0, nbackground_alloc * sizeof(float));
@@ -1646,10 +1753,10 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		status = mb_mallocd(verbose, __FILE__, __LINE__, 3 * nbackground_alloc * sizeof(float), (void **)&bdata, &error);
 		if (error != MB_ERROR_NO_ERROR) {
 			mb_error(verbose, MB_ERROR_MEMORY_FAIL, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating background interpolation work arrays:\n%s\n", message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
+			fprintf(stderr, "\nMBIO Error allocating background interpolation work arrays:\n%s\n", message);
+			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(MB_ERROR_MEMORY_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		memset((char *)bdata, 0, 3 * nbackground_alloc * sizeof(float));
 #endif
@@ -1659,12 +1766,12 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		if (grdrasterid > 0) {
 			snprintf(backgroundfile, sizeof(backgroundfile), "tmpgrdraster%d.grd", pid);
 			snprintf(plot_cmd, sizeof(plot_cmd), "grdraster %d -R%f/%f/%f/%f -G%s", grdrasterid, bounds[0], bounds[1], bounds[2], bounds[3], backgroundfile);
-			GMT_Report(API, GMT_MSG_NORMAL, "Executing: %s\n", plot_cmd);
+			fprintf(stderr, "Executing: %s\n", plot_cmd);
 			const int fork_status = system(plot_cmd);
 			if (fork_status != 0) {
-				GMT_Report(API, GMT_MSG_NORMAL, "\nExecution of command:\n\t%s\nby system() call failed....\nProgram <%s> Terminated\n", plot_cmd, THIS_MODULE_NAME);
+				fprintf(stderr, "\nExecution of command:\n\t%s\nby system() call failed....\nProgram <%s> Terminated\n", plot_cmd, THIS_MODULE_NAME);
 				mb_memory_clear(verbose, &memclear_error);
-				Return(MB_ERROR_BAD_PARAMETER);
+				Return(GMT_RUNTIME_ERROR);
 			}
 		}
 
@@ -1681,46 +1788,46 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			if (strncmp(plot_stdout, "Pixel node registration used", 28) == 0) {
 				snprintf(backgroundfileuse, sizeof(backgroundfileuse), "tmpgrdsampleT%d.grd", pid);
 				snprintf(plot_cmd, sizeof(plot_cmd), "grdsample %s -G%s -T", backgroundfile, backgroundfileuse);
-				GMT_Report(API, GMT_MSG_NORMAL, "Executing: %s\n", plot_cmd);
+				fprintf(stderr, "Executing: %s\n", plot_cmd);
 				const int fork_status = system(plot_cmd);
 				if (fork_status != 0) {
-					GMT_Report(API, GMT_MSG_NORMAL, "\nExecution of command:\n\t%s\nby system() call failed....\nProgram <%s> Terminated\n", plot_cmd, THIS_MODULE_NAME);
+					fprintf(stderr, "\nExecution of command:\n\t%s\nby system() call failed....\nProgram <%s> Terminated\n", plot_cmd, THIS_MODULE_NAME);
 					mb_memory_clear(verbose, &memclear_error);
-					Return(MB_ERROR_BAD_PARAMETER);
+					Return(GMT_RUNTIME_ERROR);
 				}
 			}
 		} else {
-			GMT_Report(API, GMT_MSG_NORMAL, "\nBackground data not extracted as per -K option\n");
+			fprintf(stderr, "\nBackground data not extracted as per -K option\n");
 			if (grdrasterid > 0) {
-				GMT_Report(API, GMT_MSG_NORMAL, "The program grdraster may not have been found\n");
-				GMT_Report(API, GMT_MSG_NORMAL, "or the specified background dataset %d may not exist.\n", grdrasterid);
+				fprintf(stderr, "The program grdraster may not have been found\n");
+				fprintf(stderr, "or the specified background dataset %d may not exist.\n", grdrasterid);
 			} else {
-				GMT_Report(API, GMT_MSG_NORMAL, "The specified background dataset %s may not exist.\n", backgroundfile);
+				fprintf(stderr, "The specified background dataset %s may not exist.\n", backgroundfile);
 			}
-			GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
+			fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
 			error = MB_ERROR_BAD_PARAMETER;
 			mb_memory_clear(verbose, &memclear_error);
-			Return(MB_ERROR_BAD_PARAMETER);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		if (use_projection)
 			snprintf(plot_cmd, sizeof(plot_cmd), "gmt grdsample %s -Gtmpgrdsample%d.grd -R%.12f/%.12f/%.12f/%.12f -I%.12f/%.12f", backgroundfileuse, pid, bounds[0], bounds[1], bounds[2], bounds[3], dx * mtodeglon, dy * mtodeglat);
 		else
 			snprintf(plot_cmd, sizeof(plot_cmd), "gmt grdsample %s -Gtmpgrdsample%d.grd -R%.12f/%.12f/%.12f/%.12f -I%.12f/%.12f", backgroundfileuse, pid, bounds[0], bounds[1], bounds[2], bounds[3], dx, dy);
-		GMT_Report(API, GMT_MSG_NORMAL, "Executing: %s\n", plot_cmd);
+		fprintf(stderr, "Executing: %s\n", plot_cmd);
 		int fork_status = system(plot_cmd);
 		if (fork_status != 0) {
-			GMT_Report(API, GMT_MSG_NORMAL, "\nExecution of command:\n\t%s\nby system() call failed....\nProgram <%s> Terminated\n", plot_cmd, THIS_MODULE_NAME);
+			fprintf(stderr, "\nExecution of command:\n\t%s\nby system() call failed....\nProgram <%s> Terminated\n", plot_cmd, THIS_MODULE_NAME);
 			error = MB_ERROR_BAD_PARAMETER;
 			mb_memory_clear(verbose, &memclear_error);
-			Return(MB_ERROR_BAD_PARAMETER);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		if (use_projection)
 			snprintf(plot_cmd, sizeof(plot_cmd), "gmt grd2xyz tmpgrdsample%d.grd -s -bo | gmt blockmean -bi -bo -C -R%f/%f/%f/%f -I%.12f/%.12f", pid, bounds[0], bounds[1], bounds[2], bounds[3], dx * mtodeglon, dy * mtodeglat);
 		else
 			snprintf(plot_cmd, sizeof(plot_cmd), "gmt grd2xyz tmpgrdsample%d.grd -s -bo | gmt blockmean -bi -bo -C -R%f/%f/%f/%f -I%.12f/%.12f", pid, bounds[0], bounds[1], bounds[2], bounds[3], dx, dy);
-		GMT_Report(API, GMT_MSG_NORMAL, "Executing: %s\n", plot_cmd);
+		fprintf(stderr, "Executing: %s\n", plot_cmd);
 		if ((rfp = popen(plot_cmd, "r")) != NULL) {
 			nbackground = 0;
 			while (fread(&tlon, sizeof(double), 1, rfp) == 1) {
@@ -1739,9 +1846,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 					if (status == MB_SUCCESS) status = mb_reallocd(verbose, __FILE__, __LINE__, nbackground_alloc * sizeof(float), (void **)&bzdata, &error);
 					if (error != MB_ERROR_NO_ERROR) {
 						mb_error(verbose, MB_ERROR_MEMORY_FAIL, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error reallocating background data array:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error reallocating background data array:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(MB_ERROR_MEMORY_FAIL);
+						Return(GMT_RUNTIME_ERROR);
 					}
 				}
 				bxdata[nbackground] = (float)(tlon - bdata_origin_x);
@@ -1753,9 +1860,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 					status = mb_reallocd(verbose, __FILE__, __LINE__, 3 * nbackground_alloc * sizeof(float), (void **)&bdata, &error);
 					if (error != MB_ERROR_NO_ERROR) {
 						mb_error(verbose, MB_ERROR_MEMORY_FAIL, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating background interpolation work arrays:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error allocating background interpolation work arrays:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(MB_ERROR_MEMORY_FAIL);
+						Return(GMT_RUNTIME_ERROR);
 					}
 				}
 				bdata[nbackground * 3] = (float)(tlon - bdata_origin_x);
@@ -1766,22 +1873,22 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			}
 			pclose(rfp);
 		} else {
-			GMT_Report(API, GMT_MSG_NORMAL, "\nBackground data not extracted as per -K option\n");
-			GMT_Report(API, GMT_MSG_NORMAL, "The program grdraster may not have been found\n");
-			GMT_Report(API, GMT_MSG_NORMAL, "or the specified background dataset %d may not exist.\n", grdrasterid);
+			fprintf(stderr, "\nBackground data not extracted as per -K option\n");
+			fprintf(stderr, "The program grdraster may not have been found\n");
+			fprintf(stderr, "or the specified background dataset %d may not exist.\n", grdrasterid);
 			error = MB_ERROR_BAD_PARAMETER;
 			mb_memory_clear(verbose, &memclear_error);
-			Return(MB_ERROR_BAD_PARAMETER);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		snprintf(plot_cmd, sizeof(plot_cmd), "rm tmpgrd*%d.grd", pid);
-		GMT_Report(API, GMT_MSG_NORMAL, "Executing: %s\n", plot_cmd);
+		fprintf(stderr, "Executing: %s\n", plot_cmd);
 		fork_status = system(plot_cmd);
 		if (fork_status != 0) {
-			GMT_Report(API, GMT_MSG_NORMAL, "\nExecution of command:\n\t%s\nby system() call failed....\nProgram <%s> Terminated\n", plot_cmd, THIS_MODULE_NAME);
+			fprintf(stderr, "\nExecution of command:\n\t%s\nby system() call failed....\nProgram <%s> Terminated\n", plot_cmd, THIS_MODULE_NAME);
 			error = MB_ERROR_BAD_PARAMETER;
 			mb_memory_clear(verbose, &memclear_error);
-			Return(MB_ERROR_BAD_PARAMETER);
+			Return(GMT_RUNTIME_ERROR);
 		}
 	}
 
@@ -1795,17 +1902,17 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 	if (error != MB_ERROR_NO_ERROR) {
 		mb_error(verbose, error, &message);
-		GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
-		GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
+		fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
+		fprintf(stderr, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
 		mb_memory_clear(verbose, &memclear_error);
-		Return(error);
+		Return(GMT_RUNTIME_ERROR);
 	}
 
 	/* open datalist file for list of all files that contribute to the grid */
 	snprintf(dfile, sizeof(dfile), "%s.mb-1", fileroot);
 	if ((dfp = fopen(dfile, "w")) == NULL) {
 		error = MB_ERROR_OPEN_FAIL;
-		GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open datalist file: %s\n", dfile);
+		fprintf(stderr, "\nUnable to open datalist file: %s\n", dfile);
 	}
 
 	nbinset = 0;
@@ -1827,9 +1934,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 		if (error != MB_ERROR_NO_ERROR) {
 			mb_error(verbose, error, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+			fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		for (int i = 0; i < sxdim; i++)
@@ -1839,13 +1946,13 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 				cnt[kgrid] = 0;
 			}
 
-		GMT_Report(API, GMT_MSG_NORMAL, "\nDoing first pass to generate low resolution slope grid...\n");
+		fprintf(stderr, "\nDoing first pass to generate low resolution slope grid...\n");
 		ndata = 0;
 		if (mb_datalist_open(verbose, &datalist, filelist, look_processed, &error) != MB_SUCCESS) {
 			error = MB_ERROR_OPEN_FAIL;
-			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open data list file: %s\n", filelist);
+			fprintf(stderr, "\nUnable to open data list file: %s\n", filelist);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		while (mb_datalist_read3(verbose, datalist, &pstatus, path, ppath, &astatus, apath, dpath, &format, &file_weight, &error) == MB_SUCCESS) {
 			ndatafile = 0;
@@ -1864,10 +1971,10 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 					if (mb_read_init_altnav(verbose, rfile, rformat, pings, lonflip, bounds, btime_i, etime_i, speedmin, timegap, astatus, apath, &mbio_ptr, &btime_d, &etime_d, &beams_bath, &beams_amp, &pixels_ss, &error) != MB_SUCCESS) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMultibeam File <%s> not initialized for reading\n", rfile);
+						fprintf(stderr, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
+						fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", rfile);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					mb_io_ptr = (struct mb_io_struct *)mbio_ptr;
@@ -1884,9 +1991,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 					if (error != MB_ERROR_NO_ERROR) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					while (error <= MB_ERROR_NO_ERROR) {
@@ -1894,13 +2001,13 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 						if (error == MB_ERROR_TIME_GAP) { error = MB_ERROR_NO_ERROR; status = MB_SUCCESS; }
 
 						if (verbose >= 2) {
-							GMT_Report(API, GMT_MSG_NORMAL, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kind:           %d\n", kind);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_bath:     %d\n", beams_bath);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_amp:      %d\n", beams_amp);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       pixels_ss:      %d\n", pixels_ss);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       error:          %d\n", error);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       status:         %d\n", status);
+							fprintf(stderr, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
+							fprintf(stderr, "dbg2       kind:           %d\n", kind);
+							fprintf(stderr, "dbg2       beams_bath:     %d\n", beams_bath);
+							fprintf(stderr, "dbg2       beams_amp:      %d\n", beams_amp);
+							fprintf(stderr, "dbg2       pixels_ss:      %d\n", pixels_ss);
+							fprintf(stderr, "dbg2       error:          %d\n", error);
+							fprintf(stderr, "dbg2       status:         %d\n", status);
 						}
 
 						if (shift_mode == MBGRID_SHIFT_DATA) {
@@ -1937,9 +2044,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 				}
 				if (verbose > 0 || file_in_bounds) {
 					if (astatus == MB_ALTNAV_USE)
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
 					else
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
 				}
 				if (ndatafile > 0 && dfp != NULL) {
 					if (pstatus == MB_PROCESSED_USE && astatus == MB_ALTNAV_USE)
@@ -1953,11 +2060,11 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			}
 		}
 		if (datalist != NULL) mb_datalist_close(verbose, &datalist, &error);
-		GMT_Report(API, GMT_MSG_NORMAL, "\n%d total data points processed\n", ndata);
+		fprintf(stderr, "\n%d total data points processed\n", ndata);
 
 		if (dfp != NULL) { fclose(dfp); dfp = NULL; }
 
-		if (verbose >= 1) GMT_Report(API, GMT_MSG_NORMAL, "\nMaking low resolution slope grid...\n");
+		if (verbose >= 1) fprintf(stderr, "\nMaking low resolution slope grid...\n");
 		ndata = 8;
 		for (int i = 0; i < sxdim; i++)
 			for (int j = 0; j < sydim; j++) {
@@ -1972,9 +2079,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		if (status == MB_SUCCESS) status = mb_mallocd(verbose, __FILE__, __LINE__, sxdim * sydim * sizeof(float), (void **)&sgrid, &error);
 		if (error != MB_ERROR_NO_ERROR) {
 			mb_error(verbose, MB_ERROR_MEMORY_FAIL, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating interpolation work arrays:\n%s\n", message);
+			fprintf(stderr, "\nMBIO Error allocating interpolation work arrays:\n%s\n", message);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		memset((char *)sgrid, 0, sxdim * sydim * sizeof(float));
 		memset((char *)sxdata, 0, ndata * sizeof(float));
@@ -1992,7 +2099,7 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 					ndata++;
 				}
 			}
-		GMT_Report(API, GMT_MSG_NORMAL, "\nDoing Surface spline interpolation with %d data points...\n", ndata);
+		fprintf(stderr, "\nDoing Surface spline interpolation with %d data points...\n", ndata);
 		mb_surface(verbose, ndata, sxdata, sydata, szdata, (wbnd[0] - bdata_origin_x), (wbnd[1] - bdata_origin_x), (wbnd[2] - bdata_origin_y), (wbnd[3] - bdata_origin_y), sdx, sdy, tension, sgrid);
 #else
 		status = mb_mallocd(verbose, __FILE__, __LINE__, 3 * ndata * sizeof(float), (void **)&sdata, &error);
@@ -2002,9 +2109,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		if (status == MB_SUCCESS) status = mb_mallocd(verbose, __FILE__, __LINE__, (sxdim + sydim) * sizeof(bool), (void **)&work3, &error);
 		if (error != MB_ERROR_NO_ERROR) {
 			mb_error(verbose, MB_ERROR_MEMORY_FAIL, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating interpolation work arrays:\n%s\n", message);
+			fprintf(stderr, "\nMBIO Error allocating interpolation work arrays:\n%s\n", message);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		memset((char *)sgrid, 0, sxdim * sydim * sizeof(float));
 		memset((char *)sdata, 0, 3 * ndata * sizeof(float));
@@ -2030,7 +2137,7 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			float ymin = (float)(wbnd[2] - 0.5 * sdy - bdata_origin_y);
 			float ddx = (float)sdx;
 			float ddy = (float)sdy;
-			GMT_Report(API, GMT_MSG_NORMAL, "\nDoing Zgrid spline interpolation with %d data points...\n", ndata);
+			fprintf(stderr, "\nDoing Zgrid spline interpolation with %d data points...\n", ndata);
 			mb_zgrid2(sgrid, &sxdim, &sydim, &xmin, &ymin, &ddx, &ddy, sdata, &ndata, work1, work2, work3, &cay, &sclip);
 		}
 #endif
@@ -2065,13 +2172,13 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 				grid[kgrid] = 0.0; norm[kgrid] = 0.0; sigma[kgrid] = 0.0; firsttime[kgrid] = 0.0; num[kgrid] = 0; cnt[kgrid] = 0;
 			}
 
-		GMT_Report(API, GMT_MSG_NORMAL, "\nDoing second pass to generate final grid...\n");
+		fprintf(stderr, "\nDoing second pass to generate final grid...\n");
 		ndata = 0;
 		if (mb_datalist_open(verbose, &datalist, dfile, look_processed, &error) != MB_SUCCESS) {
 			error = MB_ERROR_OPEN_FAIL;
-			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open data list file: %s\n", filelist);
+			fprintf(stderr, "\nUnable to open data list file: %s\n", filelist);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		while (mb_datalist_read3(verbose, datalist, &pstatus, path, ppath, &astatus, apath, dpath, &format, &file_weight, &error) == MB_SUCCESS) {
 			ndatafile = 0;
@@ -2089,9 +2196,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 						mb_get_fbt(verbose, rfile, &rformat, &error);
 					if (mb_read_init_altnav(verbose, rfile, rformat, pings, lonflip, bounds, btime_i, etime_i, speedmin, timegap, astatus, apath, &mbio_ptr, &btime_d, &etime_d, &beams_bath, &beams_amp, &pixels_ss, &error) != MB_SUCCESS) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 					mb_io_ptr = (struct mb_io_struct *)mbio_ptr;
 					status = mb_sonartype(verbose, mbio_ptr, mb_io_ptr->store_data, &topo_type, &error);
@@ -2107,9 +2214,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 					if (error != MB_ERROR_NO_ERROR) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					while (error <= MB_ERROR_NO_ERROR) {
@@ -2117,13 +2224,13 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 						if (error == MB_ERROR_TIME_GAP) { error = MB_ERROR_NO_ERROR; status = MB_SUCCESS; }
 
 						if (verbose >= 2) {
-							GMT_Report(API, GMT_MSG_NORMAL, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kind:           %d\n", kind);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_bath:     %d\n", beams_bath);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_amp:      %d\n", beams_amp);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       pixels_ss:      %d\n", pixels_ss);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       error:          %d\n", error);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       status:         %d\n", status);
+							fprintf(stderr, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
+							fprintf(stderr, "dbg2       kind:           %d\n", kind);
+							fprintf(stderr, "dbg2       beams_bath:     %d\n", beams_bath);
+							fprintf(stderr, "dbg2       beams_amp:      %d\n", beams_amp);
+							fprintf(stderr, "dbg2       pixels_ss:      %d\n", pixels_ss);
+							fprintf(stderr, "dbg2       error:          %d\n", error);
+							fprintf(stderr, "dbg2       status:         %d\n", status);
 						}
 
 						if (shift_mode == MBGRID_SHIFT_DATA) {
@@ -2312,13 +2419,13 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 					status = MB_SUCCESS; error = MB_ERROR_NO_ERROR;
 				}
 				if (verbose > 0 || file_in_bounds)
-					GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
+					fprintf(stderr, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
 			}
 		}
 		if (datalist != NULL) mb_datalist_close(verbose, &datalist, &error);
-		GMT_Report(API, GMT_MSG_NORMAL, "\n%d total data points processed\n", ndata);
+		fprintf(stderr, "\n%d total data points processed\n", ndata);
 
-		if (verbose >= 1) GMT_Report(API, GMT_MSG_NORMAL, "\nMaking raw grid...\n");
+		if (verbose >= 1) fprintf(stderr, "\nMaking raw grid...\n");
 		for (int i = 0; i < gxdim; i++)
 			for (int j = 0; j < gydim; j++) {
 				kgrid = i * gydim + j;
@@ -2343,13 +2450,13 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 				grid[kgrid] = 0.0; norm[kgrid] = 0.0; sigma[kgrid] = 0.0; firsttime[kgrid] = 0.0; num[kgrid] = 0; cnt[kgrid] = 0;
 			}
 
-		GMT_Report(API, GMT_MSG_NORMAL, "\nDoing single pass to generate grid...\n");
+		fprintf(stderr, "\nDoing single pass to generate grid...\n");
 		ndata = 0;
 		if (mb_datalist_open(verbose, &datalist, filelist, look_processed, &error) != MB_SUCCESS) {
 			error = MB_ERROR_OPEN_FAIL;
-			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open data list file: %s\n", filelist);
+			fprintf(stderr, "\nUnable to open data list file: %s\n", filelist);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		while (mb_datalist_read3(verbose, datalist, &pstatus, path, ppath, &astatus, apath, dpath, &format, &file_weight, &error) == MB_SUCCESS) {
 			ndatafile = 0;
@@ -2367,9 +2474,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 						mb_get_fbt(verbose, rfile, &rformat, &error);
 					if (mb_read_init_altnav(verbose, rfile, rformat, pings, lonflip, bounds, btime_i, etime_i, speedmin, timegap, astatus, apath, &mbio_ptr, &btime_d, &etime_d, &beams_bath, &beams_amp, &pixels_ss, &error) != MB_SUCCESS) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 					mb_io_ptr = (struct mb_io_struct *)mbio_ptr;
 					status = mb_sonartype(verbose, mbio_ptr, mb_io_ptr->store_data, &topo_type, &error);
@@ -2385,9 +2492,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 					if (error != MB_ERROR_NO_ERROR) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					while (error <= MB_ERROR_NO_ERROR) {
@@ -2395,13 +2502,13 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 						if (error == MB_ERROR_TIME_GAP) { error = MB_ERROR_NO_ERROR; status = MB_SUCCESS; }
 
 						if (verbose >= 2) {
-							GMT_Report(API, GMT_MSG_NORMAL, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kind:           %d\n", kind);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_bath:     %d\n", beams_bath);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_amp:      %d\n", beams_amp);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       pixels_ss:      %d\n", pixels_ss);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       error:          %d\n", error);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       status:         %d\n", status);
+							fprintf(stderr, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
+							fprintf(stderr, "dbg2       kind:           %d\n", kind);
+							fprintf(stderr, "dbg2       beams_bath:     %d\n", beams_bath);
+							fprintf(stderr, "dbg2       beams_amp:      %d\n", beams_amp);
+							fprintf(stderr, "dbg2       pixels_ss:      %d\n", pixels_ss);
+							fprintf(stderr, "dbg2       error:          %d\n", error);
+							fprintf(stderr, "dbg2       status:         %d\n", status);
 						}
 
 						if (shift_mode == MBGRID_SHIFT_DATA) {
@@ -2543,9 +2650,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 				}
 				if (verbose > 0 || file_in_bounds) {
 					if (astatus == MB_ALTNAV_USE)
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
 					else
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
 				}
 				if (ndatafile > 0 && dfp != NULL) {
 					if (pstatus == MB_PROCESSED_USE && astatus == MB_ALTNAV_USE)
@@ -2559,11 +2666,11 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			}
 		}
 		if (datalist != NULL) mb_datalist_close(verbose, &datalist, &error);
-		GMT_Report(API, GMT_MSG_NORMAL, "\n%d total data points processed\n", ndata);
+		fprintf(stderr, "\n%d total data points processed\n", ndata);
 
 		if (dfp != NULL) { fclose(dfp); dfp = NULL; }
 
-		if (verbose >= 1) GMT_Report(API, GMT_MSG_NORMAL, "\nMaking raw grid...\n");
+		if (verbose >= 1) fprintf(stderr, "\nMaking raw grid...\n");
 		for (int i = 0; i < gxdim; i++)
 			for (int j = 0; j < gydim; j++) {
 				kgrid = i * gydim + j;
@@ -2583,9 +2690,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		status = mb_mallocd(verbose, __FILE__, __LINE__, gxdim * gydim * sizeof(double *), (void **)&data, &error);
 		if (error != MB_ERROR_NO_ERROR) {
 			mb_error(verbose, error, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+			fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		for (int i = 0; i < gxdim; i++)
@@ -2598,9 +2705,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		ndata = 0;
 		if (mb_datalist_open(verbose, &datalist, filelist, look_processed, &error) != MB_SUCCESS) {
 			error = MB_ERROR_OPEN_FAIL;
-			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open data list file: %s\n", filelist);
+			fprintf(stderr, "\nUnable to open data list file: %s\n", filelist);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		while (mb_datalist_read3(verbose, datalist, &pstatus, path, ppath, &astatus, apath, dpath, &format, &file_weight, &error) == MB_SUCCESS) {
 			ndatafile = 0;
@@ -2618,9 +2725,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 						mb_get_fbt(verbose, rfile, &rformat, &error);
 					if (mb_read_init_altnav(verbose, rfile, rformat, pings, lonflip, bounds, btime_i, etime_i, speedmin, timegap, astatus, apath, &mbio_ptr, &btime_d, &etime_d, &beams_bath, &beams_amp, &pixels_ss, &error) != MB_SUCCESS) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					if (error == MB_ERROR_NO_ERROR) status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(char), (void **)&beamflag, &error);
@@ -2634,9 +2741,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 					if (error != MB_ERROR_NO_ERROR) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					while (error <= MB_ERROR_NO_ERROR) {
@@ -2644,13 +2751,13 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 						if (error == MB_ERROR_TIME_GAP) { error = MB_ERROR_NO_ERROR; status = MB_SUCCESS; }
 
 						if (verbose >= 2) {
-							GMT_Report(API, GMT_MSG_NORMAL, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kind:           %d\n", kind);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_bath:     %d\n", beams_bath);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_amp:      %d\n", beams_amp);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       pixels_ss:      %d\n", pixels_ss);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       error:          %d\n", error);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       status:         %d\n", status);
+							fprintf(stderr, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
+							fprintf(stderr, "dbg2       kind:           %d\n", kind);
+							fprintf(stderr, "dbg2       beams_bath:     %d\n", beams_bath);
+							fprintf(stderr, "dbg2       beams_amp:      %d\n", beams_amp);
+							fprintf(stderr, "dbg2       pixels_ss:      %d\n", pixels_ss);
+							fprintf(stderr, "dbg2       error:          %d\n", error);
+							fprintf(stderr, "dbg2       status:         %d\n", status);
 						}
 
 						if (shift_mode == MBGRID_SHIFT_DATA) {
@@ -2687,9 +2794,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 											if ((data[kgrid] = (double *)realloc(data[kgrid], num[kgrid] * sizeof(double))) == NULL) {
 												error = MB_ERROR_MEMORY_FAIL;
 												mb_error(verbose, error, &message);
-												GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+												fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 												mb_memory_clear(verbose, &memclear_error);
-												Return(error);
+												Return(GMT_RUNTIME_ERROR);
 											}
 										}
 										if (time_ok) {
@@ -2727,9 +2834,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 											if ((data[kgrid] = (double *)realloc(data[kgrid], num[kgrid] * sizeof(double))) == NULL) {
 												error = MB_ERROR_MEMORY_FAIL;
 												mb_error(verbose, error, &message);
-												GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+												fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 												mb_memory_clear(verbose, &memclear_error);
-												Return(error);
+												Return(GMT_RUNTIME_ERROR);
 											}
 										}
 										if (time_ok) {
@@ -2767,9 +2874,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 											if ((data[kgrid] = (double *)realloc(data[kgrid], num[kgrid] * sizeof(double))) == NULL) {
 												error = MB_ERROR_MEMORY_FAIL;
 												mb_error(verbose, error, &message);
-												GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+												fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 												mb_memory_clear(verbose, &memclear_error);
-												Return(error);
+												Return(GMT_RUNTIME_ERROR);
 											}
 										}
 										if (time_ok) {
@@ -2788,9 +2895,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 				}
 				if (verbose > 0 || file_in_bounds) {
 					if (astatus == MB_ALTNAV_USE)
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
 					else
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
 				}
 				if (ndatafile > 0 && dfp != NULL) {
 					if (pstatus == MB_PROCESSED_USE && astatus == MB_ALTNAV_USE)
@@ -2805,9 +2912,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			else if (format == 0 && path[0] != '#') {
 				if ((rfp = fopen(path, "r")) == NULL) {
 					error = MB_ERROR_OPEN_FAIL;
-					GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open lon,lat,value triples data path: %s\n", path);
+					fprintf(stderr, "\nUnable to open lon,lat,value triples data path: %s\n", path);
 					mb_memory_clear(verbose, &memclear_error);
-					Return(error);
+					Return(GMT_RUNTIME_ERROR);
 				}
 				bool first = true;
 				double dmin = 0.0, dmax = 0.0;
@@ -2825,9 +2932,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 							if ((data[kgrid] = (double *)realloc(data[kgrid], num[kgrid] * sizeof(double))) == NULL) {
 								error = MB_ERROR_MEMORY_FAIL;
 								mb_error(verbose, error, &message);
-								GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+								fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 								mb_memory_clear(verbose, &memclear_error);
-								Return(error);
+								Return(GMT_RUNTIME_ERROR);
 							}
 						}
 						if (time_ok) {
@@ -2843,9 +2950,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 				status = MB_SUCCESS; error = MB_ERROR_NO_ERROR;
 				if (verbose > 0 || file_in_bounds) {
 					if (astatus == MB_ALTNAV_USE)
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
 					else
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
 				}
 				if (ndatafile > 0 && dfp != NULL) {
 					if (pstatus == MB_PROCESSED_USE && astatus == MB_ALTNAV_USE)
@@ -2859,11 +2966,11 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			}
 		}
 		if (datalist != NULL) mb_datalist_close(verbose, &datalist, &error);
-		GMT_Report(API, GMT_MSG_NORMAL, "\n%d total data points processed\n", ndata);
+		fprintf(stderr, "\n%d total data points processed\n", ndata);
 
 		if (dfp != NULL) { fclose(dfp); dfp = NULL; }
 
-		if (verbose >= 1) GMT_Report(API, GMT_MSG_NORMAL, "\nMaking raw grid...\n");
+		if (verbose >= 1) fprintf(stderr, "\nMaking raw grid...\n");
 		for (int i = 0; i < gxdim; i++)
 			for (int j = 0; j < gydim; j++) {
 				kgrid = i * gydim + j;
@@ -2894,9 +3001,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 		if (error != MB_ERROR_NO_ERROR) {
 			mb_error(verbose, error, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+			fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		for (int i = 0; i < gxdim; i++)
@@ -2908,9 +3015,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		ndata = 0;
 		if (mb_datalist_open(verbose, &datalist, filelist, look_processed, &error) != MB_SUCCESS) {
 			error = MB_ERROR_OPEN_FAIL;
-			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open data list file: %s\n", filelist);
+			fprintf(stderr, "\nUnable to open data list file: %s\n", filelist);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		while (mb_datalist_read3(verbose, datalist, &pstatus, path, ppath, &astatus, apath, dpath, &format, &file_weight, &error) == MB_SUCCESS) {
 			ndatafile = 0;
@@ -2928,9 +3035,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 						mb_get_fbt(verbose, rfile, &rformat, &error);
 					if (mb_read_init_altnav(verbose, rfile, rformat, pings, lonflip, bounds, btime_i, etime_i, speedmin, timegap, astatus, apath, &mbio_ptr, &btime_d, &etime_d, &beams_bath, &beams_amp, &pixels_ss, &error) != MB_SUCCESS) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					if (error == MB_ERROR_NO_ERROR) status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(char), (void **)&beamflag, &error);
@@ -2944,9 +3051,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 					if (error != MB_ERROR_NO_ERROR) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					while (error <= MB_ERROR_NO_ERROR) {
@@ -2954,13 +3061,13 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 						if (error == MB_ERROR_TIME_GAP) { error = MB_ERROR_NO_ERROR; status = MB_SUCCESS; }
 
 						if (verbose >= 2) {
-							GMT_Report(API, GMT_MSG_NORMAL, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kind:           %d\n", kind);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_bath:     %d\n", beams_bath);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_amp:      %d\n", beams_amp);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       pixels_ss:      %d\n", pixels_ss);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       error:          %d\n", error);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       status:         %d\n", status);
+							fprintf(stderr, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
+							fprintf(stderr, "dbg2       kind:           %d\n", kind);
+							fprintf(stderr, "dbg2       beams_bath:     %d\n", beams_bath);
+							fprintf(stderr, "dbg2       beams_amp:      %d\n", beams_amp);
+							fprintf(stderr, "dbg2       pixels_ss:      %d\n", pixels_ss);
+							fprintf(stderr, "dbg2       error:          %d\n", error);
+							fprintf(stderr, "dbg2       status:         %d\n", status);
 						}
 
 						if (shift_mode == MBGRID_SHIFT_DATA) {
@@ -3161,9 +3268,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 				}
 				if (verbose > 0 || file_in_bounds) {
 					if (astatus == MB_ALTNAV_USE)
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
 					else
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
 				}
 				if (ndatafile > 0 && dfp != NULL) {
 					if (pstatus == MB_PROCESSED_USE && astatus == MB_ALTNAV_USE)
@@ -3178,9 +3285,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			else if (format == 0 && path[0] != '#') {
 				if ((rfp = fopen(path, "r")) == NULL) {
 					error = MB_ERROR_OPEN_FAIL;
-					GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open lon,lat,value triples data file1: %s\n", path);
+					fprintf(stderr, "\nUnable to open lon,lat,value triples data file1: %s\n", path);
 					mb_memory_clear(verbose, &memclear_error);
-					Return(error);
+					Return(GMT_RUNTIME_ERROR);
 				}
 				bool first = true;
 				double dmin = 0.0, dmax = 0.0;
@@ -3234,9 +3341,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 				status = MB_SUCCESS; error = MB_ERROR_NO_ERROR;
 				if (verbose > 0 || file_in_bounds) {
 					if (astatus == MB_ALTNAV_USE)
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
 					else
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
 				}
 				if (ndatafile > 0 && dfp != NULL) {
 					if (pstatus == MB_PROCESSED_USE && astatus == MB_ALTNAV_USE)
@@ -3250,11 +3357,11 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			}
 		}
 		if (datalist != NULL) mb_datalist_close(verbose, &datalist, &error);
-		GMT_Report(API, GMT_MSG_NORMAL, "\n%d total data points processed\n", ndata);
+		fprintf(stderr, "\n%d total data points processed\n", ndata);
 
 		if (dfp != NULL) { fclose(dfp); dfp = NULL; }
 
-		if (verbose >= 1) GMT_Report(API, GMT_MSG_NORMAL, "\nMaking raw grid...\n");
+		if (verbose >= 1) fprintf(stderr, "\nMaking raw grid...\n");
 		for (int i = 0; i < gxdim; i++)
 			for (int j = 0; j < gydim; j++) {
 				kgrid = i * gydim + j;
@@ -3275,9 +3382,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 		if (error != MB_ERROR_NO_ERROR) {
 			mb_error(verbose, error, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+			fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		for (int i = 0; i < gxdim; i++)
@@ -3291,9 +3398,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		ndata = 0;
 		if (mb_datalist_open(verbose, &datalist, filelist, look_processed, &error) != MB_SUCCESS) {
 			error = MB_ERROR_OPEN_FAIL;
-			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open data list file: %s\n", filelist);
+			fprintf(stderr, "\nUnable to open data list file: %s\n", filelist);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		while (mb_datalist_read3(verbose, datalist, &pstatus, path, ppath, &astatus, apath, dpath, &format, &file_weight, &error) == MB_SUCCESS) {
 			ndatafile = 0;
@@ -3311,9 +3418,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 						mb_get_fbt(verbose, rfile, &rformat, &error);
 					if (mb_read_init_altnav(verbose, rfile, rformat, pings, lonflip, bounds, btime_i, etime_i, speedmin, timegap, astatus, apath, &mbio_ptr, &btime_d, &etime_d, &beams_bath, &beams_amp, &pixels_ss, &error) != MB_SUCCESS) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 					if (error == MB_ERROR_NO_ERROR) status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(char), (void **)&beamflag, &error);
 					if (error == MB_ERROR_NO_ERROR) status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), (void **)&bath, &error);
@@ -3326,9 +3433,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 					if (error != MB_ERROR_NO_ERROR) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					while (error <= MB_ERROR_NO_ERROR) {
@@ -3336,13 +3443,13 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 						if (error == MB_ERROR_TIME_GAP) { error = MB_ERROR_NO_ERROR; status = MB_SUCCESS; }
 
 						if (verbose >= 2) {
-							GMT_Report(API, GMT_MSG_NORMAL, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kind:           %d\n", kind);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_bath:     %d\n", beams_bath);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_amp:      %d\n", beams_amp);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       pixels_ss:      %d\n", pixels_ss);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       error:          %d\n", error);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       status:         %d\n", status);
+							fprintf(stderr, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
+							fprintf(stderr, "dbg2       kind:           %d\n", kind);
+							fprintf(stderr, "dbg2       beams_bath:     %d\n", beams_bath);
+							fprintf(stderr, "dbg2       beams_amp:      %d\n", beams_amp);
+							fprintf(stderr, "dbg2       pixels_ss:      %d\n", pixels_ss);
+							fprintf(stderr, "dbg2       error:          %d\n", error);
+							fprintf(stderr, "dbg2       status:         %d\n", status);
 						}
 
 						if (shift_mode == MBGRID_SHIFT_DATA) {
@@ -3469,9 +3576,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 				}
 				if (verbose > 0 || file_in_bounds) {
 					if (astatus == MB_ALTNAV_USE)
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
 					else
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
 				}
 				if (ndatafile > 0 && dfp != NULL) {
 					if (pstatus == MB_PROCESSED_USE && astatus == MB_ALTNAV_USE)
@@ -3485,20 +3592,20 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			}
 		}
 		if (datalist != NULL) mb_datalist_close(verbose, &datalist, &error);
-		GMT_Report(API, GMT_MSG_NORMAL, "\n%d total data points processed\n", ndata);
+		fprintf(stderr, "\n%d total data points processed\n", ndata);
 		if (dfp != NULL) { fclose(dfp); dfp = NULL; }
 
 		/* Second pass: accumulate values within threshold */
 		for (int i = 0; i < gxdim; i++)
 			for (int j = 0; j < gydim; j++) { kgrid = i * gydim + j; cnt[kgrid] = 0; }
 
-		GMT_Report(API, GMT_MSG_NORMAL, "\nDoing second pass to generate final grid...\n");
+		fprintf(stderr, "\nDoing second pass to generate final grid...\n");
 		ndata = 0;
 		if (mb_datalist_open(verbose, &datalist, dfile, look_processed, &error) != MB_SUCCESS) {
 			error = MB_ERROR_OPEN_FAIL;
-			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open data list file: %s\n", filelist);
+			fprintf(stderr, "\nUnable to open data list file: %s\n", filelist);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		while (mb_datalist_read3(verbose, datalist, &pstatus, path, ppath, &astatus, apath, dpath, &format, &file_weight, &error) == MB_SUCCESS) {
 			ndatafile = 0;
@@ -3516,9 +3623,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 						mb_get_fbt(verbose, rfile, &rformat, &error);
 					if (mb_read_init_altnav(verbose, rfile, rformat, pings, lonflip, bounds, btime_i, etime_i, speedmin, timegap, astatus, apath, &mbio_ptr, &btime_d, &etime_d, &beams_bath, &beams_amp, &pixels_ss, &error) != MB_SUCCESS) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 					if (error == MB_ERROR_NO_ERROR) status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(char), (void **)&beamflag, &error);
 					if (error == MB_ERROR_NO_ERROR) status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), (void **)&bath, &error);
@@ -3531,9 +3638,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 
 					if (error != MB_ERROR_NO_ERROR) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					while (error <= MB_ERROR_NO_ERROR) {
@@ -3541,13 +3648,13 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 						if (error == MB_ERROR_TIME_GAP) { error = MB_ERROR_NO_ERROR; status = MB_SUCCESS; }
 
 						if (verbose >= 2) {
-							GMT_Report(API, GMT_MSG_NORMAL, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kind:           %d\n", kind);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_bath:     %d\n", beams_bath);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_amp:      %d\n", beams_amp);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       pixels_ss:      %d\n", pixels_ss);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       error:          %d\n", error);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       status:         %d\n", status);
+							fprintf(stderr, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
+							fprintf(stderr, "dbg2       kind:           %d\n", kind);
+							fprintf(stderr, "dbg2       beams_bath:     %d\n", beams_bath);
+							fprintf(stderr, "dbg2       beams_amp:      %d\n", beams_amp);
+							fprintf(stderr, "dbg2       pixels_ss:      %d\n", pixels_ss);
+							fprintf(stderr, "dbg2       error:          %d\n", error);
+							fprintf(stderr, "dbg2       status:         %d\n", status);
 						}
 
 						if (shift_mode == MBGRID_SHIFT_DATA) {
@@ -3694,9 +3801,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 				}
 				if (verbose > 0 || file_in_bounds) {
 					if (astatus == MB_ALTNAV_USE)
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
 					else
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
 				}
 				if (ndatafile > 0 && dfp != NULL) {
 					if (pstatus == MB_PROCESSED_USE && astatus == MB_ALTNAV_USE)
@@ -3710,10 +3817,10 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			}
 		}
 		if (datalist != NULL) mb_datalist_close(verbose, &datalist, &error);
-		GMT_Report(API, GMT_MSG_NORMAL, "\n%d total data points processed\n", ndata);
+		fprintf(stderr, "\n%d total data points processed\n", ndata);
 		if (dfp != NULL) { fclose(dfp); dfp = NULL; }
 
-		if (verbose >= 1) GMT_Report(API, GMT_MSG_NORMAL, "\nMaking raw grid...\n");
+		if (verbose >= 1) fprintf(stderr, "\nMaking raw grid...\n");
 		for (int i = 0; i < gxdim; i++)
 			for (int j = 0; j < gydim; j++) {
 				kgrid = i * gydim + j;
@@ -3742,17 +3849,17 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		if (cube_paramfile[0] != '\0') {
 			bool cube_valid = false;
 			if (mb_cube_params_read(&cube_param, cube_paramfile, &cube_valid) != MB_CUBE_OK) {
-				GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to read CUBE parameter file: %s\n", cube_paramfile);
+				fprintf(stderr, "\nUnable to read CUBE parameter file: %s\n", cube_paramfile);
 				mb_memory_clear(verbose, &memclear_error);
-				Return(MB_ERROR_BAD_PARAMETER);
+				Return(GMT_RUNTIME_ERROR);
 			}
 		}
 		/* the command line wins over the parameter file */
 		cube_param.variance_selection = cube_variance;
 		if (mb_cube_params_initialize(&cube_param, cube_iho_order, cube_dx, cube_dy) != MB_CUBE_OK) {
-			GMT_Report(API, GMT_MSG_NORMAL, "\nInvalid CUBE parameters (node spacing %f x %f m)\n", cube_dx, cube_dy);
+			fprintf(stderr, "\nInvalid CUBE parameters (node spacing %f x %f m)\n", cube_dx, cube_dy);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(MB_ERROR_BAD_PARAMETER);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		mb_cube_grid *cube = mb_cube_grid_new(-0.5 * cube_dx, (gydim - 0.5) * cube_dy, gxdim, gydim, cube_dx, cube_dy,
 		                                      &cube_param, cube_use_queue, NULL, verbose >= 5);
@@ -3772,24 +3879,24 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		if (cube == NULL || cube_depth == NULL || cube_unc == NULL || cube_npts == NULL || cube_ratio == NULL || cube_nhyp == NULL) {
 			error = MB_ERROR_MEMORY_FAIL;
 			mb_error(verbose, error, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating CUBE grid:\n%s\n", message);
+			fprintf(stderr, "\nMBIO Error allocating CUBE grid:\n%s\n", message);
 			mb_cube_grid_free(&cube);
 			free(cube_depth); free(cube_unc); free(cube_npts); free(cube_ratio); free(cube_nhyp);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		if (verbose >= 1)
-			GMT_Report(API, GMT_MSG_NORMAL, "\nCUBE node spacing: %f x %f m, context search %d to %d nodes\n", cube_dx, cube_dy,
+			fprintf(stderr, "\nCUBE node spacing: %f x %f m, context search %d to %d nodes\n", cube_dx, cube_dy,
 			           cube_param.min_context_nodes, cube_param.max_context_nodes);
 
 #define MBGRID_CUBE_FAIL(what) { \
 			error = MB_ERROR_MEMORY_FAIL; \
 			mb_error(verbose, error, &message); \
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error " what ":\n%s\n", message); \
+			fprintf(stderr, "\nMBIO Error " what ":\n%s\n", message); \
 			mb_cube_grid_free(&cube); mbgrid_cube_buf_free(&cbuf); \
 			free(cube_depth); free(cube_unc); free(cube_npts); free(cube_ratio); free(cube_nhyp); \
 			mb_memory_clear(verbose, &memclear_error); \
-			Return(error); }
+			Return(GMT_RUNTIME_ERROR); }
 
 		for (int i = 0; i < gxdim; i++)
 			for (int j = 0; j < gydim; j++) {
@@ -3802,11 +3909,11 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		ndata = 0;
 		if (mb_datalist_open(verbose, &datalist, filelist, look_processed, &error) != MB_SUCCESS) {
 			error = MB_ERROR_OPEN_FAIL;
-			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open data list file: %s\n", filelist);
+			fprintf(stderr, "\nUnable to open data list file: %s\n", filelist);
 			mb_cube_grid_free(&cube);
 			free(cube_depth); free(cube_unc); free(cube_npts); free(cube_ratio); free(cube_nhyp);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		while (mb_datalist_read3(verbose, datalist, &pstatus, path, ppath, &astatus, apath, dpath, &format, &file_weight, &error) == MB_SUCCESS) {
 			ndatafile = 0;
@@ -3823,11 +3930,11 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 					mb_get_fbt(verbose, rfile, &rformat, &error);
 					if (mb_read_init_altnav(verbose, rfile, rformat, pings, lonflip, bounds, btime_i, etime_i, speedmin, timegap, astatus, apath, &mbio_ptr, &btime_d, &etime_d, &beams_bath, &beams_amp, &pixels_ss, &error) != MB_SUCCESS) {
 						mb_error(verbose, error, &message);
-						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
+						fprintf(stderr, "\nMBIO Error returned from function <mb_read_init_altnav>:\n%s\n", message);
 						mb_cube_grid_free(&cube); mbgrid_cube_buf_free(&cbuf);
 						free(cube_depth); free(cube_unc); free(cube_npts); free(cube_ratio); free(cube_nhyp);
 						mb_memory_clear(verbose, &memclear_error);
-						Return(error);
+						Return(GMT_RUNTIME_ERROR);
 					}
 
 					if (error == MB_ERROR_NO_ERROR) status = mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(char), (void **)&beamflag, &error);
@@ -3845,11 +3952,11 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 						if (error == MB_ERROR_TIME_GAP) { error = MB_ERROR_NO_ERROR; status = MB_SUCCESS; }
 
 						if (verbose >= 2) {
-							GMT_Report(API, GMT_MSG_NORMAL, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       kind:           %d\n", kind);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       beams_bath:     %d\n", beams_bath);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       error:          %d\n", error);
-							GMT_Report(API, GMT_MSG_NORMAL, "dbg2       status:         %d\n", status);
+							fprintf(stderr, "\ndbg2  Ping read in program <%s>\n", THIS_MODULE_NAME);
+							fprintf(stderr, "dbg2       kind:           %d\n", kind);
+							fprintf(stderr, "dbg2       beams_bath:     %d\n", beams_bath);
+							fprintf(stderr, "dbg2       error:          %d\n", error);
+							fprintf(stderr, "dbg2       status:         %d\n", status);
 						}
 
 						if (shift_mode == MBGRID_SHIFT_DATA) {
@@ -3887,9 +3994,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 				}
 				if (verbose > 0 || file_in_bounds) {
 					if (astatus == MB_ALTNAV_USE)
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
 					else
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
 				}
 				if (ndatafile > 0 && dfp != NULL) {
 					if (pstatus == MB_PROCESSED_USE && astatus == MB_ALTNAV_USE)
@@ -3904,11 +4011,11 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			else if (format == 0 && path[0] != '#') {
 				if ((rfp = fopen(path, "r")) == NULL) {
 					error = MB_ERROR_OPEN_FAIL;
-					GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open lon,lat,value triples data path: %s\n", path);
+					fprintf(stderr, "\nUnable to open lon,lat,value triples data path: %s\n", path);
 					mb_cube_grid_free(&cube); mbgrid_cube_buf_free(&cbuf);
 					free(cube_depth); free(cube_unc); free(cube_npts); free(cube_ratio); free(cube_nhyp);
 					mb_memory_clear(verbose, &memclear_error);
-					Return(error);
+					Return(GMT_RUNTIME_ERROR);
 				}
 				bool first = true;
 				double dmin = 0.0, dmax = 0.0;
@@ -3937,9 +4044,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 				status = MB_SUCCESS; error = MB_ERROR_NO_ERROR;
 				if (verbose > 0 || file_in_bounds) {
 					if (astatus == MB_ALTNAV_USE)
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f) using nav from %s\n", ndatafile, rfile, dmin, dmax, apath);
 					else
-						GMT_Report(API, GMT_MSG_NORMAL, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
+						fprintf(stderr, "%d data points processed in %s (minmax: %f %f)\n", ndatafile, rfile, dmin, dmax);
 				}
 				if (ndatafile > 0 && dfp != NULL) {
 					if (pstatus == MB_PROCESSED_USE && astatus == MB_ALTNAV_USE)
@@ -3954,12 +4061,12 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		}
 #undef MBGRID_CUBE_FAIL
 		if (datalist != NULL) mb_datalist_close(verbose, &datalist, &error);
-		GMT_Report(API, GMT_MSG_NORMAL, "\n%d total data points processed\n", ndata);
+		fprintf(stderr, "\n%d total data points processed\n", ndata);
 
 		if (dfp != NULL) { fclose(dfp); dfp = NULL; }
 
 		/* the median pre-filter queues must be flushed before any depth is extracted */
-		if (verbose >= 1) GMT_Report(API, GMT_MSG_NORMAL, "\nMaking raw grid (CUBE hypothesis selection: %s)...\n", mb_cube_method_name(cube_method));
+		if (verbose >= 1) fprintf(stderr, "\nMaking raw grid (CUBE hypothesis selection: %s)...\n", mb_cube_method_name(cube_method));
 		mb_cube_grid_flush(cube);
 		mb_cube_grid_get_values(cube, cube_method, cube_depth, cube_unc, cube_ratio, cube_nhyp, cube_npts, MB_CUBE_LAYOUT_COLS_SOUTH);
 		mb_cube_grid_free(&cube);
@@ -4000,9 +4107,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		if (status == MB_SUCCESS) status = mb_mallocd(verbose, __FILE__, __LINE__, gxdim * gydim * sizeof(float), (void **)&sgrid, &error);
 		if (error != MB_ERROR_NO_ERROR) {
 			mb_error(verbose, MB_ERROR_MEMORY_FAIL, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating interpolation work arrays:\n%s\n", message);
+			fprintf(stderr, "\nMBIO Error allocating interpolation work arrays:\n%s\n", message);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		memset((char *)sgrid, 0, gxdim * gydim * sizeof(float));
 		memset((char *)sxdata, 0, ndata * sizeof(float));
@@ -4060,7 +4167,7 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			}
 		}
 
-		GMT_Report(API, GMT_MSG_NORMAL, "\nDoing Surface spline interpolation with %d data points...\n", ndata);
+		fprintf(stderr, "\nDoing Surface spline interpolation with %d data points...\n", ndata);
 		mb_surface(verbose, ndata, sxdata, sydata, szdata, (float)(gbnd[0] - bdata_origin_x), (float)(gbnd[1] - bdata_origin_x), (float)(gbnd[2] - bdata_origin_y), (float)(gbnd[3] - bdata_origin_y), dx, dy, tension, sgrid);
 #else
 		status = mb_mallocd(verbose, __FILE__, __LINE__, 3 * ndata * sizeof(float), (void **)&sdata, &error);
@@ -4070,9 +4177,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		if (status == MB_SUCCESS) status = mb_mallocd(verbose, __FILE__, __LINE__, (gxdim + gydim) * sizeof(bool), (void **)&work3, &error);
 		if (error != MB_ERROR_NO_ERROR) {
 			mb_error(verbose, MB_ERROR_MEMORY_FAIL, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating interpolation work arrays:\n%s\n", message);
+			fprintf(stderr, "\nMBIO Error allocating interpolation work arrays:\n%s\n", message);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		memset((char *)sgrid, 0, gxdim * gydim * sizeof(float));
 		memset((char *)sdata, 0, 3 * ndata * sizeof(float));
@@ -4133,25 +4240,25 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			float ymin = (float)(wbnd[2] - 0.5 * dy - bdata_origin_y);
 			float ddx = (float)dx;
 			float ddy = (float)dy;
-			GMT_Report(API, GMT_MSG_NORMAL, "\nDoing Zgrid spline interpolation with %d data points...\n", ndata);
+			fprintf(stderr, "\nDoing Zgrid spline interpolation with %d data points...\n", ndata);
 			if (clipmode == MBGRID_INTERP_ALL) clip = MAX(gxdim, gydim);
 			mb_zgrid(sgrid, &gxdim, &gydim, &xmin, &ymin, &ddx, &ddy, sdata, &ndata, work1, work2, work3, &cay, &clip);
 		}
 #endif
 
 		if (clipmode == MBGRID_INTERP_GAP)
-			GMT_Report(API, GMT_MSG_NORMAL, "Applying spline interpolation to fill gaps of %d cells or less...\n", clip);
+			fprintf(stderr, "Applying spline interpolation to fill gaps of %d cells or less...\n", clip);
 		else if (clipmode == MBGRID_INTERP_NEAR)
-			GMT_Report(API, GMT_MSG_NORMAL, "Applying spline interpolation to fill %d cells from data...\n", clip);
+			fprintf(stderr, "Applying spline interpolation to fill %d cells from data...\n", clip);
 		else if (clipmode == MBGRID_INTERP_ALL)
-			GMT_Report(API, GMT_MSG_NORMAL, "Applying spline interpolation to fill all undefined cells in the grid...\n");
+			fprintf(stderr, "Applying spline interpolation to fill all undefined cells in the grid...\n");
 
 		bool *smask = NULL;
 		if (mb_mallocd(verbose, __FILE__, __LINE__, gxdim * gydim * sizeof(bool), (void **)&smask, &error) != MB_SUCCESS) {
 			mb_error(verbose, MB_ERROR_MEMORY_FAIL, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating interpolation work arrays:\n%s\n", message);
+			fprintf(stderr, "\nMBIO Error allocating interpolation work arrays:\n%s\n", message);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		memset((char *)smask, 0, (gxdim + gydim) * sizeof(bool));
 
@@ -4318,9 +4425,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		status = mb_mallocd(verbose, __FILE__, __LINE__, gxdim * gydim * sizeof(float), (void **)&sgrid, &error);
 		if (error != MB_ERROR_NO_ERROR) {
 			mb_error(verbose, MB_ERROR_MEMORY_FAIL, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating background data array:\n%s\n", message);
+			fprintf(stderr, "\nMBIO Error allocating background data array:\n%s\n", message);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		memset((char *)sgrid, 0, gxdim * gydim * sizeof(float));
 #else
@@ -4330,9 +4437,9 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		if (status == MB_SUCCESS) status = mb_mallocd(verbose, __FILE__, __LINE__, (gxdim + gydim) * sizeof(int), (void **)&work3, &error);
 		if (error != MB_ERROR_NO_ERROR) {
 			mb_error(verbose, MB_ERROR_MEMORY_FAIL, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating background interpolation work arrays:\n%s\n", message);
+			fprintf(stderr, "\nMBIO Error allocating background interpolation work arrays:\n%s\n", message);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		memset((char *)sgrid, 0, gxdim * gydim * sizeof(float));
 		memset((char *)work1, 0, nbackground * sizeof(float));
@@ -4340,7 +4447,7 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		memset((char *)work3, 0, (gxdim + gydim) * sizeof(int));
 #endif
 
-		GMT_Report(API, GMT_MSG_NORMAL, "\nDoing spline interpolation with %d background points...\n", nbackground);
+		fprintf(stderr, "\nDoing spline interpolation with %d background points...\n", nbackground);
 #ifdef USESURFACE
 		mb_surface(verbose, nbackground, bxdata, bydata, bzdata, (float)(wbnd[0] - bdata_origin_x), (float)(wbnd[1] - bdata_origin_x), (float)(wbnd[2] - bdata_origin_y), (float)(wbnd[3] - bdata_origin_y), dx, dy, tension, sgrid);
 #else
@@ -4351,7 +4458,7 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			float ddx = (float)dx;
 			float ddy = (float)dy;
 			clip = MAX(gxdim, gydim);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nDoing Zgrid spline interpolation with %d background points...\n", nbackground);
+			fprintf(stderr, "\nDoing Zgrid spline interpolation with %d background points...\n", nbackground);
 			mb_zgrid(sgrid, &gxdim, &gydim, &xmin, &ymin, &ddx, &ddy, bdata, &nbackground, work1, work2, work3, &cay, &clip);
 		}
 #endif
@@ -4417,14 +4524,14 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			if (sigma[kgrid] > smax && cnt[kgrid] > 0) smax = sigma[kgrid];
 		}
 	nbinzero = gxdim * gydim - nbinset - nbinspline - nbinbackground;
-	GMT_Report(API, GMT_MSG_NORMAL, "\nTotal number of bins:            %d\n", gxdim * gydim);
-	GMT_Report(API, GMT_MSG_NORMAL, "Bins set using data:             %d\n", nbinset);
-	GMT_Report(API, GMT_MSG_NORMAL, "Bins set using interpolation:    %d\n", nbinspline);
-	GMT_Report(API, GMT_MSG_NORMAL, "Bins set using background:       %d\n", nbinbackground);
-	GMT_Report(API, GMT_MSG_NORMAL, "Bins not set:                    %d\n", nbinzero);
-	GMT_Report(API, GMT_MSG_NORMAL, "Maximum number of data in a bin: %d\n", nmax);
-	GMT_Report(API, GMT_MSG_NORMAL, "Minimum value: %10.2f   Maximum value: %10.2f\n", zmin, zmax);
-	GMT_Report(API, GMT_MSG_NORMAL, "Minimum sigma: %10.5f   Maximum sigma: %10.5f\n", smin, smax);
+	fprintf(stderr, "\nTotal number of bins:            %d\n", gxdim * gydim);
+	fprintf(stderr, "Bins set using data:             %d\n", nbinset);
+	fprintf(stderr, "Bins set using interpolation:    %d\n", nbinspline);
+	fprintf(stderr, "Bins set using background:       %d\n", nbinbackground);
+	fprintf(stderr, "Bins not set:                    %d\n", nbinzero);
+	fprintf(stderr, "Maximum number of data in a bin: %d\n", nmax);
+	fprintf(stderr, "Minimum value: %10.2f   Maximum value: %10.2f\n", zmin, zmax);
+	fprintf(stderr, "Minimum sigma: %10.5f   Maximum sigma: %10.5f\n", smin, smax);
 
 	/* Apply shift to the output grid bounds if specified */
 	if (shift_mode == MBGRID_SHIFT_BOUNDS && use_projection) {
@@ -4436,7 +4543,7 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 	}
 
 	/* write first output file */
-	if (verbose > 0) GMT_Report(API, GMT_MSG_NORMAL, "\nOutputting results...\n");
+	if (verbose > 0) fprintf(stderr, "\nOutputting results...\n");
 	for (int i = 0; i < xdim; i++)
 		for (int j = 0; j < ydim; j++) {
 			kgrid = (i + offx) * gydim + (j + offy);
@@ -4457,17 +4564,17 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		status = write_oldgrd(verbose, ofile, output, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], dx, dy, &error);
 	} else if (gridkind == MBGRID_CDFGRD) {
 		strcpy(ofile, fileroot); strcat(ofile, ".grd");
-		status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin, zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, 0, NULL, &error);
+		status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin, zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, hist_argc, hist_argv, &error);
 	} else if (gridkind == MBGRID_GMTGRD) {
 		snprintf(ofile, sizeof(ofile), "%s.grd%s", fileroot, gridkindstring);
-		status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin, zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, 0, NULL, &error);
+		status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin, zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, hist_argc, hist_argv, &error);
 	}
 
 	if (status != MB_SUCCESS) {
 		mb_error(verbose, error, &message);
-		GMT_Report(API, GMT_MSG_NORMAL, "\nError writing output file: %s\n%s\n", ofile, message);
+		fprintf(stderr, "\nError writing output file: %s\n%s\n", ofile, message);
 		mb_memory_clear(verbose, &memclear_error);
-		Return(error);
+		Return(GMT_RUNTIME_ERROR);
 	}
 
 	/* write density + sigma grids if requested */
@@ -4491,16 +4598,16 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			status = write_oldgrd(verbose, ofile, output, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], dx, dy, &error);
 		} else if (gridkind == MBGRID_CDFGRD) {
 			strcpy(ofile, fileroot); strcat(ofile, "_num.grd");
-			status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin, zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, 0, NULL, &error);
+			status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin, zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, hist_argc, hist_argv, &error);
 		} else if (gridkind == MBGRID_GMTGRD) {
 			snprintf(ofile, sizeof(ofile), "%s_num.grd%s", fileroot, gridkindstring);
-			status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin, zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, 0, NULL, &error);
+			status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin, zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, hist_argc, hist_argv, &error);
 		}
 		if (status != MB_SUCCESS) {
 			mb_error(verbose, error, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nError writing output file: %s\n%s\n", ofile, message);
+			fprintf(stderr, "\nError writing output file: %s\n%s\n", ofile, message);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		for (int i = 0; i < xdim; i++)
@@ -4522,16 +4629,16 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 			status = write_oldgrd(verbose, ofile, output, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], dx, dy, &error);
 		} else if (gridkind == MBGRID_CDFGRD) {
 			strcpy(ofile, fileroot); strcat(ofile, "_sd.grd");
-			status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin, zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, 0, NULL, &error);
+			status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin, zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, hist_argc, hist_argv, &error);
 		} else if (gridkind == MBGRID_GMTGRD) {
 			snprintf(ofile, sizeof(ofile), "%s_sd.grd%s", fileroot, gridkindstring);
-			status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin, zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, 0, NULL, &error);
+			status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], zmin, zmax, dx, dy, xlabel, ylabel, zlabel, title, projection_id, hist_argc, hist_argv, &error);
 		}
 		if (status != MB_SUCCESS) {
 			mb_error(verbose, error, &message);
-			GMT_Report(API, GMT_MSG_NORMAL, "\nError writing output file: %s\n%s\n", ofile, message);
+			fprintf(stderr, "\nError writing output file: %s\n%s\n", ofile, message);
 			mb_memory_clear(verbose, &memclear_error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 	}
 
@@ -4566,17 +4673,17 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 				status = write_oldgrd(verbose, ofile, output, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], dx, dy, &error);
 			} else if (gridkind == MBGRID_CDFGRD) {
 				snprintf(ofile, sizeof(ofile), "%s%s.grd", fileroot, cube_suffix[g]);
-				status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], vmin, vmax, dx, dy, xlabel, ylabel, cube_label[g], title, projection_id, 0, NULL, &error);
+				status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], vmin, vmax, dx, dy, xlabel, ylabel, cube_label[g], title, projection_id, hist_argc, hist_argv, &error);
 			} else if (gridkind == MBGRID_GMTGRD) {
 				snprintf(ofile, sizeof(ofile), "%s%s.grd%s", fileroot, cube_suffix[g], gridkindstring);
-				status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], vmin, vmax, dx, dy, xlabel, ylabel, cube_label[g], title, projection_id, 0, NULL, &error);
+				status = mb_write_gmt_grd(verbose, ofile, output, outclipvalue, xdim, ydim, gbnd[0], gbnd[1], gbnd[2], gbnd[3], vmin, vmax, dx, dy, xlabel, ylabel, cube_label[g], title, projection_id, hist_argc, hist_argv, &error);
 			}
 			if (status != MB_SUCCESS) {
 				mb_error(verbose, error, &message);
-				GMT_Report(API, GMT_MSG_NORMAL, "\nError writing output file: %s\n%s\n", ofile, message);
+				fprintf(stderr, "\nError writing output file: %s\n%s\n", ofile, message);
 				free(cube_ratio); free(cube_nhyp);
 				mb_memory_clear(verbose, &memclear_error);
-				Return(error);
+				Return(GMT_RUNTIME_ERROR);
 			}
 		}
 	}
@@ -4606,25 +4713,25 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		} else {
 			snprintf(plot_cmd, sizeof(plot_cmd), "mbm_grdplot -I%s%s -G1 -W1/4 -S -D -V -L\"File %s - %s:%s\"", ofile, gridkindstring, ofile, title, zlabel);
 		}
-		if (verbose) GMT_Report(API, GMT_MSG_NORMAL, "\nexecuting mbm_grdplot...\n%s\n", plot_cmd);
+		if (verbose) fprintf(stderr, "\nexecuting mbm_grdplot...\n%s\n", plot_cmd);
 		plot_status = system(plot_cmd);
 		if (plot_status == -1)
-			GMT_Report(API, GMT_MSG_NORMAL, "\nError executing mbm_grdplot on output file %s\n", ofile);
+			fprintf(stderr, "\nError executing mbm_grdplot on output file %s\n", ofile);
 	}
 	if (more && gridkind == MBGRID_GMTGRD) {
 		strcpy(ofile, fileroot); strcat(ofile, "_num.grd");
 		snprintf(plot_cmd, sizeof(plot_cmd), "mbm_grdplot -I%s%s -G1 -W1/2 -V -L\"File %s - %s:%s\"", ofile, gridkindstring, ofile, title, nlabel);
-		if (verbose) GMT_Report(API, GMT_MSG_NORMAL, "\nexecuting mbm_grdplot...\n%s\n", plot_cmd);
+		if (verbose) fprintf(stderr, "\nexecuting mbm_grdplot...\n%s\n", plot_cmd);
 		plot_status = system(plot_cmd);
 		if (plot_status == -1)
-			GMT_Report(API, GMT_MSG_NORMAL, "\nError executing mbm_grdplot on output file grd_%s\n", fileroot);
+			fprintf(stderr, "\nError executing mbm_grdplot on output file grd_%s\n", fileroot);
 
 		strcpy(ofile, fileroot); strcat(ofile, "_sd.grd");
 		snprintf(plot_cmd, sizeof(plot_cmd), "mbm_grdplot -I%s%s -G1 -W1/2 -V -L\"File %s - %s:%s\"", ofile, gridkindstring, ofile, title, sdlabel);
-		if (verbose) GMT_Report(API, GMT_MSG_NORMAL, "\nexecuting mbm_grdplot...\n%s\n", plot_cmd);
+		if (verbose) fprintf(stderr, "\nexecuting mbm_grdplot...\n%s\n", plot_cmd);
 		plot_status = system(plot_cmd);
 		if (plot_status == -1)
-			GMT_Report(API, GMT_MSG_NORMAL, "\nError executing mbm_grdplot on output file grd_%s\n", fileroot);
+			fprintf(stderr, "\nError executing mbm_grdplot on output file grd_%s\n", fileroot);
 	}
 	if (more && gridkind == MBGRID_GMTGRD && grid_mode == MBGRID_CUBE) {
 		const char *cube_suffix[2] = {"_hyp", "_ratio"};
@@ -4632,24 +4739,29 @@ int GMT_mbgrid(void *V_API, int mode, void *args) {
 		for (int g = 0; g < 2; g++) {
 			snprintf(ofile, sizeof(ofile), "%s%s.grd", fileroot, cube_suffix[g]);
 			snprintf(plot_cmd, sizeof(plot_cmd), "mbm_grdplot -I%s%s -G1 -W1/2 -V -L\"File %s - %s:%s\"", ofile, gridkindstring, ofile, title, cube_label[g]);
-			if (verbose) GMT_Report(API, GMT_MSG_NORMAL, "\nexecuting mbm_grdplot...\n%s\n", plot_cmd);
+			if (verbose) fprintf(stderr, "\nexecuting mbm_grdplot...\n%s\n", plot_cmd);
 			plot_status = system(plot_cmd);
 			if (plot_status == -1)
-				GMT_Report(API, GMT_MSG_NORMAL, "\nError executing mbm_grdplot on output file %s\n", ofile);
+				fprintf(stderr, "\nError executing mbm_grdplot on output file %s\n", ofile);
 		}
 	}
 
-	if (verbose > 0) GMT_Report(API, GMT_MSG_NORMAL, "\nDone.\n\n");
+	if (verbose > 0) fprintf(stderr, "\nDone.\n\n");
 
 	if (verbose >= 4)
 		status = mb_memory_list(verbose, &error);
 
 	if (verbose >= 2) {
-		GMT_Report(API, GMT_MSG_NORMAL, "\ndbg2  Program <%s> completed\n", THIS_MODULE_NAME);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Ending status:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       status:  %d\n", status);
+		fprintf(stderr, "\ndbg2  Program <%s> completed\n", THIS_MODULE_NAME);
+		fprintf(stderr, "dbg2  Ending status:\n");
+		fprintf(stderr, "dbg2       status:  %d\n", status);
 	}
 
+	if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
 	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

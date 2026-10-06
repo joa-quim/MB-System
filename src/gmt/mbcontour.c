@@ -111,7 +111,7 @@
 #define THIS_MODULE_LIB "mbsystem"
 #define THIS_MODULE_PURPOSE "Plot swath bathymetry, amplitude, or backscatter"
 
-#define THIS_MODULE_KEYS "<G{+,>}"
+#define THIS_MODULE_KEYS "ID{,>X}"	/* -I datalist in, PostScript out (was "<G{+,>}": a grid it never reads, and a malformed ">}" key that crashed GMT_Encode_Options) */
 #define THIS_MODULE_NEEDS "g"
 #define THIS_MODULE_OPTIONS "-:>RV" GMT_OPT("H")
 
@@ -355,7 +355,7 @@ int GMT_mbcontour_usage(struct GMTAPI_CTRL *API, int level) {
 #endif
 
 	if (level == GMT_SYNOPSIS)
-		return (EXIT_FAILURE);
+		return (GMT_MODULE_SYNOPSIS);
 
 	GMT_Message(API, GMT_TIME_NONE, "\t<inputfile> is an MB-System datalist referencing the swath data to be plotted.\n");
 	GMT_Option(API, "J-");
@@ -374,7 +374,7 @@ int GMT_mbcontour_usage(struct GMTAPI_CTRL *API, int level) {
 	GMT_Option(API, "R");
 	GMT_Option(API, "U,V,X,.");
 
-	return (EXIT_FAILURE);
+	return (GMT_MODULE_USAGE);
 }
 
 int GMT_mbcontour_old_W_parser (struct GMTAPI_CTRL *API, struct MBCONTOUR_CTRL *Ctrl, char *text) {
@@ -1507,6 +1507,6 @@ int GMT_mbcontour(void *V_API, int mode, void *args) {
 	if (!Ctrl->C.active && GMT_Destroy_Data(API, &CPTcolor) != GMT_OK) {
 		Return(API->error);
 	}
-	Return(EXIT_SUCCESS);
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------------*/

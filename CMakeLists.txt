@@ -212,6 +212,29 @@ option(buildTrnNoRand "build with TRN_NORAND (random seed disabled)" OFF)
 option(buildPCL "build point-cloud-library tools" OFF)
 option(buildQt "build Qt tools" OFF)
 option(buildTests "build unit tests exercised by make test" ON)
+
+# The program tests are Julia scripts (test/mbtest.jl is their shared helper). ctest runs each with
+# julia from the directory the script is in (where its testdata/ lives), MB_BUILD_DIR naming this
+# build. mb_julia_test(<name> [<subdir>]) registers <subdir>/<name>.jl of the calling directory.
+# Without julia on PATH they are not registered.
+if(buildTests)
+  find_program(JULIA_EXECUTABLE julia)
+  if(NOT JULIA_EXECUTABLE)
+    message(STATUS "julia not found: the program tests (*_test.jl) are not registered")
+  endif()
+endif()
+function(mb_julia_test name)
+  if(JULIA_EXECUTABLE)
+    set(dir "${CMAKE_CURRENT_SOURCE_DIR}")
+    if(ARGC GREATER 1)
+      set(dir "${CMAKE_CURRENT_SOURCE_DIR}/${ARGV1}")
+    endif()
+    add_test(NAME ${name}
+             COMMAND ${JULIA_EXECUTABLE} --startup-file=no ${dir}/${name}.jl
+             WORKING_DIRECTORY ${dir})
+    set_tests_properties(${name} PROPERTIES ENVIRONMENT "MB_BUILD_DIR=${CMAKE_BINARY_DIR}")
+  endif()
+endfunction()
 # Default location of the OTPS (OSU Tidal Prediction Software) package, used
 # by mbotps and reported by mbconfig. OTPS is a separate third-party
 # distribution, so this is only a starting guess; override it with
@@ -386,6 +409,28 @@ add_subdirectory(src/otps)
 # mbnavadjustfine) are gated internally by that directory's own
 # CMakeLists.txt via buildGUIs.
 add_subdirectory(src/mbnavadjust)
+
+# The core libraries export only what leaves them: the functions and variables declared with their
+# <LIB>_API macro (src/*/*_export.h) -- what the other MB-System libraries, programs and GMT modules
+# use, and what a host such as InteractiveGMT reaches by name through its FFI. So they are kept out of
+# the MSVC export-everything default set above (CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS), and MinGW stops
+# exporting everything the moment a library has one dllexport -- both toolchains export the same set.
+# A static build defines <LIB>_STATIC, which empties the macros.
+if(WIN32)
+  foreach(pair mbio:MBIO mbaux:MBAUX mb_xdr_win32:MBXDR mbgsf:MBGSF mbbsio:MBBSIO mbsapi:MBSAPI
+               mbbitpack:MBBITPACK mbnavadjust_core:MBNAVADJUST)
+    string(REPLACE ":" ";" pair "${pair}")
+    list(GET pair 0 lib)
+    list(GET pair 1 macro)
+    if(TARGET ${lib})
+      set_target_properties(${lib} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS OFF)
+      get_target_property(kind ${lib} TYPE)
+      if(NOT kind STREQUAL "SHARED_LIBRARY")
+        target_compile_definitions(${lib} PUBLIC ${macro}_STATIC)
+      endif()
+    endif()
+  endforeach()
+endif()
 if(buildGUIs)
   add_subdirectory(src/mbview)
   add_subdirectory(src/mbedit)

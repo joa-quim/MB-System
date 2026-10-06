@@ -100,10 +100,9 @@
  *              Note: as I was writing this code the Flyer was refloated
  *              and successfully backed off the reef.
  *
- * GMT-module rewrite of mbabsorption.cc: wrapped as GMT_mbabsorption entry
- * so it can be invoked from the GMT API (Julia FFI / Matlab MEX).
- * Single-letter options (-C, -D, -F, -P, -S, -T, -V, -H) map directly to
- * GMT_OPTION entries — no getopt_long lookup table required.
+ * GMT-module port of src/utilities/mbabsorption.cc: options parsed in parse() from GMT's option
+ * list, the program's long options kept through module_kw and its lower-case aliases kept; the
+ * result printed through the GMT API (mb_gmt_text.c); every Return() a GMT error code.
  */
 
 #define THIS_MODULE_NAME		"mbabsorption"
@@ -111,7 +110,7 @@
 #define THIS_MODULE_PURPOSE		"Compute absorption of sound in sea water (dB/km) from frequency, T, S, c, pH, depth"
 #define THIS_MODULE_KEYS		">D}"
 #define THIS_MODULE_NEEDS		""
-#define THIS_MODULE_OPTIONS		"-:>Vh"
+#define THIS_MODULE_OPTIONS		"->V"
 
 #include "gmt_dev.h"
 
@@ -121,6 +120,7 @@
 
 #include "mb_define.h"
 #include "mb_status.h"
+#include "mb_gmt_text.h"
 
 static const char help_message[] =
     "MBabsorption calculates the absorption of sound in sea water\n"
@@ -132,6 +132,7 @@ static const char usage_message[] =
 /* --- Control structure ---------------------------------------------- */
 
 struct MBABSORPTION_CTRL {
+	int verbose;	/* the program's -V/-v count */
 	struct mba_C { bool active; double soundspeed; } C;
 	struct mba_D { bool active; double depth;      } D;
 	struct mba_F { bool active; double frequency;  } F;
@@ -139,6 +140,20 @@ struct MBABSORPTION_CTRL {
 	struct mba_P { bool active; double ph;         } P;
 	struct mba_S { bool active; double salinity;   } S;
 	struct mba_T { bool active; double temperature;} T;
+};
+
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "sound-speed", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "depth",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "frequency",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "ph",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "salinity",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "temperature", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
 };
 
 static void *New_mbabsorption_Ctrl(struct GMT_CTRL *GMT) {
@@ -162,7 +177,7 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "\n%s\n\n", help_message);
 	GMT_Message(API, GMT_TIME_NONE,
 		"\t-C Speed of sound (m/sec). Default: derived from T, S, D.\n"
@@ -171,88 +186,58 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 		"\t-P pH. Default: 8.\n"
 		"\t-S Salinity (per mil). Default: 35.\n"
 		"\t-T Temperature (deg C). Default: 10.\n"
-		"\t-H Print description and exit.\n");
-	GMT_Option(API, "V,:");
-	return GMT_PARSE_ERROR;
+		"\t-H Print description and exit.\n"
+		"\tEvery option also has the program's lower-case and long forms (--sound-speed, --depth,\n"
+		"\t--frequency, --ph, --salinity, --temperature, --verbose, --help).\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
+}
+
+/* one -X<value> option of the program: a number, or a syntax error */
+static unsigned int mba_number(struct GMTAPI_CTRL *API, struct GMT_OPTION *opt, const char *what, double *value, bool *active) {
+	if (opt->arg && opt->arg[0] && sscanf(opt->arg, "%lf", value) == 1) {
+		*active = true;
+		return 0;
+	}
+	GMT_Report(API, GMT_MSG_ERROR, "Syntax error -%c option: expected %s\n", opt->option, what);
+	return 1;
 }
 
 static int parse(struct GMT_CTRL *GMT, struct MBABSORPTION_CTRL *Ctrl, struct GMT_OPTION *options) {
 	unsigned int n_errors = 0;
-	struct GMT_OPTION *opt;
 	struct GMTAPI_CTRL *API = GMT->parent;
 
-	for (opt = options; opt; opt = opt->next) {
+	for (struct GMT_OPTION *opt = options; opt; opt = opt->next) {
 		switch (opt->option) {
-		case 'C':
-			if (opt->arg && opt->arg[0] && sscanf(opt->arg, "%lf", &Ctrl->C.soundspeed) == 1)
-				Ctrl->C.active = true;
-			else {
-				GMT_Report(API, GMT_MSG_NORMAL, "Syntax -C option: expected soundspeed (m/sec)\n");
-				{ GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
-			}
-			break;
-		case 'D':
-			if (opt->arg && opt->arg[0] && sscanf(opt->arg, "%lf", &Ctrl->D.depth) == 1)
-				Ctrl->D.active = true;
-			else {
-				GMT_Report(API, GMT_MSG_NORMAL, "Syntax -D option: expected depth (m)\n");
-				{ GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
-			}
-			break;
-		case 'F':
-			if (opt->arg && opt->arg[0] && sscanf(opt->arg, "%lf", &Ctrl->F.frequency) == 1)
-				Ctrl->F.active = true;
-			else {
-				GMT_Report(API, GMT_MSG_NORMAL, "Syntax -F option: expected frequency (kHz)\n");
-				{ GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
-			}
-			break;
-		case 'H':
-			Ctrl->H.active = true;
-			break;
-		case 'P':
-			if (opt->arg && opt->arg[0] && sscanf(opt->arg, "%lf", &Ctrl->P.ph) == 1)
-				Ctrl->P.active = true;
-			else {
-				GMT_Report(API, GMT_MSG_NORMAL, "Syntax -P option: expected pH\n");
-				{ GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
-			}
-			break;
-		case 'S':
-			if (opt->arg && opt->arg[0] && sscanf(opt->arg, "%lf", &Ctrl->S.salinity) == 1)
-				Ctrl->S.active = true;
-			else {
-				GMT_Report(API, GMT_MSG_NORMAL, "Syntax -S option: expected salinity (per mil)\n");
-				{ GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
-			}
-			break;
-		case 'T':
-			if (opt->arg && opt->arg[0] && sscanf(opt->arg, "%lf", &Ctrl->T.temperature) == 1)
-				Ctrl->T.active = true;
-			else {
-				GMT_Report(API, GMT_MSG_NORMAL, "Syntax -T option: expected temperature (deg C)\n");
-				{ GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
-			}
-			break;
+		case 'V': case 'v': Ctrl->verbose++; break;
+		case 'H': case 'h': Ctrl->H.active = true; break;
+		case 'C': case 'c': n_errors += mba_number(API, opt, "soundspeed (m/sec)", &Ctrl->C.soundspeed, &Ctrl->C.active); break;
+		case 'D': case 'd': n_errors += mba_number(API, opt, "depth (m)", &Ctrl->D.depth, &Ctrl->D.active); break;
+		case 'F': case 'f': n_errors += mba_number(API, opt, "frequency (kHz)", &Ctrl->F.frequency, &Ctrl->F.active); break;
+		case 'P': case 'p': n_errors += mba_number(API, opt, "pH", &Ctrl->P.ph, &Ctrl->P.active); break;
+		case 'S': case 's': n_errors += mba_number(API, opt, "salinity (per mil)", &Ctrl->S.salinity, &Ctrl->S.active); break;
+		case 'T': case 't': n_errors += mba_number(API, opt, "temperature (deg C)", &Ctrl->T.temperature, &Ctrl->T.active); break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code)  { gmt_M_free_options(mode); return code; }
-#define Return(code)   { Free_mbabsorption_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code)   { if (T) mb_gmt_text_end(T); Free_mbabsorption_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 
 EXTERN_MSC int GMT_mbabsorption(void *API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
 int GMT_mbabsorption(void *V_API, int mode, void *args) {
 	int error = MB_ERROR_NO_ERROR;
+	int gmt_error;
 
 	struct MBABSORPTION_CTRL *Ctrl = NULL;
+	struct MB_GMT_TEXT   *T = NULL;
 	struct GMT_CTRL      *GMT  = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION    *options = NULL;
 	struct GMTAPI_CTRL   *API = gmt_get_api_ptr(V_API);
@@ -261,23 +246,17 @@ int GMT_mbabsorption(void *V_API, int mode, void *args) {
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
-	if (!options || options->option == GMT_OPT_USAGE)   bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS)            bailout(usage(API, GMT_SYNOPSIS));
+	/* 1: no options is a run of the program (absorption at its default conditions) */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 
-#if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
-#else
-	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
-#endif
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = New_mbabsorption_Ctrl(GMT);
-	if ((error = parse(GMT, Ctrl, options))) Return(error);
+	if ((gmt_error = parse(GMT, Ctrl, options)) != GMT_NOERROR) Return(gmt_error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
-	int verbose = GMT->common.V.active;
-	if (GMT->current.setting.verbose >= GMT_MSG_DEBUG) verbose = 2;
-
-	const bool   help        = Ctrl->H.active;
+	const int verbose = Ctrl->verbose;
 	const double frequency   = Ctrl->F.frequency;
 	const double temperature = Ctrl->T.temperature;
 	const double salinity    = Ctrl->S.salinity;
@@ -285,30 +264,17 @@ int GMT_mbabsorption(void *V_API, int mode, void *args) {
 	const double depth       = Ctrl->D.depth;
 	const double ph          = Ctrl->P.ph;
 
-	if (verbose == 1 || help) {
-		GMT_Report(API, GMT_MSG_NORMAL, "\nProgram %s\n", THIS_MODULE_NAME);
-		GMT_Report(API, GMT_MSG_NORMAL, "MB-system Version %s\n", MB_VERSION);
-	}
-
 	if (verbose >= 2) {
-		GMT_Report(API, GMT_MSG_NORMAL, "\ndbg2  Program <%s>\n", THIS_MODULE_NAME);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  MB-system Version %s\n", MB_VERSION);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Control Parameters:\n");
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       verbose:    %d\n", verbose);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       help:       %d\n", (int)help);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       frequency:  %f\n", frequency);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       temperature:%f\n", temperature);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       salinity:   %f\n", salinity);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       soundspeed: %f\n", soundspeed);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       depth:      %f\n", depth);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       ph:         %f\n", ph);
-	}
-
-	/* if help desired then print it and exit */
-	if (help) {
-		GMT_Report(API, GMT_MSG_NORMAL, "\n%s\n", help_message);
-		GMT_Report(API, GMT_MSG_NORMAL, "\nusage: %s\n", usage_message);
-		Return(MB_ERROR_NO_ERROR);
+		fprintf(stderr, "\ndbg2  Program <%s>\n", THIS_MODULE_NAME);
+		fprintf(stderr, "dbg2  MB-system Version %s\n", MB_VERSION);
+		fprintf(stderr, "dbg2  Control Parameters:\n");
+		fprintf(stderr, "dbg2       verbose:    %d\n", verbose);
+		fprintf(stderr, "dbg2       frequency:  %f\n", frequency);
+		fprintf(stderr, "dbg2       temperature:%f\n", temperature);
+		fprintf(stderr, "dbg2       salinity:   %f\n", salinity);
+		fprintf(stderr, "dbg2       soundspeed: %f\n", soundspeed);
+		fprintf(stderr, "dbg2       depth:      %f\n", depth);
+		fprintf(stderr, "dbg2       ph:         %f\n", ph);
 	}
 
 	/* call function to calculate absorption */
@@ -319,31 +285,42 @@ int GMT_mbabsorption(void *V_API, int mode, void *args) {
 	const double pressure = 1.006 * depth;  /* depth (m) */
 	status &= mb_seabird_density(verbose, salinity, temperature, pressure, &density, &error);
 
+	/* the result: what the program prints on stdout, through the GMT API */
+	if ((T = mb_gmt_text_begin(GMT, options)) == NULL) Return(API->error);
 	if (verbose > 0) {
-		fprintf(stdout, "\nProgram <%s>\n", THIS_MODULE_NAME);
-		fprintf(stdout, "MB-system Version %s\n", MB_VERSION);
-		fprintf(stdout, "Input Parameters:\n");
-		fprintf(stdout, "     Frequency:        %f kHz\n", frequency);
-		fprintf(stdout, "     Temperature:      %f deg C\n", temperature);
-		fprintf(stdout, "     Salinity:         %f per mil\n", salinity);
+		mb_gmt_text_put(T, "\nProgram <%s>\n", THIS_MODULE_NAME);
+		mb_gmt_text_put(T, "MB-system Version %s\n", MB_VERSION);
+		mb_gmt_text_put(T, "Input Parameters:\n");
+		mb_gmt_text_put(T, "     Frequency:        %f kHz\n", frequency);
+		mb_gmt_text_put(T, "     Temperature:      %f deg C\n", temperature);
+		mb_gmt_text_put(T, "     Salinity:         %f per mil\n", salinity);
 		if (soundspeed > 0.0)
-			fprintf(stdout, "     Soundspeed:       %f m/sec\n", soundspeed);
-		fprintf(stdout, "     Depth:            %f m\n", depth);
-		fprintf(stdout, "     pH:               %f\n", ph);
-		fprintf(stdout, "Result:\n");
-		fprintf(stdout, "     Sound absorption: %f dB/km\n", absorption);
-		fprintf(stdout, "     Density:          %f kg/m3\n", density);
+			mb_gmt_text_put(T, "     Soundspeed:       %f m/sec\n", soundspeed);
+		mb_gmt_text_put(T, "     Depth:            %f m\n", depth);
+		mb_gmt_text_put(T, "     pH:               %f\n", ph);
+		mb_gmt_text_put(T, "Result:\n");
+		mb_gmt_text_put(T, "     Sound absorption: %f dB/km\n", absorption);
+		mb_gmt_text_put(T, "     Density:          %f kg/m3\n", density);
 	}
 	else {
-		fprintf(stdout, "%f\n", absorption);
+		mb_gmt_text_put(T, "%f\n", absorption);
 	}
+	const int output_failed = mb_gmt_text_end(T);
+	T = NULL;
+	if (output_failed) Return(GMT_RUNTIME_ERROR);
 
 	if (verbose >= 2) {
-		fprintf(stdout, "\ndbg2  Program <%s> completed\n", THIS_MODULE_NAME);
-		fprintf(stdout, "dbg2  Ending status:\n");
-		fprintf(stdout, "dbg2       status:  %d\n", status);
+		fprintf(stderr, "\ndbg2  Program <%s> completed\n", THIS_MODULE_NAME);
+		fprintf(stderr, "dbg2  Ending status:\n");
+		fprintf(stderr, "dbg2       status:  %d\n", status);
 	}
 
-	Return(error);
+	if (error != MB_ERROR_NO_ERROR) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

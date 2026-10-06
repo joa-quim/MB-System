@@ -35,6 +35,7 @@
 
 #ifndef MB_AUX_H_
 #define MB_AUX_H_
+#include "mbaux_export.h"
 
 /* Avoid conflict with GDAL */
 #undef PACKAGE_BUGREPORT
@@ -191,8 +192,8 @@ extern "C" {
 #endif
 
 /* mb_contour and mb_track function prototypes */
-int mb_triangulate(int verbose, struct swath *data, int *error);
-int mb_contour_init(int verbose, struct swath **data, int npings_max, int beams_bath, int contour_algorithm, int plot_contours,
+MBAUX_API int mb_triangulate(int verbose, struct swath *data, int *error);
+MBAUX_API int mb_contour_init(int verbose, struct swath **data, int npings_max, int beams_bath, int contour_algorithm, int plot_contours,
                     int plot_triangles, int plot_track, int plot_name, int plot_pingnumber, double contour_int, double color_int,
                     double tick_int, double label_int, double tick_len, double label_hgt, double label_spacing, int ncolor,
                     int nlevel, double *level_list, int *label_list, int *tick_list, double time_tick_int, double time_annot_int,
@@ -201,11 +202,11 @@ int mb_contour_init(int verbose, struct swath **data, int npings_max, int beams_
                     void (*contour_newpen)(int), void (*contour_setline)(int),
                     void (*contour_justify_string)(double, char *, double *),
                     void (*contour_plot_string)(double, double, double, double, char *), int *error);
-int mb_contour_deall(int verbose, struct swath *data, int *error);
-int mb_contour(int verbose, struct swath *data, int *error);
-void mb_track(int verbose, struct swath *data, int *error);
-void mb_trackpingnumber(int verbose, struct swath *data, int *error);
-void mb_trackname(int verbose, bool perpendicular, struct swath *data, char *file, int *error);
+MBAUX_API int mb_contour_deall(int verbose, struct swath *data, int *error);
+MBAUX_API int mb_contour(int verbose, struct swath *data, int *error);
+MBAUX_API void mb_track(int verbose, struct swath *data, int *error);
+MBAUX_API void mb_trackpingnumber(int verbose, struct swath *data, int *error);
+MBAUX_API void mb_trackname(int verbose, bool perpendicular, struct swath *data, char *file, int *error);
 
 /* pslibface function prototypes */
 int mb_plot_init(int verbose, int argc, char **argv, double *bounds_use, double *scale, double *inch2lon, int *error);
@@ -221,24 +222,24 @@ void mb_plot_string(double x, double y, double hgt, double angle, char *label);
 /* mb_surface function prototypes */
 int mb_surface(int verbose, int ndat, float *xdat, float *ydat, float *zdat, double xxmin, double xxmax, double yymin,
                double yymax, double xxinc, double yyinc, double ttension, float *sgrid);
-int mb_zgrid(float *z, int *n_columns, int *n_rows, float *x1, float *y1, float *dx, float *dy, float *xyz, int *n, float *zpij, int *knxt,
+MBAUX_API int mb_zgrid(float *z, int *n_columns, int *n_rows, float *x1, float *y1, float *dx, float *dy, float *xyz, int *n, float *zpij, int *knxt,
              bool *imnew, float *cay, int *nrng);
-int mb_zgrid2(float *z, int *n_columns, int *n_rows, float *x1, float *y1, float *dx, float *dy, float *xyz, int *n, float *zpij, int *knxt,
+MBAUX_API int mb_zgrid2(float *z, int *n_columns, int *n_rows, float *x1, float *y1, float *dx, float *dy, float *xyz, int *n, float *zpij, int *knxt,
               bool *imnew, float *cay, int *nrng);
 
 /* mb_delaun function prototypes */
-int mb_delaun(int verbose, int npts, double *p1, double *p2, int *ed, int *ntri, int *iv1, int *iv2, int *iv3, int *ct1, int *ct2,
+MBAUX_API int mb_delaun(int verbose, int npts, double *p1, double *p2, int *ed, int *ntri, int *iv1, int *iv2, int *iv3, int *ct1, int *ct2,
               int *ct3, int *cs1, int *cs2, int *cs3, double *v1, double *v2, double *v3, int *istack, int *kv1, int *kv2,
               int *error);
 
 /* mb_readwritegrd function prototypes */
-int mb_check_gmt_grd(int verbose, char *grdfile, int *grid_projection_mode, char *grid_projection_id, float *nodatavalue, int *nxy,
+MBAUX_API int mb_check_gmt_grd(int verbose, char *grdfile, int *grid_projection_mode, char *grid_projection_id, float *nodatavalue, int *nxy,
                     int *n_columns, int *n_rows, double *min, double *max, double *xmin, double *xmax, double *ymin, double *ymax,
                     double *dx, double *dy, int *error);
-int mb_read_gmt_grd(int verbose, char *grdfile, int *grid_projection_mode, char *grid_projection_id, float *nodatavalue, int *nxy,
+MBAUX_API int mb_read_gmt_grd(int verbose, char *grdfile, int *grid_projection_mode, char *grid_projection_id, float *nodatavalue, int *nxy,
                     int *n_columns, int *n_rows, double *min, double *max, double *xmin, double *xmax, double *ymin, double *ymax,
                     double *dx, double *dy, float **data, float **data_dzdx, float **data_dzdy, int *error);
-int mb_write_gmt_grd(int verbose, const char *grdfile, float *grid,
+MBAUX_API int mb_write_gmt_grd(int verbose, const char *grdfile, float *grid,
                       float nodatavalue, int n_columns, int n_rows,
                       double xmin, double xmax, double ymin, double ymax,
                       double zmin, double zmax, double dx, double dy,
@@ -257,14 +258,14 @@ void lspeig(const double *a, const int *ia, const int *nia, int nnz, int nc, int
             double *w, double *smax, double *err, double *sup);
 
 /* mb_topogrid function prototypes */
-int mb_topogrid_init(int verbose, mb_path topogridfile, int *lonflip, void **topogrid_ptr, int *error);
-int mb_topogrid_deall(int verbose, void **topogrid_ptr, int *error);
+MBAUX_API int mb_topogrid_init(int verbose, mb_path topogridfile, int *lonflip, void **topogrid_ptr, int *error);
+MBAUX_API int mb_topogrid_deall(int verbose, void **topogrid_ptr, int *error);
 int mb_topogrid_bounds(int verbose, void *topogrid_ptr, double bounds[4], int *error);
-int mb_topogrid_topo(int verbose, void *topogrid_ptr, double navlon, double navlat, double *topo, int *error);
+MBAUX_API int mb_topogrid_topo(int verbose, void *topogrid_ptr, double navlon, double navlat, double *topo, int *error);
 int mb_topogrid_intersect(int verbose, void *topogrid_ptr, double navlon, double navlat, double altitude, double sensordepth,
                           double mtodeglon, double mtodeglat, double vx, double vy, double vz, double *lon, double *lat,
                           double *topo, double *range, int *error);
-int mb_topogrid_getangletable(int verbose, void *topogrid_ptr, int nangle, double angle_min, double angle_max, double navlon,
+MBAUX_API int mb_topogrid_getangletable(int verbose, void *topogrid_ptr, int nangle, double angle_min, double angle_max, double navlon,
                               double navlat, double heading, double altitude, double sensordepth, double pitch,
                               double *table_angle, double *table_xtrack, double *table_ltrack, double *table_altitude,
                               double *table_range, int *error);
@@ -276,7 +277,7 @@ int mb_topogrid_getangletable(int verbose, void *topogrid_ptr, int nangle, doubl
 */
 void mb_aprod(int mode, int m, int n, double x[], double y[], void *UsrWrk);
 
-void mblsqr_lsqr(int m, int n, void (*aprod)(int mode, int m, int n, double x[], double y[], void *UsrWrk), double damp,
+MBAUX_API void mblsqr_lsqr(int m, int n, void (*aprod)(int mode, int m, int n, double x[], double y[], void *UsrWrk), double damp,
                  void *UsrWrk,
                  double u[],  // len = m
                  double v[],  // len = n

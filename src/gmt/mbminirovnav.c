@@ -33,11 +33,10 @@
  * Date:  7 September, 2017
  */
 /*
- * GMT-module port of src/utilities/mbminirovnav.cc. The program's getopt_long() option loop
- * is kept as it is, running on the reentrant mb_getopt_long() (the state
- * lives in a local structure, so the module can run any number of times in
- * one GMT session), and main() becomes GMT_mbminirovnav(), with every exit()
- * turned into Return().
+ * GMT-module port of src/utilities/mbminirovnav.cc: the program's long options come from GMT's
+ * option list through module_kw (each with a short letter, the program having none), main()
+ * becomes GMT_mbminirovnav() and every exit() a Return() with a GMT error code. Its result is the
+ * program's own output file; its messages go to stderr.
  */
 
 #define THIS_MODULE_NAME "mbminirovnav"
@@ -68,8 +67,6 @@
 #include "mb_io.h"
 #include "mb_process.h"
 #include "mb_status.h"
-
-#include "mb_getopt.h"
 
 static const char program_name[] = "mbminirovnav";
 static const char help_message[] =
@@ -115,69 +112,60 @@ static int GetNumRecords(FILE *fp) {
 
 /* --- GMT front end ---------------------------------------------------- */
 
+/* Translation table from the program's long options to short ones. The program has no short
+ * options at all, so each long option gets a free letter (none of GMT's common ones). */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'H', "help",                 "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "input-nav-file",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "input-ctd-file",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "input-dvl-file",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Q', "input-rov-file",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "interpolate-position", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "interval",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "rov-dive-start",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'E', "rov-dive-end",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'U', "utm-zone",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'v', "verbose",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
-	return GMT_PARSE_ERROR;
+	GMT_Message(API, GMT_TIME_NONE, "Short forms of the long options: -H help, -I input, -N input-nav-file, -C input-ctd-file,\n"
+	                                "-D input-dvl-file, -Q input-rov-file, -P interpolate-position, -T interval, -O output,\n"
+	                                "-S rov-dive-start, -E rov-dive-end, -U utm-zone, -v verbose.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
-/* The options GMT itself should see: -V (verbosity) and -I (the input the
- * module keys bind). Everything else, long options included, is parsed by
- * the program's own option loop below. */
-static char *mb_gmt_options_string(int argc, char **argv) {
-	size_t total = 1;
-	for (int i = 1; i < argc; i++)
-		total += strlen(argv[i]) + 1;
-	char *s = (char *)calloc(total + 8, 1);
-	if (s == NULL)
-		return NULL;
-	for (int i = 1; i < argc; i++) {
-		if (argv[i][0] == '-' && (argv[i][1] == 'V' || (argv[i][1] == 'I' && argv[i][2] != '\0'))) {
-			if (s[0] != '\0')
-				strcat(s, " ");
-			strcat(s, argv[i]);
-		}
-	}
-	return s;
-}
-
-/* gmt_M_free_options() hard-codes a variable named "options", which the
-   program's own option table shadows here, so destroy gmt_options directly */
-#define bailout(code) { mb_getopt_args_free(argc, argv); free(gmt_args); GMT_Destroy_Options(API, &gmt_options); return (code); }
+#define bailout(code) { gmt_M_free_options(mode); return code; }
 #define Return(code) { gmt_end_module(GMT, GMT_cpy); bailout(code); }
-EXTERN_MSC int GMT_mbminirovnav(void *V_API, int gmt_mode, void *args);
+EXTERN_MSC int GMT_mbminirovnav(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
 
-int GMT_mbminirovnav(void *V_API, int gmt_mode, void *args) {
+int GMT_mbminirovnav(void *V_API, int mode, void *args) {
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
-	struct GMT_OPTION *gmt_options = NULL;
-	char *gmt_args = NULL;
-	char **argv = NULL;
-	int argc = 0;
-	struct mb_getopt_state getopt_state;
-	mb_getopt_init(&getopt_state);
+	struct GMT_OPTION *options = NULL;
+	int gmt_error;
 
-	if (!API) return GMT_NOT_A_SESSION;
-	if (gmt_mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-
-	/* the program's own argv[], whatever shape GMT handed us */
-	argc = mb_getopt_args_build(THIS_MODULE_NAME, gmt_mode, args, &argv);
-	if (argc == 2 && (strcmp(argv[1], "-") == 0 || strcmp(argv[1], "?") == 0))
-		bailout(usage(API, GMT_USAGE));
-	if (argc == 2 && strcmp(argv[1], "+") == 0)
-		bailout(usage(API, GMT_SYNOPSIS));
-
-	gmt_args = mb_gmt_options_string(argc, argv);
-	gmt_options = GMT_Create_Options(API, GMT_MODULE_CMD, (gmt_args != NULL && gmt_args[0] != '\0') ? gmt_args : NULL);
-	if (API->error) bailout(API->error);
+	if (API == NULL) return GMT_NOT_A_SESSION;
+	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a run of the program (nothing to read, nothing written) */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &gmt_options, &GMT_cpy)) == NULL) bailout(API->error);
-	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, gmt_options)) Return(API->error);
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
   /* ROV dive time start and end */
   bool rov_dive_start_time_set = false;
@@ -203,121 +191,109 @@ int GMT_mbminirovnav(void *V_API, int gmt_mode, void *args) {
   mb_path output_file = "";
 
   {
-    static struct mb_getopt_option options[] = {
-      {"help", mb_no_argument, NULL, 0},
-      {"input", mb_required_argument, NULL, 0},
-      {"input-nav-file", mb_required_argument, NULL, 0},
-      {"input-ctd-file", mb_required_argument, NULL, 0},
-      {"input-dvl-file", mb_required_argument, NULL, 0},
-      {"input-rov-file", mb_required_argument, NULL, 0},
-      {"interpolate-position", mb_no_argument, NULL, 0},
-      {"interval", mb_required_argument, NULL, 0},
-      {"output", mb_required_argument, NULL, 0},
-      {"rov-dive-start", mb_required_argument, NULL, 0},
-      {"rov-dive-end", mb_required_argument, NULL, 0},
-      {"utm-zone", mb_required_argument, NULL, 0},
-      {"verbose", mb_no_argument, NULL, 0},
-      {NULL, 0, NULL, 0}};
-
-    int option_index;
     bool errflg = false;
-    int c;
     bool help = false;
-    while ((c = mb_getopt_long(&getopt_state, argc, argv, "", options, &option_index)) != -1)
+    /* the program's (long-only) options from GMT's option list, through module_kw */
+    for (struct GMT_OPTION *opt = options; opt; opt = opt->next)
     {
-      switch (c) {
-        /* long options all return c=0 */
-        case 0:
-          if (strcmp("verbose", options[option_index].name) == 0) {
-            verbose++;
-          } else if (strcmp("help", options[option_index].name) == 0) {
-            help = true;
-          }
-          // Define input and output files
-          else if (strcmp("input-nav-file", options[option_index].name) == 0) {
-            snprintf(input_nav_file, sizeof(mb_path), "%s", getopt_state.optarg);
-          } else if (strcmp("input-rov-file", options[option_index].name) == 0) {
-            snprintf(input_rov_file, sizeof(mb_path), "%s", getopt_state.optarg);
-          } else if (strcmp("input-ctd-file", options[option_index].name) == 0) {
-            snprintf(input_ctd_file, sizeof(mb_path), "%s", getopt_state.optarg);
-          } else if (strcmp("input-dvl-file", options[option_index].name) == 0) {
-            snprintf(input_dvl_file, sizeof(mb_path), "%s", getopt_state.optarg);
-          } else if (strcmp("output", options[option_index].name) == 0) {
-            snprintf(output_file, sizeof(mb_path), "%s", getopt_state.optarg);
-          } else if (strcmp("interval", options[option_index].name) == 0) {
-            /* const int nscan = */ sscanf(getopt_state.optarg, "%lf", &interval);
-            if (interval <= 0.0) {
-              fprintf(stderr,"Program %s command error: %s %s\n\toutput interval reset to 1.0 seconds\n",
-                      program_name, options[option_index].name, getopt_state.optarg);
-            }
-          } else if (strcmp("rov-dive-start", options[option_index].name) == 0) {
-            const int nscan = sscanf(getopt_state.optarg, "%d/%d/%d/%d/%d/%d", &rov_dive_start_time_i[0],
-                           &rov_dive_start_time_i[1], &rov_dive_start_time_i[2],
-                           &rov_dive_start_time_i[3], &rov_dive_start_time_i[4],
-                           &rov_dive_start_time_i[5]);
-            if (nscan == 6) {
-              rov_dive_start_time_i[6] = 0;
-              mb_get_time(verbose, rov_dive_start_time_i, &rov_dive_start_time_d);
-              rov_dive_start_time_set = true;
-            } else {
-              fprintf(stderr,"Program %s command error: %s %s\n",
-                      program_name, options[option_index].name, getopt_state.optarg);
-            }
-          } else if (strcmp("rov-dive-end", options[option_index].name) == 0) {
-            const int nscan = sscanf(getopt_state.optarg, "%d/%d/%d/%d/%d/%d", &rov_dive_end_time_i[0],
-                           &rov_dive_end_time_i[1], &rov_dive_end_time_i[2],
-                           &rov_dive_end_time_i[3], &rov_dive_end_time_i[4],
-                           &rov_dive_end_time_i[5]);
-            if (nscan == 6) {
-              rov_dive_end_time_i[6] = 0;
-              mb_get_time(verbose, rov_dive_end_time_i, &rov_dive_end_time_d);
-              rov_dive_end_time_set = true;
-            } else {
-              fprintf(stderr,"Program %s command error: %s %s\n",
-                      program_name, options[option_index].name, getopt_state.optarg);
-            }
-          } else if (strcmp("utm-zone", options[option_index].name) == 0) {
-            int nscan = sscanf(getopt_state.optarg, "%d/%c", &utm_zone, &NorS);
-            if (nscan < 2)
-              nscan = sscanf(getopt_state.optarg, "%d%c", &utm_zone, &NorS);
-            if (nscan == 2) {
-              utm_zone_set = true;
-              if (NorS == 'N' || NorS == 'n')
-                snprintf(projection_id, sizeof(projection_id), "UTM%2.2dN", utm_zone);
-              else if (NorS == 'S' || NorS == 's')
-                snprintf(projection_id, sizeof(projection_id), "UTM%2.2dS", utm_zone);
-              else
-                snprintf(projection_id, sizeof(projection_id), "UTM%2.2dN", utm_zone);
-            } else {
-              fprintf(stderr,"Program %s command error: %s %s\n",
-                      program_name, options[option_index].name, getopt_state.optarg);
-            }
-          }
-          // Over gaps in USBL fixes (rather than repeat position values)
-          else if (strcmp("interpolate-position", options[option_index].name) == 0) {
-            interpolate_position = true;
+      switch (opt->option) {
+        case 'V':
+        case 'v':
+          verbose++;
+          break;
+        case 'H':
+          help = true;
+          break;
+        case 'I':	/* in the program's option table, but it does nothing there either */
+          break;
+        // Define input and output files
+        case 'N':
+          snprintf(input_nav_file, sizeof(mb_path), "%s", opt->arg);
+          break;
+        case 'Q':
+          snprintf(input_rov_file, sizeof(mb_path), "%s", opt->arg);
+          break;
+        case 'C':
+          snprintf(input_ctd_file, sizeof(mb_path), "%s", opt->arg);
+          break;
+        case 'D':
+          snprintf(input_dvl_file, sizeof(mb_path), "%s", opt->arg);
+          break;
+        case 'O':
+          snprintf(output_file, sizeof(mb_path), "%s", opt->arg);
+          break;
+        case 'T':
+          /* const int nscan = */ sscanf(opt->arg, "%lf", &interval);
+          if (interval <= 0.0) {
+            GMT_Report(API, GMT_MSG_WARNING, "Command error: interval %s\n\toutput interval reset to 1.0 seconds\n", opt->arg);
           }
           break;
-        case '?':
-          errflg = true;
+        case 'S':
+        {
+          const int nscan = sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &rov_dive_start_time_i[0],
+                         &rov_dive_start_time_i[1], &rov_dive_start_time_i[2],
+                         &rov_dive_start_time_i[3], &rov_dive_start_time_i[4],
+                         &rov_dive_start_time_i[5]);
+          if (nscan == 6) {
+            rov_dive_start_time_i[6] = 0;
+            mb_get_time(verbose, rov_dive_start_time_i, &rov_dive_start_time_d);
+            rov_dive_start_time_set = true;
+          } else {
+            GMT_Report(API, GMT_MSG_WARNING, "Command error: rov-dive-start %s\n", opt->arg);
+          }
+          break;
+        }
+        case 'E':
+        {
+          const int nscan = sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &rov_dive_end_time_i[0],
+                         &rov_dive_end_time_i[1], &rov_dive_end_time_i[2],
+                         &rov_dive_end_time_i[3], &rov_dive_end_time_i[4],
+                         &rov_dive_end_time_i[5]);
+          if (nscan == 6) {
+            rov_dive_end_time_i[6] = 0;
+            mb_get_time(verbose, rov_dive_end_time_i, &rov_dive_end_time_d);
+            rov_dive_end_time_set = true;
+          } else {
+            GMT_Report(API, GMT_MSG_WARNING, "Command error: rov-dive-end %s\n", opt->arg);
+          }
+          break;
+        }
+        case 'U':
+        {
+          int nscan = sscanf(opt->arg, "%d/%c", &utm_zone, &NorS);
+          if (nscan < 2)
+            nscan = sscanf(opt->arg, "%d%c", &utm_zone, &NorS);
+          if (nscan == 2) {
+            utm_zone_set = true;
+            if (NorS == 'N' || NorS == 'n')
+              snprintf(projection_id, sizeof(projection_id), "UTM%2.2dN", utm_zone);
+            else if (NorS == 'S' || NorS == 's')
+              snprintf(projection_id, sizeof(projection_id), "UTM%2.2dS", utm_zone);
+            else
+              snprintf(projection_id, sizeof(projection_id), "UTM%2.2dN", utm_zone);
+          } else {
+            GMT_Report(API, GMT_MSG_WARNING, "Command error: utm-zone %s\n", opt->arg);
+          }
+          break;
+        }
+        // Over gaps in USBL fixes (rather than repeat position values)
+        case 'P':
+          interpolate_position = true;
+          break;
+        default:
+          errflg |= (gmt_default_option_error(GMT, opt) != 0);
           break;
       }
     }
-    if (errflg) {
-      fprintf(stderr, "usage: %s\n", usage_message);
-      fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      Return(MB_ERROR_BAD_USAGE);
-    }
+    if (errflg)
+      Return(GMT_PARSE_ERROR);
 
-    if (verbose >= 1 || help) {
+    if (help)
+      Return(usage(API, GMT_USAGE));
+
+    if (verbose >= 1) {
       fprintf(stderr, "\nProgram %s\n", program_name);
       fprintf(stderr, "MB-system Version %s\n", MB_VERSION);
-    }
-
-    if (help) {
-      fprintf(stderr, "\n%s\n", help_message);
-      fprintf(stderr, "\nusage: %s\n", usage_message);
-      Return(MB_ERROR_NO_ERROR);
     }
   }
 
@@ -355,33 +331,33 @@ int GMT_mbminirovnav(void *V_API, int gmt_mode, void *args) {
     int error = MB_ERROR_NO_ERROR;
     char user[256], host[256], date[32];
     int status = mb_user_host_date(verbose, user, host, date, &error);
-    fprintf(stdout, "Run by user <%s> on cpu <%s> at <%s>\n", user, host, date);
-    fprintf(stdout, "Control Parameters:\n");
-    fprintf(stdout, "\tverbose:                      %d\n", verbose);
-    fprintf(stdout, "\tinput_nav_file:               %s\n", input_nav_file);
-    fprintf(stdout, "\tinput_ctd_file:               %s\n", input_ctd_file);
-    fprintf(stdout, "\tinput_dvl_file:               %s\n", input_dvl_file);
-    fprintf(stdout, "\tinput_rov_file:               %s\n", input_rov_file);
-    fprintf(stdout, "\toutput_file:                  %s\n", output_file);
-    fprintf(stdout, "\toutput time interval:         %f\n", interval);
-    fprintf(stdout, "\trov_dive_start_time_set:      %d\n", rov_dive_start_time_set);
+    fprintf(stderr, "Run by user <%s> on cpu <%s> at <%s>\n", user, host, date);
+    fprintf(stderr, "Control Parameters:\n");
+    fprintf(stderr, "\tverbose:                      %d\n", verbose);
+    fprintf(stderr, "\tinput_nav_file:               %s\n", input_nav_file);
+    fprintf(stderr, "\tinput_ctd_file:               %s\n", input_ctd_file);
+    fprintf(stderr, "\tinput_dvl_file:               %s\n", input_dvl_file);
+    fprintf(stderr, "\tinput_rov_file:               %s\n", input_rov_file);
+    fprintf(stderr, "\toutput_file:                  %s\n", output_file);
+    fprintf(stderr, "\toutput time interval:         %f\n", interval);
+    fprintf(stderr, "\trov_dive_start_time_set:      %d\n", rov_dive_start_time_set);
     if (rov_dive_start_time_set)
-      fprintf(stdout, "\trov_dive_start_time_i:        %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d\n",
+      fprintf(stderr, "\trov_dive_start_time_i:        %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d\n",
           rov_dive_start_time_i[0], rov_dive_start_time_i[1], rov_dive_start_time_i[2],
           rov_dive_start_time_i[3], rov_dive_start_time_i[4], rov_dive_start_time_i[5],
           rov_dive_start_time_i[6]);
-    fprintf(stdout, "\trov_dive_end_time_set:        %d\n", rov_dive_end_time_set);
+    fprintf(stderr, "\trov_dive_end_time_set:        %d\n", rov_dive_end_time_set);
     if (rov_dive_end_time_set)
-      fprintf(stdout, "\trov_dive_end_time_i:          %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d\n",
+      fprintf(stderr, "\trov_dive_end_time_i:          %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d\n",
           rov_dive_end_time_i[0], rov_dive_end_time_i[1], rov_dive_end_time_i[2],
           rov_dive_end_time_i[3], rov_dive_end_time_i[4], rov_dive_end_time_i[5],
           rov_dive_end_time_i[6]);
-    fprintf(stdout, "\tutm_zone_set:                 %d\n", utm_zone_set);
+    fprintf(stderr, "\tutm_zone_set:                 %d\n", utm_zone_set);
     if (utm_zone_set) {
-      fprintf(stdout, "\tutm_zone:                     %d\n", utm_zone);
-      fprintf(stdout, "\tprojection_id:                %s\n", projection_id);
+      fprintf(stderr, "\tutm_zone:                     %d\n", utm_zone);
+      fprintf(stderr, "\tprojection_id:                %s\n", projection_id);
     }
-    fprintf(stdout, "\tinterpolate_position:         %d\n", interpolate_position);
+    fprintf(stderr, "\tinterpolate_position:         %d\n", interpolate_position);
   }
 
   /*-------------------------------------------------------------------*/
@@ -855,19 +831,23 @@ int GMT_mbminirovnav(void *V_API, int gmt_mode, void *args) {
     }
   }
 
+  /* how the run went, before the frees below touch status/error */
+  const int run_status = status;
+  const int run_error = error;
+
   if (verbose) {
     int time_i[7];
-    fprintf(stdout,"Input data:\n\tNavigation:     %5d\n\tCTD:            %5d\n\tAttitude:       %5d\n\tDVL:            %5d\n",
+    fprintf(stderr,"Input data:\n\tNavigation:     %5d\n\tCTD:            %5d\n\tAttitude:       %5d\n\tDVL:            %5d\n",
         num_nav, num_ctd, num_rov, num_dvl);
-    fprintf(stdout, "Output file: %s\n", output_file);
-    fprintf(stdout, "\tOutput records: %d\n", num_output);
+    fprintf(stderr, "Output file: %s\n", output_file);
+    fprintf(stderr, "\tOutput records: %d\n", num_output);
     mb_get_date(verbose, start_time_d, time_i);
-    fprintf(stdout, "\tStart time:     %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d\n",
+    fprintf(stderr, "\tStart time:     %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d\n",
             time_i[0], time_i[1], time_i[2], time_i[3], time_i[4], time_i[5], time_i[6]);
     mb_get_date(verbose, end_time_d, time_i);
-    fprintf(stdout, "\tEnd time:       %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d\n",
+    fprintf(stderr, "\tEnd time:       %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d\n",
             time_i[0], time_i[1], time_i[2], time_i[3], time_i[4], time_i[5], time_i[6]);
-    fprintf(stdout,"Valid output data:\n\tPosition:       %5d\n\tDepth:          %5d\n\tHeading:        %5d\n\tAttitude:       %5d\n\tAltitude:       %5d\n\n",
+    fprintf(stderr,"Valid output data:\n\tPosition:       %5d\n\tDepth:          %5d\n\tHeading:        %5d\n\tAttitude:       %5d\n\tAltitude:       %5d\n\n",
         num_position_valid, num_depth_valid, num_heading_valid, num_attitude_valid, num_altitude_valid);
   }
 
@@ -889,6 +869,18 @@ int GMT_mbminirovnav(void *V_API, int gmt_mode, void *args) {
   status &= mb_freed(verbose, __FILE__, __LINE__, (void **)&dvl_vz, &error);
   status &= mb_freed(verbose, __FILE__, __LINE__, (void **)&dvl_status, &error);
 
-  Return(status);
+  /* The program exits with its status, which is 1 (MB_SUCCESS) when all went well; as a module the
+     return is a GMT error code, never an MBIO one */
+  if (run_status != MB_SUCCESS) {
+    if (run_error == MB_ERROR_OPEN_FAIL) {
+      GMT_Report(API, GMT_MSG_ERROR, "Unable to open output file %s\n", output_file);
+      Return(GMT_ERROR_ON_FOPEN);
+    }
+    char *message;
+    mb_error(verbose, run_error, &message);
+    GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+    Return(GMT_RUNTIME_ERROR);
+  }
+  Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

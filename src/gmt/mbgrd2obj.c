@@ -124,7 +124,7 @@
 #define THIS_MODULE_MODERN_NAME "mbgrd2obj"
 #define THIS_MODULE_LIB "mbsystem"
 #define THIS_MODULE_PURPOSE "Convert grid to OBJ format 3D model file"
-#define THIS_MODULE_KEYS "<G{+,>}"
+#define THIS_MODULE_KEYS "<G{+"	/* the grid in; the .obj file is written by the module (">}" was a malformed key that crashed GMT_Encode_Options) */
 #define THIS_MODULE_NEEDS "g"
 #define THIS_MODULE_OPTIONS "-:>RV" GMT_OPT("H")
 
@@ -242,6 +242,8 @@ GMT_LOCAL int parse(struct GMT_CTRL *GMT, struct MBGRD2OBJ_CTRL *Ctrl, struct GM
 		gmt_end_module(GMT, GMT_cpy);                                                                                            \
 		bailout(code);                                                                                                           \
 	}
+
+EXTERN_MSC int GMT_mbgrd2obj(void *V_API, int mode, void *args);
 
 int GMT_mbgrd2obj(void *V_API, int mode, void *args) {
 	// bool first = true;

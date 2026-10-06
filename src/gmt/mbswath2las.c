@@ -62,6 +62,7 @@
 #include "mb_format.h"
 #include "mb_io.h"
 #include "mb_status.h"
+#include "mb_gmt_opts.h"
 
 static const char program_name[] = "mbswath2las";
 static const char help_message[] =
@@ -405,6 +406,8 @@ static bool open_las_output(struct LasWriter *w, const char *filename, bool proj
 /*--------------------------------------------------------------------*/
 /* GMT module scaffolding */
 struct MBSWATH2LAS_CTRL {
+	int verbose;	/* the program's -V/-v count */
+	struct m2l_H { bool active; } H;
 	struct m2l_A { bool active; } A;
 	struct m2l_B { bool active; int time_i[7]; } B;
 	struct m2l_E { bool active; int time_i[7]; } E;
@@ -429,13 +432,35 @@ static void Free_mbswath2las_Ctrl(struct GMT_CTRL *GMT, struct MBSWATH2LAS_CTRL 
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'A', "use-amplitude", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'B', "begin-time",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'E', "end-time",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'J', "projection",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "lonflip",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "write-prj",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "bounds",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "speed-minimum", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "time-gap",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'v', "verbose",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n\n", help_message);
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return EXIT_FAILURE;
-	return EXIT_FAILURE;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
+	GMT_Message(API, GMT_TIME_NONE, "\tEvery option also has the program's lower-case and long forms.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse_mbswath2las(struct GMT_CTRL *GMT, struct MBSWATH2LAS_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -448,13 +473,16 @@ static int parse_mbswath2las(struct GMT_CTRL *GMT, struct MBSWATH2LAS_CTRL *Ctrl
 		switch (opt->option) {
 		case '<':
 		case 'I':
+		case 'i':
 			Ctrl->I.active = true;
 			strncpy(Ctrl->I.file, opt->arg, MB_PATH_MAXLINE - 1);
 			break;
 		case 'A':
+		case 'a':
 			Ctrl->A.active = true;
 			break;
 		case 'B':
+		case 'b':
 			n = sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &Ctrl->B.time_i[0], &Ctrl->B.time_i[1], &Ctrl->B.time_i[2],
 			           &Ctrl->B.time_i[3], &Ctrl->B.time_i[4], &Ctrl->B.time_i[5]);
 			Ctrl->B.time_i[6] = 0;
@@ -462,6 +490,7 @@ static int parse_mbswath2las(struct GMT_CTRL *GMT, struct MBSWATH2LAS_CTRL *Ctrl
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'E':
+		case 'e':
 			n = sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &Ctrl->E.time_i[0], &Ctrl->E.time_i[1], &Ctrl->E.time_i[2],
 			           &Ctrl->E.time_i[3], &Ctrl->E.time_i[4], &Ctrl->E.time_i[5]);
 			Ctrl->E.time_i[6] = 0;
@@ -469,42 +498,58 @@ static int parse_mbswath2las(struct GMT_CTRL *GMT, struct MBSWATH2LAS_CTRL *Ctrl
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'F':
+		case 'f':
 			if (sscanf(opt->arg, "%d", &Ctrl->F.format) > 0) Ctrl->F.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'J':
+		case 'j':
 			Ctrl->J.active = true;
 			strncpy(Ctrl->J.pars, opt->arg, MB_PATH_MAXLINE - 1);
 			break;
 		case 'L':
+		case 'l':
 			if (sscanf(opt->arg, "%d", &Ctrl->L.lonflip) > 0) Ctrl->L.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'O':
+		case 'o':
 			Ctrl->O.active = true;
 			strncpy(Ctrl->O.file, opt->arg, MB_PATH_MAXLINE - 1);
 			break;
 		case 'P':
+		case 'p':
 			Ctrl->P.active = true;
 			break;
 		case 'R':
+		case 'r':
 			mb_get_bounds(opt->arg, Ctrl->R.bounds);
 			Ctrl->R.active = true;
 			break;
 		case 'S':
+		case 's':
 			if (sscanf(opt->arg, "%lf", &Ctrl->S.speedmin) > 0) Ctrl->S.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'T':
+		case 't':
 			if (sscanf(opt->arg, "%lf", &Ctrl->T.timegap) > 0) Ctrl->T.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
+		case 'V':
+		case 'v':
+			Ctrl->verbose++;
+			break;
+		case 'H':
+		case 'h':
+			Ctrl->H.active = true;
+			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code) { gmt_M_free_options(mode); return (code); }
@@ -532,11 +577,14 @@ int GMT_mbswath2las(void *V_API, int mode, void *args) {
 	if (options->option == GMT_OPT_SYNOPSIS) bailout(usage(API, GMT_SYNOPSIS));
 
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS,
-	                           NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	                           module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	/* -p (write the .prj file) takes no argument: keep GMT from completing it as its -p from history */
+	mb_gmt_shorthand_guard(options, "p");
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = (struct MBSWATH2LAS_CTRL *)New_mbswath2las_Ctrl(GMT);
 	if ((parse_status = parse_mbswath2las(GMT, Ctrl, options)) != 0) Return(parse_status);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
   int verbose = 0;
   int format;
@@ -585,7 +633,7 @@ int GMT_mbswath2las(void *V_API, int mode, void *args) {
 
 
 	/* apply the parsed options onto the mb_defaults-initialised locals */
-	verbose = GMT->common.V.active ? GMT->current.setting.verbose : 0;
+	verbose = Ctrl->verbose;	/* the program's -V/-v count (was GMT's verbosity level, which is not MB-System's) */
 	if (Ctrl->A.active) use_amplitude = true;
 	if (Ctrl->B.active) memcpy(btime_i, Ctrl->B.time_i, sizeof(btime_i));
 	if (Ctrl->E.active) memcpy(etime_i, Ctrl->E.time_i, sizeof(etime_i));
@@ -627,7 +675,7 @@ int GMT_mbswath2las(void *V_API, int mode, void *args) {
     if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
       fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      Return(MB_ERROR_OPEN_FAIL);
+      Return(GMT_ERROR_ON_FOPEN);
     }
     read_data = mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight, &error) == MB_SUCCESS;
   } else {
@@ -761,7 +809,7 @@ int GMT_mbswath2las(void *V_API, int mode, void *args) {
         fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
         error = MB_ERROR_BAD_PARAMETER;
         mb_memory_clear(verbose, &error);
-        Return(MB_ERROR_BAD_PARAMETER);
+        Return(GMT_PARSE_ERROR);
       }
     }
   }
@@ -807,7 +855,7 @@ int GMT_mbswath2las(void *V_API, int mode, void *args) {
       fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
       fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", rfile);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      Return(error);
+      Return(GMT_RUNTIME_ERROR);
     }
 
     /* allocate memory for data arrays */
@@ -836,7 +884,7 @@ int GMT_mbswath2las(void *V_API, int mode, void *args) {
       mb_error(verbose, error, &message);
       fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      Return(error);
+      Return(GMT_MEMORY_ERROR);
     }
 
     /* set up the output LAS file: one combined file opened once when the
@@ -859,7 +907,7 @@ int GMT_mbswath2las(void *V_API, int mode, void *args) {
     if (new_output_file)
       if (!open_las_output(&las, output_file, use_projection, las_wkt, write_prj, las_wkt_esri, verbose)) {
         fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-        Return(MB_ERROR_OPEN_FAIL);
+        Return(GMT_ERROR_ON_FOPEN);
       }
 
     /* read and print data */
@@ -984,6 +1032,14 @@ int GMT_mbswath2las(void *V_API, int mode, void *args) {
     fprintf(stderr, "dbg2       status:  %d\n", status);
   }
 
-  Return(error);
+  /* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+     The end of the data (EOF) is how every read finishes, not an error. */
+  if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+    char *message;
+    mb_error(verbose, error, &message);
+    GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+    Return(GMT_RUNTIME_ERROR);
+  }
+  Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

@@ -31,11 +31,10 @@
  * Date:	August 14, 2006
  */
 /*
- * GMT-module port of src/utilities/mbauvloglist.cc. The program's getopt_long() option loop
- * is kept as it is, running on the reentrant mb_getopt_long() (the state
- * lives in a local structure, so the module can run any number of times in
- * one GMT session), and main() becomes GMT_mbauvloglist(), with every exit()
- * turned into Return().
+ * GMT-module port of src/utilities/mbauvloglist.cc: options from GMT's option list (long options
+ * through module_kw, lower-case aliases kept), the listing through the GMT API (mb_gmt_text.c; the
+ * binary mode, -M2, as raw values on stdout), main() becomes GMT_mbauvloglist() and every exit() a
+ * Return() with a GMT error code.
  */
 
 #define THIS_MODULE_NAME "mbauvloglist"
@@ -65,8 +64,8 @@
 #include "mb_aux.h"
 #include "mb_define.h"
 #include "mb_status.h"
-
-#include "mb_getopt.h"
+#include "mb_gmt_opts.h"
+#include "mb_gmt_text.h"
 
 enum { NFIELDSMAX = 512 };
 enum { MAX_OPTIONS = 512 };
@@ -267,69 +266,63 @@ static void calibration_MAUV1_2017(struct ctd_calibration_struct *calibration_pt
 
 /* --- GMT front end ---------------------------------------------------- */
 
+/* Translation table from the program's long options to its short ones (each one has a short twin) */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'A', "altitude-file",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "angles-degrees",  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "clip-to-nav",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "decimate",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "lonflip",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "nav-file",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output-field",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'M', "output-mode",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "print-format",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "print-header",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "recalculate-ctd", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'X', "scale",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
-	return GMT_PARSE_ERROR;
+	GMT_Message(API, GMT_TIME_NONE, "Every option also has the program's lower-case and long forms.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
-/* The options GMT itself should see: -V (verbosity) and -I (the input the
- * module keys bind). Everything else, long options included, is parsed by
- * the program's own option loop below. */
-static char *mb_gmt_options_string(int argc, char **argv) {
-	size_t total = 1;
-	for (int i = 1; i < argc; i++)
-		total += strlen(argv[i]) + 1;
-	char *s = (char *)calloc(total + 8, 1);
-	if (s == NULL)
-		return NULL;
-	for (int i = 1; i < argc; i++) {
-		if (argv[i][0] == '-' && (argv[i][1] == 'V' || (argv[i][1] == 'I' && argv[i][2] != '\0'))) {
-			if (s[0] != '\0')
-				strcat(s, " ");
-			strcat(s, argv[i]);
-		}
-	}
-	return s;
-}
-
-/* gmt_M_free_options() hard-codes a variable named "options", which the
-   program's own option table shadows here, so destroy gmt_options directly */
-#define bailout(code) { mb_getopt_args_free(argc, argv); free(gmt_args); GMT_Destroy_Options(API, &gmt_options); return (code); }
-#define Return(code) { gmt_end_module(GMT, GMT_cpy); bailout(code); }
-EXTERN_MSC int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args);
+#define bailout(code) { gmt_M_free_options(mode); return code; }
+#define Return(code) { if (T) mb_gmt_text_end(T); free(printfields); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+EXTERN_MSC int GMT_mbauvloglist(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
 
-int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
+int GMT_mbauvloglist(void *V_API, int mode, void *args) {
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
-	struct GMT_OPTION *gmt_options = NULL;
-	char *gmt_args = NULL;
-	char **argv = NULL;
-	int argc = 0;
-	struct mb_getopt_state getopt_state;
-	mb_getopt_init(&getopt_state);
+	struct GMT_OPTION *options = NULL;
+	struct MB_GMT_TEXT *T = NULL;	/* the listing: text records through the GMT API, or raw stdout for binary */
+	struct printfield *printfields = NULL;
+	int gmt_error;
 
-	if (!API) return GMT_NOT_A_SESSION;
-	if (gmt_mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-
-	/* the program's own argv[], whatever shape GMT handed us */
-	argc = mb_getopt_args_build(THIS_MODULE_NAME, gmt_mode, args, &argv);
-	if (argc == 2 && (strcmp(argv[1], "-") == 0 || strcmp(argv[1], "?") == 0))
-		bailout(usage(API, GMT_USAGE));
-	if (argc == 2 && strcmp(argv[1], "+") == 0)
-		bailout(usage(API, GMT_SYNOPSIS));
-
-	gmt_args = mb_gmt_options_string(argc, argv);
-	gmt_options = GMT_Create_Options(API, GMT_MODULE_CMD, (gmt_args != NULL && gmt_args[0] != '\0') ? gmt_args : NULL);
-	if (API->error) bailout(API->error);
+	if (API == NULL) return GMT_NOT_A_SESSION;
+	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a run of the program, which reports the missing input itself */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &gmt_options, &GMT_cpy)) == NULL) bailout(API->error);
-	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, gmt_options)) Return(API->error);
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	/* -p (print header) takes no argument: keep GMT from completing it as its -p from history */
+	mb_gmt_shorthand_guard(options, "p");
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	int verbose = 0;
 	int pings;
@@ -355,10 +348,10 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 	int nprintfields = 0;
 	/* printfields (1 MB) and fields (2 MB) together overflow the 1 MB
 	   default Windows stack, so they live on the heap */
-	struct printfield *printfields = (struct printfield *)(calloc(NFIELDSMAX, sizeof(struct printfield)));
+	printfields = (struct printfield *)(calloc(NFIELDSMAX, sizeof(struct printfield)));
 	if (printfields == NULL) {
-		fprintf(stderr, "\nUnable to allocate the print field table\n");
-		Return(MB_ERROR_MEMORY_FAIL);
+		GMT_Report(API, GMT_MSG_ERROR, "Unable to allocate the print field table\n");
+		Return(GMT_MEMORY_ERROR);
 	}
 	bool calc_potentialtemp = false;
 	bool calc_soundspeed = false;
@@ -373,118 +366,15 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
     double scalevalue = 1.0;
 
 	{
-		static struct mb_getopt_option options[] = {{"verbose", mb_no_argument, NULL, 0},
-		                                  {"help", mb_no_argument, NULL, 0},
-		                                  {"altitude-file", mb_required_argument, NULL, 0},
-		                                  {"angles-degrees", mb_no_argument, NULL, 0},
-		                                  {"clip-to-nav", mb_no_argument, NULL, 0},
-		                                  {"decimate", mb_required_argument, NULL, 0},
-		                                  {"input", mb_required_argument, NULL, 0},
-		                                  {"lonflip", mb_required_argument, NULL, 0},
-		                                  {"nav-file", mb_required_argument, NULL, 0},
-		                                  {"output-field", mb_required_argument, NULL, 0},
-		                                  {"output-mode", mb_required_argument, NULL, 0},
-		                                  {"print-format", mb_required_argument, NULL, 0},
-		                                  {"print-header", mb_no_argument, NULL, 0},
-		                                  {"recalculate-ctd", mb_required_argument, NULL, 0},
-		                                  {"scale", mb_required_argument, NULL, 0},
-		                                  {NULL, 0, NULL, 0}};
-
 		bool errflg = false;
-		int c;
-		int option_index;
 		bool help = false;
 		char printformat[MB_PATH_MAXLINE] = "default";  // TODO(schwehr): Is this used correctly?
-		while ((c = mb_getopt_long(&getopt_state, argc, argv, "A:a:CcD:d:F:f:I:i:L:l:M:m:N:n:O:o:PpR:r:SsVvX:x:Hh", options, &option_index)) != -1)
+		/* the program's options from GMT's option list, in their command-line order (a -F format
+		   applies to the -O fields after it); long options come in as their short twins through
+		   module_kw; lower-case aliases kept */
+		for (struct GMT_OPTION *opt = options; opt; opt = opt->next)
 		{
-			switch (c) {
-			/* long options all return c=0 */
-			case 0:
-				if (strcmp("verbose", options[option_index].name) == 0) {
-					verbose++;
-				}
-				else if (strcmp("help", options[option_index].name) == 0) {
-					help = true;
-				}
-				else if (strcmp("altitude-file", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", altitude_file);
-					altitude_merge = true;
-				}
-				else if (strcmp("angles-degrees", options[option_index].name) == 0) {
-					angles_in_degrees = true;
-				}
-				else if (strcmp("clip-to-nav", options[option_index].name) == 0) {
-					merge_clip = true;
-				}
-				else if (strcmp("decimate", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d", &decimate);
-				}
-				else if (strcmp("input", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", file);
-				}
-				else if (strcmp("lonflip", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d", &lonflip);
-				}
-				else if (strcmp("nav-file", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", nav_file);
-					nav_merge = true;
-				}
-				else if (strcmp("output-field", options[option_index].name) == 0) {
-					if (nprintfields >= NFIELDSMAX) {
-						fprintf(stderr, "\nToo many -O print fields specified (max %d) - ignoring: %s\n",
-						        NFIELDSMAX, getopt_state.optarg);
-					}
-					else {
-						/* const int nscan = */ sscanf(getopt_state.optarg, "%1023s", printfields[nprintfields].name);
-						if (strlen(printformat) > 0 && strcmp(printformat, "default") != 0) {
-							printfields[nprintfields].formatset = true;
-							strcpy(printfields[nprintfields].format, printformat);
-						}
-						else {
-							printfields[nprintfields].formatset = false;
-							strcpy(printfields[nprintfields].format, "");
-						}
-						printfields[nprintfields].scale = scalevalue;
-
-						if (strcmp(printfields[nprintfields].name, "calcPotentialTemperature") == 0)
-							calc_potentialtemp = true;
-						if (strcmp(printfields[nprintfields].name, "calcSoundspeed") == 0)
-							calc_soundspeed = true;
-						if (strcmp(printfields[nprintfields].name, "calcDensity") == 0)
-							calc_density = true;
-						if (strcmp(printfields[nprintfields].name, "calcKTime") == 0)
-							calc_ktime = true;
-						if (strcmp(printfields[nprintfields].name, "calcKSpeed") == 0)
-							calc_kspeed = true;
-						if (strcmp(printfields[nprintfields].name, "calcPSpeed") == 0)
-							calc_pspeed = true;
-		        		if (strcmp(printfields[nprintfields].name, "timeInterval") == 0)
-		          			calculate_time_interval = true;
-						printfields[nprintfields].index = -1;
-						nprintfields++;
-					}
-				}
-				else if (strcmp("output-mode", options[option_index].name) == 0) {
-					int tmp;
-					sscanf(getopt_state.optarg, "%d", &tmp);
-					output_mode = (output_t)tmp;  // TODO(schwehr): Range check
-				}
-				else if (strcmp("print-format", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", printformat);
-				}
-				else if (strcmp("print-header", options[option_index].name) == 0) {
-					printheader = true;
-				}
-				else if (strcmp("recalculate-ctd", options[option_index].name) == 0) {
-					recalculate_ctd = true;
-					sscanf(getopt_state.optarg, "%d", &ctd_calibration_id);
-				}
-				else if (strcmp("scale", options[option_index].name) == 0) {
-					double tmpd;
-					if (sscanf(getopt_state.optarg, "%lf", &tmpd) == 1)
-						scalevalue = tmpd;
-				}
-				break;
+			switch (opt->option) {
 			case 'H':
 			case 'h':
 				help = true;
@@ -495,7 +385,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 				break;
 			case 'A':
 			case 'a':
-				sscanf(getopt_state.optarg, "%1023s", altitude_file);
+				sscanf(opt->arg, "%1023s", altitude_file);
 				altitude_merge = true;
 				break;
 			case 'C':
@@ -504,31 +394,31 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 				break;
 			case 'D':
 			case 'd':
-				sscanf(getopt_state.optarg, "%d", &decimate);
+				sscanf(opt->arg, "%d", &decimate);
 				break;
 			case 'F':
 			case 'f':
-				sscanf(getopt_state.optarg, "%1023s", printformat);
+				sscanf(opt->arg, "%1023s", printformat);
 				break;
 			case 'I':
 			case 'i':
-				sscanf(getopt_state.optarg, "%1023s", file);
+				sscanf(opt->arg, "%1023s", file);
 				break;
 			case 'L':
 			case 'l':
-				sscanf(getopt_state.optarg, "%d", &lonflip);
+				sscanf(opt->arg, "%d", &lonflip);
 				break;
 			case 'M':
 			case 'm':
 			{
 				int tmp;
-				sscanf(getopt_state.optarg, "%d", &tmp);
+				sscanf(opt->arg, "%d", &tmp);
 				output_mode = (output_t)tmp;  // TODO(schwehr): Range check
 				break;
 			}
 			case 'N':
 			case 'n':
-				sscanf(getopt_state.optarg, "%1023s", nav_file);
+				sscanf(opt->arg, "%1023s", nav_file);
 				nav_merge = true;
 				break;
 			case 'O':
@@ -536,10 +426,10 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 			{
 				if (nprintfields >= NFIELDSMAX) {
 					fprintf(stderr, "\nToo many -O print fields specified (max %d) - ignoring: %s\n",
-					        NFIELDSMAX, getopt_state.optarg);
+					        NFIELDSMAX, opt->arg);
 					break;
 				}
-				/* const int nscan = */ sscanf(getopt_state.optarg, "%1023s", printfields[nprintfields].name);
+				/* const int nscan = */ sscanf(opt->arg, "%1023s", printfields[nprintfields].name);
 				if (strlen(printformat) > 0 && strcmp(printformat, "default") != 0) {
 					printfields[nprintfields].formatset = true;
 					strcpy(printfields[nprintfields].format, printformat);
@@ -575,7 +465,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 			case 'R':
 			case 'r':
 				recalculate_ctd = true;
-				sscanf(getopt_state.optarg, "%d", &ctd_calibration_id);
+				sscanf(opt->arg, "%d", &ctd_calibration_id);
 				break;
 			case 'S':
 			case 's':
@@ -584,22 +474,20 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 			case 'X':
 			case 'x': {
 				double tmpd;
-				if (sscanf(getopt_state.optarg, "%lf", &tmpd) == 1)
+				if (sscanf(opt->arg, "%lf", &tmpd) == 1)
 					scalevalue = tmpd;
 				break;
 			}
-			case '?':
-				errflg = true;
+			default:
+				errflg |= (gmt_default_option_error(GMT, opt) != 0);
+				break;
 			}
 		}
 
-		if (errflg) {
-			fprintf(stderr, "usage: %s\n", usage_message);
-			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_BAD_USAGE);
-		}
+		if (errflg)
+			Return(GMT_PARSE_ERROR);
 
-		if (verbose == 1 || help) {
+		if (verbose == 1) {
 			fprintf(stderr, "\nProgram %s\n", program_name);
 			fprintf(stderr, "MB-system Version %s\n", MB_VERSION);
 		}
@@ -653,11 +541,8 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 				        printfields[i].format, printfields[i].scale);
 		}
 
-		if (help) {
-			fprintf(stderr, "\n%s\n", help_message);
-			fprintf(stderr, "\nusage: %s\n", usage_message);
-			Return(MB_ERROR_NO_ERROR);
-		}
+		if (help)
+			Return(usage(API, GMT_USAGE));
 	}
 
 #ifdef _WIN32
@@ -665,6 +550,10 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 	if (output_mode == OUTPUT_MODE_BINARY)
 		_setmode(_fileno(stdout), _O_BINARY);
 #endif
+
+	/* the listing: text records through the GMT API; the binary mode's raw values on stdout */
+	if ((T = (output_mode == OUTPUT_MODE_BINARY) ? mb_gmt_text_stdout(GMT) : mb_gmt_text_begin(GMT, options)) == NULL)
+		Return(API->error ? API->error : GMT_RUNTIME_ERROR);
 
 	int error = MB_ERROR_NO_ERROR;
 	char buffer[MB_PATH_MAXLINE];
@@ -699,7 +588,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 		if (fp == NULL) {
 			fprintf(stderr, "\nUnable to Open Altitude File <%s> for reading\n", altitude_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		char *result;
 		while ((result = fgets(buffer, nchar, fp)) == buffer)
@@ -718,7 +607,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 				mb_error(verbose, error, &message);
 				fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 				fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-				Return(error);
+				Return(GMT_MEMORY_ERROR);
 			}
 		}
 
@@ -727,7 +616,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 		if ((fp = fopen(altitude_file, "r")) == NULL) {
 			fprintf(stderr, "\nUnable to open altitude file <%s> for reading\n", altitude_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
     if (fp != NULL) {
       bool done = false;
@@ -763,7 +652,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 		if (fp == NULL) {
 			fprintf(stderr, "\nUnable to Open Navigation File <%s> for reading\n", nav_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		char *result;
 		while ((result = fgets(buffer, nchar, fp)) == buffer)
@@ -789,7 +678,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 				mb_error(verbose, error, &message);
 				fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 				fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-				Return(error);
+				Return(GMT_MEMORY_ERROR);
 			}
 		}
 
@@ -798,7 +687,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 		if ((fp = fopen(nav_file, "r")) == NULL) {
 			fprintf(stderr, "\nUnable to Open navigation File <%s> for reading\n", nav_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
     if (fp != NULL) {
       bool done = false;
@@ -834,7 +723,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 		error = MB_ERROR_OPEN_FAIL;
 		status = MB_FAILURE;
 		fprintf(stderr, "\nUnable to open log file <%s> for reading\n", file);
-		Return(status);
+		Return(GMT_ERROR_ON_FOPEN);
 	}
 
 	int nfields = 0;
@@ -847,7 +736,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 	struct field *fields = (struct field *)(calloc(NFIELDSMAX, sizeof(struct field)));
 	if (fields == NULL) {
 		fprintf(stderr, "\nUnable to allocate the log field table\n");
-		Return(MB_ERROR_MEMORY_FAIL);
+		Return(GMT_MEMORY_ERROR);
 	}
 
 	bool cond_frequency_available = false;
@@ -874,10 +763,10 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 		const int nscan = sscanf(buffer, "# %1023s %1023s %1023s", type, fields[nfields].name, fields[nfields].format);
 		if (nscan == 2) {
 			if (printheader)
-				fprintf(stdout, "# csv %s\n", fields[nfields].name);
+				mb_gmt_text_put(T, "# csv %s\n", fields[nfields].name);
 		} else if (nscan == 3) {
 			if (printheader)
-				fprintf(stdout, "%s", buffer);
+				mb_gmt_text_put(T, "%s", buffer);
 
 			result = (char *)strchr(buffer, ',');
 			if (result == NULL) {
@@ -987,7 +876,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 
 	/* end here if asked only to print header */
 	if (nprintfields == 0 && printheader)
-		Return(error);
+		Return(GMT_NOERROR);
 
 	/* by default print everything */
 	if (nprintfields == 0) {
@@ -996,6 +885,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 			strcpy(printfields[i].name, fields[i].name);
 			printfields[i].index = i;
 			printfields[i].formatset = false;
+			printfields[i].scale = scalevalue;
 			strcpy(printfields[i].format, fields[i].format);
 		}
 	}
@@ -1010,7 +900,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 	        || !pressure_counts_available
 	        || !thermistor_available) {
 		  fprintf(stderr, "\nUnable to recalculate CTD data as requested, raw CTD data not in file <%s>\n", file);
-		  Return(MB_ERROR_BAD_FORMAT);
+		  Return(GMT_RUNTIME_ERROR);
 	  } else {
 	        calibration_MAUV1_2017(&ctd_calibration);
 	  }
@@ -1028,20 +918,20 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 	            error = MB_ERROR_BAD_FORMAT;
 	            status = MB_FAILURE;
 	            fprintf(stderr, "\nUnable to calculate CTD data products as requested, CTD data not in file <%s>\n", file);
-	            Return(status);
+	            Return(GMT_RUNTIME_ERROR);
 	    }
 	}
 
     /* if calculating speed from Kearfott velocity vector check for available Kearfott data */
     if (calc_kspeed && !kvelocity_available) {
 		fprintf(stderr, "\nUnable to calculate speed from Kearfott data as requested, Kearfoot velocity data not in file <%s>\n", file);
-		Return(MB_ERROR_BAD_FORMAT);
+		Return(GMT_RUNTIME_ERROR);
     }
 
     /* if calculating speed from Phins velocity vector check for available Phins data */
     if (calc_pspeed && !pvelocity_available) {
 		fprintf(stderr, "\nUnable to calculate speed from Phins data as requested, Phins velocity data not in file <%s>\n", file);
-		Return(MB_ERROR_BAD_FORMAT);
+		Return(GMT_RUNTIME_ERROR);
     }
 
 	/* check the fields to be printed */
@@ -1199,12 +1089,12 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 	if (verbose > 0) {
 		for (int i = 0; i < nprintfields; i++) {
 			if (i == 0)
-				fprintf(stdout, "# ");
-			fprintf(stdout, "%s", printfields[i].name);
+				mb_gmt_text_put(T, "# ");
+			mb_gmt_text_put(T, "%s", printfields[i].name);
 			if (i < nprintfields - 1)
-				fprintf(stdout, " | ");
+				mb_gmt_text_put(T, " | ");
 			else
-				fprintf(stdout, "\n");
+				mb_gmt_text_put(T, "\n");
 		}
 	}
 
@@ -1372,7 +1262,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_MERGE_ALTITUDE) {
   				double dvalue = 0.0;
@@ -1385,7 +1275,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_MERGE_LON) {
   				double dvalue = 0.0;
@@ -1398,7 +1288,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_MERGE_LAT) {
   				double dvalue = 0.0;
@@ -1411,7 +1301,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_MERGE_HEADING) {
   				double dvalue = 0.0;
@@ -1424,7 +1314,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_MERGE_SPEED) {
   				double dvalue = 0.0;
@@ -1437,7 +1327,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
  				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_MERGE_SENSORDEPTH) {
   				double dvalue = 0.0;
@@ -1450,7 +1340,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_MERGE_ROLL) {
   				double dvalue = 0.0;
@@ -1463,7 +1353,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_MERGE_PITCH) {
   				double dvalue = 0.0;
@@ -1476,7 +1366,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_MERGE_HEAVE) {
   				double dvalue = 0.0;
@@ -1489,84 +1379,84 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
  				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_CALC_CONDUCTIVITY) {
   				double dvalue = scale_output * conductivity_calc;
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_CALC_TEMPERATURE) {
   				double dvalue = scale_output * temperature_calc;
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_CALC_PRESSURE) {
   				double dvalue = scale_output * pressure_calc;
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_CALC_SALINITY) {
   				double dvalue = scale_output * salinity_calc;
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_CALC_SOUNDSPEED) {
   				double dvalue = scale_output * soundspeed_calc;
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_CALC_POTENTIALTEMP) {
   				double dvalue = scale_output * potentialtemperature_calc;
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_CALC_DENSITY) {
   				double dvalue = scale_output * density_calc;
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_CALC_KTIME) {
   				double dvalue = scale_output * ktime_calc;
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_CALC_KSPEED) {
   				double dvalue = scale_output * kspeed_calc;
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_CALC_PSPEED) {
   				double dvalue = scale_output * pspeed_calc;
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (index == INDEX_TIME_INTERVAL) {
   				double dvalue = scale_output * time_interval;
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (fields[index].type == TYPE_DOUBLE) {
   				double dvalue = 0.0;
@@ -1578,7 +1468,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			else if (fields[index].type == TYPE_INTEGER) {
   				int ivalue = 0;
@@ -1586,7 +1476,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&ivalue, sizeof(int), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, ivalue);
+  					mb_gmt_text_put(T, printfields[i].format, ivalue);
   			}
   			else if (fields[index].type == TYPE_SHORT) {
   				short ivalue = 0;
@@ -1594,7 +1484,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&ivalue, sizeof(short), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, ivalue);
+  					mb_gmt_text_put(T, printfields[i].format, ivalue);
   			}
   			else if (fields[index].type == TYPE_TIMETAG) {
   				double dvalue = 0.0;
@@ -1606,11 +1496,11 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   						fwrite(time_i, sizeof(int), 7, stdout);
   					}
   					else if (output_mode == OUTPUT_MODE_CSV) {
-  						fprintf(stdout, "%4.4d,%2.2d,%2.2d,%2.2d,%2.2d,%2.2d.%6.6d", time_i[0], time_i[1], time_i[2], time_i[3],
+  						mb_gmt_text_put(T, "%4.4d,%2.2d,%2.2d,%2.2d,%2.2d,%2.2d.%6.6d", time_i[0], time_i[1], time_i[2], time_i[3],
   						        time_i[4], time_i[5], time_i[6]);
             		}
             		else {
-  						fprintf(stdout, "%4.4d %2.2d %2.2d %2.2d %2.2d %2.2d.%6.6d", time_i[0], time_i[1], time_i[2], time_i[3],
+  						mb_gmt_text_put(T, "%4.4d %2.2d %2.2d %2.2d %2.2d %2.2d.%6.6d", time_i[0], time_i[1], time_i[2], time_i[3],
   						        time_i[4], time_i[5], time_i[6]);
   					}
   				}
@@ -1627,11 +1517,11 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   						fwrite(&time_i[6], sizeof(int), 1, stdout);
   					}
   					else if (output_mode == OUTPUT_MODE_CSV) {
-  						fprintf(stdout, "%4.4d,%3.3d,%2.2d,%2.2d,%2.2d.%6.6d", time_i[0], time_j[1], time_i[3], time_i[4],
+  						mb_gmt_text_put(T, "%4.4d,%3.3d,%2.2d,%2.2d,%2.2d.%6.6d", time_i[0], time_j[1], time_i[3], time_i[4],
   						        time_i[5], time_i[6]);
             		}
   					else {
-  						fprintf(stdout, "%4.4d %3.3d %2.2d %2.2d %2.2d.%6.6d", time_i[0], time_j[1], time_i[3], time_i[4],
+  						mb_gmt_text_put(T, "%4.4d %3.3d %2.2d %2.2d %2.2d.%6.6d", time_i[0], time_j[1], time_i[3], time_i[4],
   						        time_i[5], time_i[6]);
   					}
   				}
@@ -1639,7 +1529,7 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   					if (output_mode == OUTPUT_MODE_BINARY)
   						fwrite(&dvalue, sizeof(double), 1, stdout);
   					else
-  						fprintf(stdout, printfields[i].format, time_d);
+  						mb_gmt_text_put(T, printfields[i].format, time_d);
   				}
   			}
   			else if (fields[index].type == TYPE_ANGLE) {
@@ -1652,19 +1542,19 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
   				if (output_mode == OUTPUT_MODE_BINARY)
   					fwrite(&dvalue, sizeof(double), 1, stdout);
   				else
-  					fprintf(stdout, printfields[i].format, dvalue);
+  					mb_gmt_text_put(T, printfields[i].format, dvalue);
   			}
   			if (output_mode == OUTPUT_MODE_TAB) {
   				if (i < nprintfields - 1)
-  					fprintf(stdout, "\t");
+  					mb_gmt_text_put(T, "\t");
   				else
-  					fprintf(stdout, "\n");
+  					mb_gmt_text_put(T, "\n");
   			}
   			else if (output_mode == OUTPUT_MODE_CSV) {
   				if (i < nprintfields - 1)
-  					fprintf(stdout, ",");
+  					mb_gmt_text_put(T, ",");
   				else
-  					fprintf(stdout, "\n");
+  					mb_gmt_text_put(T, "\n");
   			}
   		}
   		nrecord++;
@@ -1692,7 +1582,19 @@ int GMT_mbauvloglist(void *V_API, int gmt_mode, void *args) {
 
 	free(fields);
 	free(printfields);
+	printfields = NULL;
 
-	Return(error);
+	const int output_failed = mb_gmt_text_end(T);
+	T = NULL;
+	if (output_failed)
+		Return(GMT_RUNTIME_ERROR);
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one */
+	if (error != MB_ERROR_NO_ERROR) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

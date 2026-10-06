@@ -7,6 +7,7 @@
 
 #ifndef SURF_MB_SAPI_H_
 #define SURF_MB_SAPI_H_
+#include "mbsapi_export.h"
 
 #ifndef __SAPI__
 
@@ -485,56 +486,56 @@ typedef struct {
 
 // FILE handling functions
 
-long SAPI_open(char* surfDir,char* surfFile,long errorprint);
-long SAPI_nextSounding(long errorprint);
+MBSAPI_API long SAPI_open(char* surfDir,char* surfFile,long errorprint);
+MBSAPI_API long SAPI_nextSounding(long errorprint);
 long SAPI_rewind(long errorprint);
-void SAPI_close(void);
+MBSAPI_API void SAPI_close(void);
 
 // Data from SIX(Index) File
 
-char* SAPI_getNameOfShip(void);
-char* SAPI_getTypeOfSounder(void);
-char* SAPI_getNameOfSounder(void);
-long SAPI_getNrSoundings(void);
-long SAPI_getNrBeams(void);
-long SAPI_posPresentationIsRad(void);
-long SAPI_getNrPositionsensors(void);
-long SAPI_getNrSoundvelocityProfiles(void);
-long SAPI_getNrEvents(void);
-long SAPI_getNrPolygonElements(void);
+MBSAPI_API char* SAPI_getNameOfShip(void);
+MBSAPI_API char* SAPI_getTypeOfSounder(void);
+MBSAPI_API char* SAPI_getNameOfSounder(void);
+MBSAPI_API long SAPI_getNrSoundings(void);
+MBSAPI_API long SAPI_getNrBeams(void);
+MBSAPI_API long SAPI_posPresentationIsRad(void);
+MBSAPI_API long SAPI_getNrPositionsensors(void);
+MBSAPI_API long SAPI_getNrSoundvelocityProfiles(void);
+MBSAPI_API long SAPI_getNrEvents(void);
+MBSAPI_API long SAPI_getNrPolygonElements(void);
 
-double SAPI_getAbsoluteStartTimeOfProfile(void);
+MBSAPI_API double SAPI_getAbsoluteStartTimeOfProfile(void);
 
 long SAPI_dataHaveHighFrequencyLayer(void);
 long SAPI_dataHaveMediumFrequencyLayer(void);
 long SAPI_dataHaveLowFrequencyLayer(void);
 
-SurfGlobalData*               SAPI_getGlobalData(void);
-SurfStatistics*               SAPI_getStatistics(void);
-SurfPositionAnySensor*        SAPI_getPositionSensor(long nrSensor);
+MBSAPI_API SurfGlobalData*               SAPI_getGlobalData(void);
+MBSAPI_API SurfStatistics*               SAPI_getStatistics(void);
+MBSAPI_API SurfPositionAnySensor*        SAPI_getPositionSensor(long nrSensor);
 SurfEventValues*              SAPI_getEvent(long nrEvent);
 SurfPolygons*                 SAPI_getPolygons(void);
 
 // Data from SDA(Massdata) File
 
-SurfSoundingData*             SAPI_getSoundingData(void);
-SurfTransducerParameterTable* SAPI_getActualTransducerTable(void);
-SurfMultiBeamAngleTable*      SAPI_getActualAngleTable(void);
-SurfCProfileTable*            SAPI_getActualCProfileTable(void);
+MBSAPI_API SurfSoundingData*             SAPI_getSoundingData(void);
+MBSAPI_API SurfTransducerParameterTable* SAPI_getActualTransducerTable(void);
+MBSAPI_API SurfMultiBeamAngleTable*      SAPI_getActualAngleTable(void);
+MBSAPI_API SurfCProfileTable*            SAPI_getActualCProfileTable(void);
 
-SurfCenterPosition*           SAPI_getCenterPosition(long nrPositionSensor);
-SurfSingleBeamDepth*          SAPI_getSingleBeamDepth(void);
-SurfMultiBeamDepth*           SAPI_getMultiBeamDepth(long beam);
-SurfMultiBeamTT*              SAPI_getMultiBeamTraveltime(long beam);
-SurfMultiBeamReceive*         SAPI_getMultiBeamReceiveParams(long beam);
+MBSAPI_API SurfCenterPosition*           SAPI_getCenterPosition(long nrPositionSensor);
+MBSAPI_API SurfSingleBeamDepth*          SAPI_getSingleBeamDepth(void);
+MBSAPI_API SurfMultiBeamDepth*           SAPI_getMultiBeamDepth(long beam);
+MBSAPI_API SurfMultiBeamTT*              SAPI_getMultiBeamTraveltime(long beam);
+MBSAPI_API SurfMultiBeamReceive*         SAPI_getMultiBeamReceiveParams(long beam);
 
 /* Sidescan- & Backscatter-related Data from SDA(Massdata-)-File */
 
-SurfAmplitudes*                      SAPI_getMultibeamBeamAmplitudes(long beam);
-SurfExtendedAmplitudes*              SAPI_getMultibeamExtendedBeamAmplitudes(long beam);
-SurfSignalParameter*                 SAPI_getMultibeamSignalParameters(void);
-SurfTxParameter*                     SAPI_getMultibeamTransmitterParameters(int *nTxParams);
-SurfSidescanData*                    SAPI_getSidescanData(void);
+MBSAPI_API SurfAmplitudes*                      SAPI_getMultibeamBeamAmplitudes(long beam);
+MBSAPI_API SurfExtendedAmplitudes*              SAPI_getMultibeamExtendedBeamAmplitudes(long beam);
+MBSAPI_API SurfSignalParameter*                 SAPI_getMultibeamSignalParameters(void);
+MBSAPI_API SurfTxParameter*                     SAPI_getMultibeamTransmitterParameters(int *nTxParams);
+MBSAPI_API SurfSidescanData*                    SAPI_getSidescanData(void);
 
 /* some simple routines (simple,but maybe slower than plain code !) */
 

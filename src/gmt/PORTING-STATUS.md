@@ -28,24 +28,36 @@ was never a candidate:
 | `dump_gsf`, `man2html` | no - developer / build tools |
 | CMake compiler-id probes | no - build artifacts |
 
+## What a port must be (GMT's own grdinfo/gmtdefaults are the model)
+
+- Options come from GMT's option list in `parse()`. The program's long options are GMT long
+  options through a `module_kw` table passed to `gmt_init_module` (a long-only option gets a free
+  short letter); its lower-case aliases are kept as extra `case`s -- `GMT_Parse_Common` only parses
+  the common options named in `THIS_MODULE_OPTIONS`, so list `"->V"` and nothing that collides with
+  a program letter. An argument-less `-B -J -R -X -Y -p` is completed by GMT from its history before
+  the module sees it: rename it with `mb_gmt_shorthand_guard()` (`mb_gmt_opts.c`).
+- Everything the program prints goes through `mb_gmt_text.c` (text records via the GMT API, or the
+  program's own file), so `gmt()` from GMT.jl/Python/MATLAB gets it back as a dataset.
+  Diagnostics go to stderr (`GMT_Report`).
+- `usage()` returns `GMT_MODULE_USAGE` / `GMT_MODULE_SYNOPSIS`; a module that runs with no options
+  uses `gmt_report_usage(API, options, 1, usage)`. Every `Return()` passes a GMT error code, never an
+  MBIO one.
+- A program with more long options than free letters, or long-only options (mbmakeplatform,
+  mbvoxelclean, mbpreprocess, mbmesh, mbgrid's `--cube-*`): `mb_gmt_mark_long_options()` before
+  `GMT_Parse_Common` (or before `gmt_init_module` when a `module_kw` is also used), read in `parse()`
+  with `mb_gmt_long_option()`. getopt's "-I file" form: `mb_gmt_join_separated_values()`.
+- A module that hands a datalist to `mb_make_info_datalist()` / `mb_get_info_datalist()` asks
+  `mb_gmt_datalist_opens()` first: those MBIO functions `exit()` on a datalist they cannot open,
+  which would end the caller's whole session (Julia, Python, MATLAB).
+- Output keys only for what really comes back through the API (`>D}` for text records). A module
+  that writes its own files (grids, swath files) has an input key only.
+
+Done this way: all 56 modules. Checked against the programs (compileds/VC14_64/bin) by
+`test/gmtmodules/mbport_check.jl` (`run_checks.bat`).
+
 ## How a port is done
 
-Three shapes.
-
-**Verbatim option loop** (the 16 modules added last: mb7k2jstar, mbauvloglist,
-mbdefaults, mbdumpesf, mbfnv2navlab, mbmakeplatform, mbminirovnav,
-mbnavadjustmerge, mbnavlab2fnv, mbrolltimelag, mbroutetime, mbsegygrid,
-mbsegylist, mbsegypsd, mbsslayout, mbusbl2fnv): the whole program text is kept,
-comments included, and its own `getopt_long()` loop runs unchanged on
-`mb_getopt_long()` (`mb_getopt.c`), a reentrant version whose state lives in a
-local structure - so a module can run any number of times in one GMT session,
-and long-only options (several of these programs have no short options at all)
-keep working. `mb_getopt_args_build()` rebuilds `argc/argv` from whichever
-shape GMT hands the module; GMT itself only sees `-V` and `-I`. These files are
-produced by a generator that does the mechanical C++ -> C changes (headers,
-`nullptr`, `constexpr`, casts, `std::min/max`, `static` on file-scope
-definitions, `exit()`/`return` -> `Return()`); fix the program, regenerate the
-module.
+Two shapes.
 
 **C or C-like `.cc` sources** (most of `src/utilities`): the module is a single
 C file in `src/gmt`. Replace `main()` and its `getopt` loop with the GMT

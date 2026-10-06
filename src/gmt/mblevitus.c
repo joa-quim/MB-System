@@ -50,7 +50,8 @@
 #define THIS_MODULE_PURPOSE "Create a mean annual sound velocity profile for a 1x1 degree region from the Levitus database."
 #define THIS_MODULE_KEYS    ">D}"
 #define THIS_MODULE_NEEDS ""
-#define THIS_MODULE_OPTIONS "-:>Vho"
+/* -: kept (swaps the output columns); -h and -o are the program's help and output file, not GMT's */
+#define THIS_MODULE_OPTIONS "-:>V"
 
 #include "gmt_dev.h"
 #include "mb_define.h"
@@ -82,6 +83,7 @@ EXTERN_MSC int GMT_mblevitus(void *API, int mode, void *args);
 /* --- Control structure ----------------------------------------------- */
 
 struct MBLEVITUS_CTRL {
+	int verbose;                                      /* the program's -V/-v count */
 	struct mbl_A { bool active; } A;                  /* output D,V,T,S */
 	struct mbl_H { bool active; } H;                  /* help */
 	struct mbl_I { bool active; char *file; } I;      /* explicit Levitus file */
@@ -102,22 +104,37 @@ static void Free_mblevitus_Ctrl(struct GMT_CTRL *GMT, struct MBLEVITUS_CTRL *Ctr
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'H', "help",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "location",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output-file", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'v', "verbose",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE,
-		"usage: mblevitus -Llon/lat [-A] [-I<levitus_file>] [-O[<outfile>]] [-z] [-V] [-H]\n\n");
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+		"usage: mblevitus -Rlon/lat [-A] [-I<levitus_file>] [-O[<outfile>]] [-z] [-V] [-H]\n\n");
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE,
-		"\t-L Longitude/latitude of the SVP location (-R is also accepted).\n"
+		"\nMBLEVITUS generates an average water velocity profile for a\n"
+		"specified location from the Levitus temperature and salinity database.\n\n");
+	GMT_Message(API, GMT_TIME_NONE,
+		"\t-R Longitude/latitude of the SVP location (-L is also accepted).\n"
 		"\t-A Output (depth, velocity, temperature, salinity) instead of (depth, velocity).\n"
 		"\t-H Print description and exit.\n"
 		"\t-I Path to LevitusAnnual82.dat (default: search GMT share dir).\n"
 		"\t-O Write SVP to <outfile>. -O alone writes to file 'velocity'.\n"
 		"\t   Default (no -O) sends data to GMT stdout (or back to caller via API).\n"
-		"\t-z Make z positive up (default is positive down).\n");
-	GMT_Option(API, "V,:,o");
-	return GMT_PARSE_ERROR;
+		"\t-z Make z positive up (default is positive down).\n"
+		"\tThe program's lower-case and long forms are kept: -r/--location, -o/--output-file,\n"
+		"\t-h/--help, -v/--verbose.\n");
+	GMT_Option(API, "V,:,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse(struct GMT_CTRL *GMT, struct MBLEVITUS_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -131,7 +148,7 @@ static int parse(struct GMT_CTRL *GMT, struct MBLEVITUS_CTRL *Ctrl, struct GMT_O
 			if (Ctrl->I.file == NULL && gmt_check_filearg(GMT, '<', opt->arg, GMT_IN, GMT_IS_DATASET))
 				Ctrl->I.file = strdup(opt->arg);
 			else
-				{ GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
+				{ GMT_Report(API, GMT_MSG_ERROR, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case '>':
 			if (opt->arg && opt->arg[0] && Ctrl->O.file == NULL) {
@@ -139,10 +156,15 @@ static int parse(struct GMT_CTRL *GMT, struct MBLEVITUS_CTRL *Ctrl, struct GMT_O
 				Ctrl->O.active = true;
 			}
 			break;
+		case 'V':
+		case 'v':
+			Ctrl->verbose++;
+			break;
 		case 'A':
 			Ctrl->A.active = true;
 			break;
 		case 'H':
+		case 'h':
 			Ctrl->H.active = true;
 			break;
 		case 'I':
@@ -150,10 +172,11 @@ static int parse(struct GMT_CTRL *GMT, struct MBLEVITUS_CTRL *Ctrl, struct GMT_O
 				if (Ctrl->I.file) free(Ctrl->I.file);
 				Ctrl->I.file = strdup(opt->arg);
 				Ctrl->I.active = true;
-			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
+			} else { GMT_Report(API, GMT_MSG_ERROR, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'L':
-		case 'R': {
+		case 'R':
+		case 'r': {
 			char *arg = strdup(opt->arg);
 			char *slash = strchr(arg, '/');
 			if (slash) {
@@ -162,13 +185,14 @@ static int parse(struct GMT_CTRL *GMT, struct MBLEVITUS_CTRL *Ctrl, struct GMT_O
 				Ctrl->L.lat = mb_ddmmss_to_degree(slash + 1);
 				Ctrl->L.active = true;
 			} else {
-				GMT_Report(API, GMT_MSG_NORMAL, "Syntax -L option: expected lon/lat\n");
-				{ GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
+				GMT_Report(API, GMT_MSG_ERROR, "Syntax error -%c option: expected lon/lat\n", opt->option);
+				n_errors++;
 			}
 			free(arg);
 			break;
 		}
 		case 'O':
+		case 'o':
 			if (Ctrl->O.file) free(Ctrl->O.file);
 			if (opt->arg && opt->arg[0])
 				Ctrl->O.file = strdup(opt->arg);
@@ -180,12 +204,12 @@ static int parse(struct GMT_CTRL *GMT, struct MBLEVITUS_CTRL *Ctrl, struct GMT_O
 			Ctrl->Z.active = true;
 			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code) { gmt_M_free_options(mode); return (code); }
@@ -197,6 +221,7 @@ static int parse(struct GMT_CTRL *GMT, struct MBLEVITUS_CTRL *Ctrl, struct GMT_O
 
 int GMT_mblevitus(void *V_API, int mode, void *args) {
 	int error  = MB_ERROR_NO_ERROR;
+	int gmt_error;
 
 	struct MBLEVITUS_CTRL *Ctrl = NULL;
 	struct GMT_CTRL    *GMT = NULL, *GMT_cpy = NULL;
@@ -207,24 +232,18 @@ int GMT_mblevitus(void *V_API, int mode, void *args) {
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
-	if (!options || options->option == GMT_OPT_USAGE)  bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS)           bailout(usage(API, GMT_SYNOPSIS));
+	/* 1: no options is a run of the program (the profile at 0/0) */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 
-
-#if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
-#else
-	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
-#endif
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = New_mblevitus_Ctrl(GMT);
-	if ((error = parse(GMT, Ctrl, options)) != 0) Return (error);
+	if ((gmt_error = parse(GMT, Ctrl, options)) != GMT_NOERROR) Return(gmt_error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
-	int verbose = GMT->common.V.active;
-	if (GMT->current.setting.verbose >= GMT_MSG_DEBUG) verbose = 2;
+	const int verbose = Ctrl->verbose;
 
-	const bool   help      = Ctrl->H.active;
 	const double longitude = Ctrl->L.lon;
 	const double latitude  = Ctrl->L.lat;
 
@@ -235,19 +254,11 @@ int GMT_mblevitus(void *V_API, int mode, void *args) {
 		ofile = ofile_buf;
 	}
 
-	if (verbose == 1 || help) {
+	if (verbose == 1) {
 		GMT_Message(API, GMT_TIME_NONE, "Program %s\n", THIS_MODULE_NAME);
 		GMT_Message(API, GMT_TIME_NONE, "MB-system Version %s\n", MB_VERSION);
 	}
 
-	if (help) {
-		GMT_Message(API, GMT_TIME_NONE,
-			"\nMBLEVITUS generates an average water velocity profile for a\n"
-			"specified location from the Levitus temperature and salinity database.\n");
-		GMT_Message(API, GMT_TIME_NONE,
-			"\nusage: mblevitus -Llon/lat [-A] [-I<levitus_file>] [-O[<outfile>]] [-z] [-V] [-H]\n");
-		Return(MB_ERROR_NO_ERROR);
-	}
 
 	/* Locate the Levitus database file:
 	 *   1. -I argument
@@ -276,7 +287,7 @@ int GMT_mblevitus(void *V_API, int mode, void *args) {
 		GMT_Report(API, GMT_MSG_NORMAL,
 				   "Could not find the Levitus database file LevitusAnnual82.dat. "
 				   "Use -I<file> to provide an explicit path.\n");
-		Return(MB_ERROR_OPEN_FAIL);
+		Return(GMT_ERROR_ON_FOPEN);
 	}
 
 	if (verbose >= 2) {
@@ -284,7 +295,6 @@ int GMT_mblevitus(void *V_API, int mode, void *args) {
 		fprintf(stderr, "dbg2  MB-system Version %s\n", MB_VERSION);
 		fprintf(stderr, "dbg2  Control Parameters:\n");
 		fprintf(stderr, "dbg2       verbose:     %d\n", verbose);
-		fprintf(stderr, "dbg2       help:        %d\n", (int)help);
 		fprintf(stderr, "dbg2       levitusfile: %s\n", levitus_file);
 		fprintf(stderr, "dbg2       ofile:       %s\n", ofile ? ofile : "(stdout)");
 		fprintf(stderr, "dbg2       longitude:   %f\n", longitude);
@@ -294,14 +304,14 @@ int GMT_mblevitus(void *V_API, int mode, void *args) {
 	if (longitude < -360.0 || longitude > 360.0 || latitude < -90.0 || latitude > 90.0) {
 		GMT_Report(API, GMT_MSG_NORMAL,
 				   "Invalid location specified: longitude=%f latitude=%f\n", longitude, latitude);
-		Return(MB_ERROR_BAD_PARAMETER);
+		Return(GMT_PARSE_ERROR);
 	}
 
 	FILE *ifp = fopen(levitus_file, "rb");
 	if (ifp == NULL) {
 		GMT_Report(API, GMT_MSG_NORMAL,
 				   "Unable to open Levitus database file <%s> for reading\n", levitus_file);
-		Return(MB_ERROR_OPEN_FAIL);
+		Return(GMT_ERROR_ON_FOPEN);
 	}
 
 	/* longitude/latitude indices into the Levitus 1x1 grid */
@@ -389,7 +399,7 @@ int GMT_mblevitus(void *V_API, int mode, void *args) {
 	if (nvelocity < 1) {
 		GMT_Report(API, GMT_MSG_NORMAL, "No water velocity profile available for the specified location.\n");
 		GMT_Report(API, GMT_MSG_NORMAL, "This place is probably subaerial; no output created.\n");
-		Return(MB_ERROR_BAD_PARAMETER);
+		Return(GMT_RUNTIME_ERROR);
 	}
 
 	/* Build a GMT dataset: 1 table, 1 segment, nvelocity_tot rows, 2 or 4 cols */
@@ -468,5 +478,12 @@ int GMT_mblevitus(void *V_API, int mode, void *args) {
 		fprintf(stderr, "dbg2       error:  %d\n", error);
 	}
 
-	Return(error);
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one */
+	if (error != MB_ERROR_NO_ERROR) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }

@@ -26,7 +26,7 @@ TEST(MbVersion, Basic) {
                        &version_minor, &version_archive, &error));
   EXPECT_EQ(MB_ERROR_NO_ERROR, error);
   EXPECT_THAT(version_string,
-              testing::ContainsRegex("^[0-9]+[.][0-9]+[.][0-9]+"));
+              testing::ContainsRegex("^\\d+\\.\\d+\\.\\d+"));
   EXPECT_GE(version_id, 50700009);
   EXPECT_LT(version_id, 70000000);
   EXPECT_GE(version_major, 4);

@@ -30,11 +30,9 @@
  * Date:	March 20, 2008
  */
 /*
- * GMT-module port of src/utilities/mbdumpesf.cc. The program's getopt_long() option loop
- * is kept as it is, running on the reentrant mb_getopt_long() (the state
- * lives in a local structure, so the module can run any number of times in
- * one GMT session), and main() becomes GMT_mbdumpesf(), with every exit()
- * turned into Return().
+ * GMT-module port of src/utilities/mbdumpesf.cc: options from GMT's option list (long options
+ * through module_kw, the long-only ones given short letters), the dump written as text records
+ * through the GMT API (mb_gmt_text.c), and every exit() a Return() with a GMT error code.
  */
 
 #define THIS_MODULE_NAME "mbdumpesf"
@@ -64,8 +62,7 @@
 #include "mb_process.h"
 #include "mb_status.h"
 #include "mb_swap.h"
-
-#include "mb_getopt.h"
+#include "mb_gmt_text.h"
 
 typedef enum {
     OUTPUT_TEXT = 0,
@@ -87,71 +84,57 @@ static const char usage_message[] =
 
 /* --- GMT front end ---------------------------------------------------- */
 
+/* Translation table from the program's long options to the module's short ones. The output and
+   ignore-* options are long-only in the program; -O, -U, -F, -L and -Z are their short letters here. */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'U', "ignore-unflag", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "ignore-flag",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "ignore-filter", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Z', "ignore-zero",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
-	return GMT_PARSE_ERROR;
+	GMT_Message(API, GMT_TIME_NONE, "Short forms: -I (--input), -O (--output), -U (--ignore-unflag), -F (--ignore-flag),\n"
+	            "-L (--ignore-filter), -Z (--ignore-zero), -H (--help), -v (--verbose).\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
-/* The options GMT itself should see: -V (verbosity) and -I (the input the
- * module keys bind). Everything else, long options included, is parsed by
- * the program's own option loop below. */
-static char *mb_gmt_options_string(int argc, char **argv) {
-	size_t total = 1;
-	for (int i = 1; i < argc; i++)
-		total += strlen(argv[i]) + 1;
-	char *s = (char *)calloc(total + 8, 1);
-	if (s == NULL)
-		return NULL;
-	for (int i = 1; i < argc; i++) {
-		if (argv[i][0] == '-' && (argv[i][1] == 'V' || (argv[i][1] == 'I' && argv[i][2] != '\0'))) {
-			if (s[0] != '\0')
-				strcat(s, " ");
-			strcat(s, argv[i]);
-		}
-	}
-	return s;
-}
-
-/* gmt_M_free_options() hard-codes a variable named "options", which the
-   program's own option table shadows here, so destroy gmt_options directly */
-#define bailout(code) { mb_getopt_args_free(argc, argv); free(gmt_args); GMT_Destroy_Options(API, &gmt_options); return (code); }
-#define Return(code) { gmt_end_module(GMT, GMT_cpy); bailout(code); }
-EXTERN_MSC int GMT_mbdumpesf(void *V_API, int gmt_mode, void *args);
+#define bailout(code) { gmt_M_free_options(mode); return code; }
+#define Return(code) { if (T) mb_gmt_text_end(T); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+EXTERN_MSC int GMT_mbdumpesf(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
 
-int GMT_mbdumpesf(void *V_API, int gmt_mode, void *args) {
+int GMT_mbdumpesf(void *V_API, int mode, void *args) {
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
-	struct GMT_OPTION *gmt_options = NULL;
-	char *gmt_args = NULL;
-	char **argv = NULL;
-	int argc = 0;
-	struct mb_getopt_state getopt_state;
-	mb_getopt_init(&getopt_state);
+	struct GMT_OPTION *options = NULL;
+	struct MB_GMT_TEXT *T = NULL;	/* the text dump, as records */
+	int gmt_error;
 
-	if (!API) return GMT_NOT_A_SESSION;
-	if (gmt_mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-
-	/* the program's own argv[], whatever shape GMT handed us */
-	argc = mb_getopt_args_build(THIS_MODULE_NAME, gmt_mode, args, &argv);
-	if (argc == 2 && (strcmp(argv[1], "-") == 0 || strcmp(argv[1], "?") == 0))
-		bailout(usage(API, GMT_USAGE));
-	if (argc == 2 && strcmp(argv[1], "+") == 0)
-		bailout(usage(API, GMT_SYNOPSIS));
-
-	gmt_args = mb_gmt_options_string(argc, argv);
-	gmt_options = GMT_Create_Options(API, GMT_MODULE_CMD, (gmt_args != NULL && gmt_args[0] != '\0') ? gmt_args : NULL);
-	if (API->error) bailout(API->error);
+	if (API == NULL) return GMT_NOT_A_SESSION;
+	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a run of the program, which reports the missing input itself */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &gmt_options, &GMT_cpy)) == NULL) bailout(API->error);
-	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, gmt_options)) Return(API->error);
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
-	int verbose = 0;
+	int verbose = GMT->common.V.active ? 1 : 0;
 
 	/* MBIO read and write control parameters */
 	char iesffile[MB_PATH_MAXLINE] = "";
@@ -166,84 +149,54 @@ int GMT_mbdumpesf(void *V_API, int gmt_mode, void *args) {
 	bool ignore_filter = false;
 	bool ignore_zero = false;
 
-	/* process argument list */
+	/* process argument list: the program's options, from GMT's option list (lower-case aliases
+	   kept -- GMT_Parse_Common only parses the common options in THIS_MODULE_OPTIONS) */
 	{
-		const struct mb_getopt_option options[] = {
-			{"verbose", mb_no_argument, NULL, 0},
-			{"help", mb_no_argument, NULL, 0},
-			{"input", mb_required_argument, NULL, 0},
-			{"output", mb_required_argument, NULL, 0},
-			{"ignore-unflag", mb_no_argument, NULL, 0},
-			{"ignore-flag", mb_no_argument, NULL, 0},
-			{"ignore-filter", mb_no_argument, NULL, 0},
-			{"ignore-zero", mb_no_argument, NULL, 0},
-			{NULL, 0, NULL, 0}};
-		int option_index;
 		bool errflg = false;
-		int c;
 		bool help = false;
-		while ((c = mb_getopt_long(&getopt_state, argc, argv, "VvHhI:i:", options, &option_index)) != -1)
-		{
-			switch (c) {
-			/* long options all return c=0 */
-			case 0:
-				if (strcmp("verbose", options[option_index].name) == 0) {
-					verbose++;
-				}
-				else if (strcmp("help", options[option_index].name) == 0) {
-					help = true;
-				}
-				else if (strcmp("input", options[option_index].name) == 0) {
-					snprintf(iesffile, sizeof(iesffile), "%s", getopt_state.optarg);
-					input_specified = true;
-				}
-				else if (strcmp("output", options[option_index].name) == 0) {
-					snprintf(oesffile, sizeof(oesffile), "%s", getopt_state.optarg);
-					omode = OUTPUT_ESF;
-				}
-				else if (strcmp("ignore-unflag", options[option_index].name) == 0) {
-					ignore_unflag = true;
-				}
-				else if (strcmp("ignore-flag", options[option_index].name) == 0) {
-					ignore_flag = true;
-				}
-				else if (strcmp("ignore-filter", options[option_index].name) == 0) {
-					ignore_filter = true;
-				}
-				else if (strcmp("ignore-zero", options[option_index].name) == 0) {
-					ignore_zero = true;
-				}
-
-				break;
+		for (struct GMT_OPTION *opt = options; opt; opt = opt->next) {
+			switch (opt->option) {
 			case 'H':
 			case 'h':
 				help = true;
 				break;
-			case 'V':
+			case 'V':	/* GMT's -V, already applied */
+				break;
 			case 'v':
 				verbose++;
 				break;
 			case 'I':
 			case 'i':
-				sscanf(getopt_state.optarg, "%1023s", iesffile);
+				sscanf(opt->arg, "%1023s", iesffile);
 				input_specified = true;
 				break;
-			case '?':
-				errflg = true;
+			case 'O':
+				snprintf(oesffile, sizeof (oesffile), "%s", opt->arg);
+				omode = OUTPUT_ESF;
+				break;
+			case 'U':
+				ignore_unflag = true;
+				break;
+			case 'F':
+				ignore_flag = true;
+				break;
+			case 'L':
+				ignore_filter = true;
+				break;
+			case 'Z':
+				ignore_zero = true;
+				break;
+			default:
+				errflg |= (gmt_default_option_error(GMT, opt) != 0);
+				break;
 			}
 		}
 
-		if (errflg) {
-			fprintf(stderr, "usage: %s\n", usage_message);
-			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_BAD_USAGE);
-		}
+		if (errflg)
+			Return(GMT_PARSE_ERROR);
 
-		if (help) {
-			fprintf(stderr, "\n%s\n", help_message);
-			fprintf(stderr, "\nusage: %s\n", usage_message);
-			Return(MB_ERROR_NO_ERROR);
-		}
+		if (help)
+			Return(usage(API, GMT_USAGE));
 
 		if (verbose == 1 || help) {
 			fprintf(stderr, "\nProgram %s\n", program_name);
@@ -285,11 +238,14 @@ int GMT_mbdumpesf(void *V_API, int gmt_mode, void *args) {
 	int error = MB_ERROR_NO_ERROR;
 
 	if (!input_specified) {
-		fprintf(stderr, "\nNo input edit save file specified\n");
-		fprintf(stderr, "usage: %s\n", usage_message);
-		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-		Return(MB_ERROR_OPEN_FAIL);
+		GMT_Report(API, GMT_MSG_ERROR, "No input edit save file specified\n");
+		GMT_Report(API, GMT_MSG_ERROR, "usage: %s\n", usage_message);
+		Return(GMT_PARSE_ERROR);
 	}
+
+	/* the text dump goes out as records (with -O the esf file gets the edits instead) */
+	if (omode == OUTPUT_TEXT && (T = mb_gmt_text_begin(GMT, options)) == NULL)
+		Return(API->error);
 
 	/* check that esf file exists */
 	struct stat file_status;
@@ -297,16 +253,15 @@ int GMT_mbdumpesf(void *V_API, int gmt_mode, void *args) {
 	if (fstat == 0 && (file_status.st_mode & S_IFMT) != S_IFDIR) {
 		/* open the input esf file */
 		if ((iesffp = fopen(iesffile, "rb")) == NULL) {
-			fprintf(stderr, "\nUnable to edit save file <%s> for reading\n", iesffile);
-			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			GMT_Report(API, GMT_MSG_ERROR, "Unable to edit save file <%s> for reading\n", iesffile);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 
 		/* open the output esf file */
 		if (omode == OUTPUT_ESF && (oesffp = fopen(oesffile, "wb")) == NULL) {
-			fprintf(stderr, "\nUnable to edit save file <%s> for reading\n", iesffile);
-			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			GMT_Report(API, GMT_MSG_ERROR, "Unable to edit save file <%s> for reading\n", iesffile);
+			fclose(iesffp);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 
 		/* read file header to discern the format */
@@ -393,7 +348,7 @@ int GMT_mbdumpesf(void *V_API, int gmt_mode, void *args) {
 				if (omode == OUTPUT_TEXT) {
 					int time_i[7];
 					mb_get_date(verbose, time_d, time_i);
-					fprintf(stdout, "EDITS READ: i:%d time: %f %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d beam:%d action:%d\n", i,
+					mb_gmt_text_put(T,"EDITS READ: i:%d time: %f %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d beam:%d action:%d\n", i,
 					        time_d, time_i[0], time_i[1], time_i[2], time_i[3], time_i[4], time_i[5], time_i[6], beam, action);
 				}
 				else {
@@ -420,7 +375,7 @@ int GMT_mbdumpesf(void *V_API, int gmt_mode, void *args) {
 				if (omode == OUTPUT_TEXT) {
 					int time_i[7];
 					mb_get_date(verbose, time_d, time_i);
-					fprintf(stdout, "** EDITS READ BUT IGNORED **: i:%d time: %f %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d beam:%d action:%d\n", i,
+					mb_gmt_text_put(T,"** EDITS READ BUT IGNORED **: i:%d time: %f %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d beam:%d action:%d\n", i,
 					        time_d, time_i[0], time_i[1], time_i[2], time_i[3], time_i[4], time_i[5], time_i[6], beam, action);
 				}
       }
@@ -447,6 +402,18 @@ int GMT_mbdumpesf(void *V_API, int gmt_mode, void *args) {
 		}
 	}
 
-	Return(error);
+	if (T) {
+		const int output_failed = mb_gmt_text_end(T);
+		T = NULL;	/* closed: Return() must not close it again */
+		if (output_failed) Return(GMT_RUNTIME_ERROR);
+	}
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one */
+	if (error != MB_ERROR_NO_ERROR) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

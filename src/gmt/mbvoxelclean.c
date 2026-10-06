@@ -72,6 +72,7 @@
 #include "gmt_dev.h"
 
 #include "mb_status.h"
+#include "mb_gmt_opts.h"
 #include "mb_format.h"
 #include "mb_define.h"
 #include "mb_io.h"
@@ -130,6 +131,8 @@ EXTERN_MSC int GMT_mbvoxelclean(void *API, int mode, void *args);
  *   -Qvalue                amplitude maximum
  */
 struct MBVOXELCLEAN_CTRL {
+	int verbose;	/* the program's --verbose count (and GMT's -V) */
+	struct mbv_H { bool active; } H;
 	struct mbv_A { bool active; double range_minimum; } A;
 	struct mbv_B { bool active; double range_maximum; } B;
 	struct mbv_C { bool active; } C;
@@ -162,6 +165,33 @@ static void Free_mbvoxelclean_Ctrl(struct GMT_CTRL *GMT, struct MBVOXELCLEAN_CTR
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* The program's long options (it has no short ones); the module's letters above are additions. Each
+   long option is translated onto the letter that does the same, so both go through parse(). */
+static const struct MB_GMT_LONGOPT_DEF long_options[] = {
+	{"verbose", false},             /* 0 */
+	{"help", false},                /* 1 */
+	{"input", true},                /* 2 */
+	{"format", true},               /* 3 */
+	{"voxel-size", true},           /* 4 */
+	{"occupy-threshold", true},     /* 5 */
+	{"count-flagged", false},       /* 6 */
+	{"flag-empty", false},          /* 7 */
+	{"ignore-empty", false},        /* 8 */
+	{"unflag-occupied", false},     /* 9 */
+	{"ignore-occupied", false},     /* 10 */
+	{"neighborhood", true},         /* 11 */
+	{"range-minimum", true},        /* 12 */
+	{"range-maximum", true},        /* 13 */
+	{"acrosstrack-minimum", true},  /* 14 */
+	{"acrosstrack-maximum", true},  /* 15 */
+	{"amplitude-minimum", true},    /* 16 */
+	{"amplitude-maximum", true},    /* 17 */
+	{NULL, false}};
+/* the letter each long option is, and the value of the on/off pairs (NULL: the option's own value) */
+static const char long_letter[] = "vHIFSTCEEOONABXYPQ";
+static const char *long_fixed[] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, "1", "0", "1", "0",
+                                   NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
@@ -169,38 +199,62 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	    "usage: mbvoxelclean -Iinfile [-Fformat -Sxy[/z] -Tthresh -C -E0|1 -O0|1 -Nn\n"
 	    "\t-Arange_min -Brange_max -Xacrosstrack_min -Yacrosstrack_max\n"
 	    "\t-Pamp_min -Qamp_max -V -H]\n\n");
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE,
-	    "\t<inputfile> is an MB-System datalist or single swath file.\n\n");
-	return GMT_PARSE_ERROR;
+	    "\t<inputfile> is an MB-System datalist or single swath file [datalist.mb-1].\n"
+	    "\tThe program's long options are kept: --input --format --voxel-size=xy[/z] --occupy-threshold\n"
+	    "\t--count-flagged --flag-empty --ignore-empty --unflag-occupied --ignore-occupied --neighborhood\n"
+	    "\t--range-minimum --range-maximum --acrosstrack-minimum --acrosstrack-maximum\n"
+	    "\t--amplitude-minimum --amplitude-maximum --verbose --help.\n\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse(struct GMT_CTRL *GMT, struct MBVOXELCLEAN_CTRL *Ctrl, struct GMT_OPTION *options) {
-	unsigned int n_errors = 0, n_files = 0;
+	unsigned int n_errors = 0;
 	int n, tmp;
 	double d1, d2;
 	struct GMT_OPTION *opt;
 	struct GMTAPI_CTRL *API = GMT->parent;
 
 	for (opt = options; opt; opt = opt->next) {
-		switch (opt->option) {
+		char option = opt->option;
+		const char *arg = opt->arg;
+		if (option == MB_GMT_LONGOPT) {	/* a program long option: the letter it is */
+			const char *value;
+			const int k = mb_gmt_long_option(opt, long_options, &value);
+			if (k < 0) {
+				GMT_Report(API, GMT_MSG_ERROR, "Option --%s %s\n", opt->arg, k == -2 ? "requires an argument" : "is not recognized");
+				n_errors++;
+				continue;
+			}
+			option = long_letter[k];
+			arg = long_fixed[k] ? long_fixed[k] : value;
+		}
+		switch (option) {
 		case '<':
 			Ctrl->I.active = true;
-			if (gmt_check_filearg(GMT, '<', opt->arg, GMT_IN, GMT_IS_DATASET)) {
-				Ctrl->I.inputfile = strdup(opt->arg);
-				n_files = 1;
+			if (gmt_check_filearg(GMT, '<', opt->arg, GMT_IN, GMT_IS_DATASET)) {	/* '<' is never a long option */
+				Ctrl->I.inputfile = strdup(arg);
 			} else {
 				GMT_Report(API, GMT_MSG_NORMAL, "Syntax error: only one input file is allowed.\n");
-				{ GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
+				{ GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", option); n_errors++; }
 			}
 			break;
+		case 'V':
+		case 'v':
+			Ctrl->verbose++;
+			break;
+		case 'H':
+			Ctrl->H.active = true;
+			break;
 		case 'A':
-			n = sscanf(opt->arg, "%lf", &d1);
+			n = sscanf(arg, "%lf", &d1);
 			if (n > 0) { Ctrl->A.range_minimum = d1; Ctrl->A.active = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -A option\n"); n_errors++; }
 			break;
 		case 'B':
-			n = sscanf(opt->arg, "%lf", &d1);
+			n = sscanf(arg, "%lf", &d1);
 			if (n > 0) { Ctrl->B.range_maximum = d1; Ctrl->B.active = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -B option\n"); n_errors++; }
 			break;
@@ -208,50 +262,49 @@ static int parse(struct GMT_CTRL *GMT, struct MBVOXELCLEAN_CTRL *Ctrl, struct GM
 			Ctrl->C.active = true;
 			break;
 		case 'E':
-			n = sscanf(opt->arg, "%d", &tmp);
+			n = sscanf(arg, "%d", &tmp);
 			if (n > 0) {
 				Ctrl->E.mode = (tmp != 0) ? MBVC_EMPTY_FLAG : MBVC_EMPTY_IGNORE;
 				Ctrl->E.active = true;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -E option\n"); n_errors++; }
 			break;
 		case 'F':
-			n = sscanf(opt->arg, "%d", &Ctrl->F.format);
+			n = sscanf(arg, "%d", &Ctrl->F.format);
 			if (n > 0) Ctrl->F.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -F option\n"); n_errors++; }
 			break;
 		case 'I':
-			if (!gmt_access(GMT, opt->arg, R_OK)) {
-				Ctrl->I.inputfile = strdup(opt->arg);
+			if (!gmt_access(GMT, arg, R_OK)) {
+				Ctrl->I.inputfile = strdup(arg);
 				Ctrl->I.active = true;
-				n_files = 1;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -I option (file not found)\n"); n_errors++; }
 			break;
 		case 'N':
-			n = sscanf(opt->arg, "%d", &Ctrl->N.neighborhood);
+			n = sscanf(arg, "%d", &Ctrl->N.neighborhood);
 			if (n > 0) Ctrl->N.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -N option\n"); n_errors++; }
 			break;
 		case 'O':
-			n = sscanf(opt->arg, "%d", &tmp);
+			n = sscanf(arg, "%d", &tmp);
 			if (n > 0) {
 				Ctrl->O.mode = (tmp != 0) ? MBVC_OCCUPIED_UNFLAG : MBVC_OCCUPIED_IGNORE;
 				Ctrl->O.active = true;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -O option\n"); n_errors++; }
 			break;
 		case 'P':
-			n = sscanf(opt->arg, "%lf", &d1);
+			n = sscanf(arg, "%lf", &d1);
 			if (n > 0) { Ctrl->P.amplitude_minimum = d1; Ctrl->P.active = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -P option\n"); n_errors++; }
 			break;
 		case 'Q':
-			n = sscanf(opt->arg, "%lf", &d1);
+			n = sscanf(arg, "%lf", &d1);
 			if (n > 0) { Ctrl->Q.amplitude_maximum = d1; Ctrl->Q.active = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -Q option\n"); n_errors++; }
 			break;
 		case 'S': {
 			d1 = Ctrl->S.xy;
 			d2 = Ctrl->S.z;
-			n = sscanf(opt->arg, "%lf/%lf", &d1, &d2);
+			n = sscanf(arg, "%lf/%lf", &d1, &d2);
 			if (n > 0) {
 				Ctrl->S.xy = d1;
 				Ctrl->S.z = (n > 1) ? d2 : d1;
@@ -260,29 +313,28 @@ static int parse(struct GMT_CTRL *GMT, struct MBVOXELCLEAN_CTRL *Ctrl, struct GM
 			break;
 		}
 		case 'T':
-			n = sscanf(opt->arg, "%d", &Ctrl->T.threshold);
+			n = sscanf(arg, "%d", &Ctrl->T.threshold);
 			if (n > 0) Ctrl->T.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -T option\n"); n_errors++; }
 			break;
 		case 'X':
-			n = sscanf(opt->arg, "%lf", &d1);
+			n = sscanf(arg, "%lf", &d1);
 			if (n > 0) { Ctrl->X.acrosstrack_minimum = d1; Ctrl->X.active = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -X option\n"); n_errors++; }
 			break;
 		case 'Y':
-			n = sscanf(opt->arg, "%lf", &d1);
+			n = sscanf(arg, "%lf", &d1);
 			if (n > 0) { Ctrl->Y.acrosstrack_maximum = d1; Ctrl->Y.active = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -Y option\n"); n_errors++; }
 			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 
-	n_errors += gmt_M_check_condition(GMT, n_files != 1,
-	                                  "Syntax error: Must specify one input file\n");
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
+	/* no input file is the program's datalist.mb-1, as in the program */
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code)  { gmt_M_free_options(mode); return (code); }
@@ -304,22 +356,21 @@ int GMT_mbvoxelclean(void *V_API, int mode, void *args) {
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
-	if (!options || options->option == GMT_OPT_USAGE)    bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS)             bailout(usage(API, GMT_SYNOPSIS));
+	/* 1: no options is a run of the program (on datalist.mb-1) */
+	if ((error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(error);
 
-#if GMT_MAJOR_VERSION >= 6
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME,
 	        THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL)
 		bailout(API->error);
-#else
-	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
-#endif
+	/* the program's long options kept out of GMT's --PAR=value handling */
+	mb_gmt_mark_long_options(API, &options, long_options);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = New_mbvoxelclean_Ctrl(GMT);
 	if ((error = parse(GMT, Ctrl, options)) != 0) Return (error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
-	int    verbose = GMT->common.V.active;
+	int    verbose = Ctrl->verbose;
 	int    format, defaultpings, lonflip;
 	double bounds[4];
 	int    btime_i[7], etime_i[7];
@@ -360,7 +411,7 @@ int GMT_mbvoxelclean(void *V_API, int mode, void *args) {
 	bool   apply_amplitude_maximum = Ctrl->Q.active;
 	double amplitude_maximum = Ctrl->Q.amplitude_maximum;
 
-	FILE *outfp = (verbose <= 1) ? stdout : stderr;
+	FILE *outfp = stderr;	/* the program's messages: stdout below -V2 there, but a module's stdout is data */
 
 	if (verbose == 1) {
 		fprintf(outfp, "\nProgram %s\n", THIS_MODULE_NAME);
@@ -431,7 +482,7 @@ int GMT_mbvoxelclean(void *V_API, int mode, void *args) {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open data list file: %s\n", read_file);
 			GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		read_data = (mb_datalist_read(verbose, datalist, swathfile, dfile, &format, &file_weight, &error) == MB_SUCCESS);
 	} else {
@@ -552,6 +603,9 @@ int GMT_mbvoxelclean(void *V_API, int mode, void *args) {
 		if (oktoprocess) {
 			int formatread = format;
 			struct mb_info_struct mb_info;
+			/* create the .inf if necessary: the ping array below is sized from its record count, so
+			   without it the array was sized 0 and the first ping written through NULL (segfault) */
+			mb_make_info_datalist(verbose, false, swathfile, &formatread, &error);
 			status = mb_get_info_datalist(verbose, swathfile, &formatread, &mb_info, lonflip, &error);
 
 			if (npings_alloc <= mb_info.nrecords) {
@@ -563,7 +617,7 @@ int GMT_mbvoxelclean(void *V_API, int mode, void *args) {
 					mb_error(verbose, MB_ERROR_MEMORY_FAIL, &message);
 					GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating pings array:\n%s\n", message);
 					mb_memory_clear(verbose, &error);
-					Return(error);
+					Return(GMT_MEMORY_ERROR);
 				}
 				memset((void *)&pings[npings_alloc], 0,
 				    (mb_info.nrecords - npings_alloc) * sizeof(struct mbvoxelclean_ping_struct));
@@ -605,7 +659,7 @@ int GMT_mbvoxelclean(void *V_API, int mode, void *args) {
 						GMT_Report(API, GMT_MSG_NORMAL,
 						    "\nMBIO Error allocating data arrays within the ping structure:\n%s\n", message);
 						mb_memory_clear(verbose, &error);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 					pings[i].beams_bath_alloc = mb_info.nbeams_bath;
 				}
@@ -636,7 +690,7 @@ int GMT_mbvoxelclean(void *V_API, int mode, void *args) {
 				    "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 				GMT_Report(API, GMT_MSG_NORMAL,
 				    "Multibeam File <%s> not initialized for reading\n", swathfile);
-				Return(error);
+				Return(GMT_RUNTIME_ERROR);
 			}
 
 			int n_pings = 0;
@@ -687,7 +741,7 @@ int GMT_mbvoxelclean(void *V_API, int mode, void *args) {
 				char *message = NULL;
 				mb_error(verbose, error, &message);
 				GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
-				Return(error);
+				Return(GMT_MEMORY_ERROR);
 			}
 
 			void *store_ptr = NULL;
@@ -758,7 +812,7 @@ int GMT_mbvoxelclean(void *V_API, int mode, void *args) {
 							GMT_Report(API, GMT_MSG_NORMAL,
 							    "\nMBIO Error allocating data arrays within the ping structure:\n%s\n", message);
 							mb_memory_clear(verbose, &error);
-							Return(error);
+							Return(GMT_MEMORY_ERROR);
 						}
 						pings[n_pings].beams_bath_alloc = beams_bath;
 					}
@@ -986,7 +1040,7 @@ int GMT_mbvoxelclean(void *V_API, int mode, void *args) {
 					GMT_Report(API, GMT_MSG_NORMAL,
 					    "\nMBIO Error allocating voxel counting arrays:\n%s\n", message);
 					mb_memory_clear(verbose, &error);
-					Return(error);
+					Return(GMT_MEMORY_ERROR);
 				}
 				memset((void *)voxel_count, 0, (size_t)n_voxel);
 				n_voxel_alloc = n_voxel;
@@ -1262,6 +1316,14 @@ int GMT_mbvoxelclean(void *V_API, int mode, void *args) {
 
 	(void)beamflagorg;
 	(void)pingsread;
-	Return(error);
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+	   The end of the data (EOF) is how every read finishes, not an error. */
+	if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

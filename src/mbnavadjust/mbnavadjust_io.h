@@ -36,6 +36,7 @@
 
 #ifndef MBNAVADJUST_IO_H_
 #define MBNAVADJUST_IO_H_
+#include "mbnavadjust_export.h"
 
 #ifndef MB_DEFINE_DEF
 #include "mb_define.h"
@@ -490,22 +491,22 @@ struct mbna_swathraw {
   struct mbna_pingraw *pingraws;
 };
 
-int mbnavadjust_new_project(int verbose, char *projectpath, double section_length, int section_soundings, double cont_int,
+MBNAVADJUST_API int mbnavadjust_new_project(int verbose, char *projectpath, double section_length, int section_soundings, double cont_int,
                             double col_int, double tick_int, double label_int, int decimation, double smoothing,
                             double zoffsetwidth, struct mbna_project *project, int *error);
-int mbnavadjust_apply_settings(int verbose, struct mbna_project *project, unsigned int mask,
+MBNAVADJUST_API int mbnavadjust_apply_settings(int verbose, struct mbna_project *project, unsigned int mask,
                             double section_length, int section_soundings, double cont_int,
                             double col_int, double tick_int, double label_int, int decimation, double smoothing,
                             double zoffsetwidth, int *error);
-int mbnavadjust_read_project(int verbose, char *projectpath, struct mbna_project *project, int *error);
+MBNAVADJUST_API int mbnavadjust_read_project(int verbose, char *projectpath, struct mbna_project *project, int *error);
 int mbnavadjust_close_project(int verbose, struct mbna_project *project, int *error);
-int mbnavadjust_write_project(int verbose, struct mbna_project *project,
+MBNAVADJUST_API int mbnavadjust_write_project(int verbose, struct mbna_project *project,
                               const char *calling_file, int calling_line, const char *calling_function,
                               int *error);
-int mbnavadjust_remove_short_sections(int verbose, struct mbna_project *project, 
+MBNAVADJUST_API int mbnavadjust_remove_short_sections(int verbose, struct mbna_project *project, 
                               double minimum_section_length, int minimum_section_soundings, int *error);
 int mbnavadjust_remove_file_by_name(int verbose, struct mbna_project *project, char *path, int *error);
-int mbnavadjust_remove_file_by_id(int verbose, struct mbna_project *project, int ifile, int *error);
+MBNAVADJUST_API int mbnavadjust_remove_file_by_id(int verbose, struct mbna_project *project, int ifile, int *error);
 int mbnavadjust_crossing_overlap(int verbose, struct mbna_project *project, int crossing_id, int *error);
 int mbnavadjust_crossing_overlapbounds(int verbose, struct mbna_project *project, int crossing_id, double offset_x,
                                        double offset_y, double *lonmin, double *lonmax, double *latmin, double *latmax,
@@ -519,10 +520,10 @@ int mbnavadjust_crossing_focuspoint(int verbose, struct mbna_project *project, i
 int mbnavadjust_set_plot_functions(int verbose, struct mbna_project *project,
                              void *plot, void *newpen, void *setline,
                              void *justify_string, void *plot_string, int *error);
-int mbnavadjust_section_load(int verbose, struct mbna_project *project,
+MBNAVADJUST_API int mbnavadjust_section_load(int verbose, struct mbna_project *project,
                              int file_id, int section_id,
                              void **swathraw_ptr, void **swath_ptr, int *error);
-int mbnavadjust_section_unload(int verbose, void **swathraw_ptr, void **swath_ptr, int *error);
+MBNAVADJUST_API int mbnavadjust_section_unload(int verbose, void **swathraw_ptr, void **swath_ptr, int *error);
 int mbnavadjust_fix_section_sensordepth(int verbose, struct mbna_project *project, int *error);
 int mbnavadjust_section_translate(int verbose, struct mbna_project *project,
                                   int file_id, void *swathraw_ptr, void *swath_ptr,
@@ -534,12 +535,12 @@ int mbnavadjust_reference_load(int verbose, struct mbna_project *project, int re
                                 struct mbna_section *section, void **swath, int *error);
 int mbnavadjust_reference_unload(int verbose, void **swath, int *error);
 int mbnavadjust_refgrid_unload(int verbose, struct mbna_project *project, int *error);
-int mbnavadjust_import_data(int verbose, struct mbna_project *project, char *path, int format, bool import_single_survey, int *error);
+MBNAVADJUST_API int mbnavadjust_import_data(int verbose, struct mbna_project *project, char *path, int format, bool import_single_survey, int *error);
 int mbnavadjust_import_file(int verbose, struct mbna_project *project, char *path, int format, bool firstfile, int *error);
-int mbnavadjust_update_file(int verbose, struct mbna_project *project,int ifile, int *error);
+MBNAVADJUST_API int mbnavadjust_update_file(int verbose, struct mbna_project *project,int ifile, int *error);
 int mbnavadjust_coverage_mask(int verbose, struct mbna_project *project, int ifile, int isection, int *error);
 int mbnavadjust_import_reference(int verbose, struct mbna_project *project, char *path, int *error);
-int mbnavadjust_findcrossings(int verbose, struct mbna_project *project, int *error);
+MBNAVADJUST_API int mbnavadjust_findcrossings(int verbose, struct mbna_project *project, int *error);
 int mbnavadjust_findcrossingsfile(int verbose, struct mbna_project *project, int ifile, int *error);
 int mbnavadjust_addcrossing(int verbose, struct mbna_project *project, int ifile1, int isection1, int ifile2, int isection2, int *error);
 bool mbnavadjust_sections_intersect(int verbose, struct mbna_project *project, int crossing_id, int *error);

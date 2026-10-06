@@ -37,9 +37,9 @@
  * Date:	September 14,  2008
  *
  * GMT-module port of src/utilities/mbctdlist.cc: the getopt_long loop
- * is replaced by the GMT option parser (long options are rewritten onto
- * their short forms before GMT sees them) and main() becomes
- * GMT_mbctdlist(), with every exit() turned into Return().
+ * is replaced by the GMT option parser (long options through module_kw,
+ * lower-case aliases kept), the listing goes through the GMT API (-A: raw doubles on stdout)
+ * and main() becomes GMT_mbctdlist(), every exit() a Return() with a GMT error code.
  */
 
 #define THIS_MODULE_NAME "mbctdlist"
@@ -72,6 +72,8 @@
 #include "mb_format.h"
 #include "mb_process.h"
 #include "mb_status.h"
+#include "mb_gmt_opts.h"
+#include "mb_gmt_text.h"
 
 enum { MAX_OPTIONS = 25 };
 enum { MBCTDLIST_ALLOC_CHUNK = 1024 };
@@ -95,7 +97,7 @@ static const char usage_message[] =
     "\t--verbose {-V}\n\n";
 
 /*--------------------------------------------------------------------*/
-static int printsimplevalue(int verbose, double value, int width, int precision, bool ascii, bool *invert, bool *flipsign, int *error) {
+static int printsimplevalue(struct MB_GMT_TEXT *T, int verbose, double value, int width, int precision, bool ascii, bool *invert, bool *flipsign, int *error) {
 	if (verbose >= 2) {
 		fprintf(stderr, "\ndbg2  MBlist function <%s> called\n", __func__);
 		fprintf(stderr, "dbg2  Input arguments:\n");
@@ -133,7 +135,7 @@ static int printsimplevalue(int verbose, double value, int width, int precision,
 
 	/* print value */
 	if (ascii)
-		printf(format, value);
+		mb_gmt_text_put(T, format, value);
 	else
 		fwrite(&value, sizeof(double), 1, stdout);
 
@@ -155,6 +157,7 @@ static int printsimplevalue(int verbose, double value, int width, int precision,
 /* --- Control structure ---------------------------------------------- */
 
 struct MBCTDLIST_CTRL {
+	int verbose;	/* the program's -V/-v count */
 	struct mbcl_A { bool active; } A;
 	struct mbcl_D { bool active; int decimate; } D;
 	struct mbcl_F { bool active; int format; } F;
@@ -176,11 +179,27 @@ static void Free_mbctdlist_Ctrl(struct GMT_CTRL *GMT, struct MBCTDLIST_CTRL *Ctr
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'A', "binary",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "decimate",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'G', "delimiter",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "longitude-domain", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output-format",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Z', "segment",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
 	GMT_Message(API, GMT_TIME_NONE,
 	            "\t-A Write binary doubles instead of ASCII text.\n"
@@ -191,9 +210,10 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	            "\t-L Longitude domain (lonflip).\n"
 	            "\t-O Output value list (mblist-like) [TXYHCc^cSs].\n"
 	            "\t-Z Write GMT segment headers using this tag.\n"
-	            "\t-H Print help and exit.\n");
-	GMT_Option(API, "V");
-	return GMT_PARSE_ERROR;
+	            "\t-H Print help and exit.\n"
+	            "\tEvery option also has the program's lower-case and long forms.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse_mbctdlist(struct GMT_CTRL *GMT, struct MBCTDLIST_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -201,6 +221,9 @@ static int parse_mbctdlist(struct GMT_CTRL *GMT, struct MBCTDLIST_CTRL *Ctrl, st
 	struct GMT_OPTION *opt;
 	for (opt = options; opt; opt = opt->next) {
 		switch (opt->option) {
+		case 'V': case 'v':
+			Ctrl->verbose++;
+			break;
 		case 'A': case 'a':
 			Ctrl->A.active = true;
 			break;
@@ -248,75 +271,15 @@ static int parse_mbctdlist(struct GMT_CTRL *GMT, struct MBCTDLIST_CTRL *Ctrl, st
 			else n_errors++;
 			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
-}
-
-static char *join_args(int mode, void *args) {
-	char **argv = (char **)args, *joined;
-	size_t total = 1;
-	int i;
-	if (mode <= 0 || !args) return NULL;
-	for (i = 0; i < mode; i++) total += strlen(argv[i]) + 1;
-	joined = (char *)calloc(total, 1);
-	if (!joined) return NULL;
-	for (i = 0; i < mode; i++) { if (i) strcat(joined, " "); strcat(joined, argv[i]); }
-	return joined;
-}
-
-/* Rewrite the getopt_long options of mbctdlist.cc onto short options. */
-static char *preparse_long_options(bool *help, const char *args) {
-	size_t length = args ? strlen(args) : 0, out = 0;
-	char *copy = (char *)calloc(length + 2, 1), *result = (char *)calloc(2 * length + 8, 1);
-	char *token, *saveptr = NULL, pending = '\0';
-	if (!copy || !result) { free(copy); free(result); return NULL; }
-	memcpy(copy, args, length);
-	for (token = strtok_r(copy, " \t", &saveptr); token; token = strtok_r(NULL, " \t", &saveptr)) {
-		char emit = '\0', *equals;
-		const char *value = NULL;
-		if (pending) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = pending;
-			memcpy(result + out, token, strlen(token)); out += strlen(token); pending = '\0'; continue;
-		}
-		if (strncmp(token, "--", 2) != 0) {
-			if (out) result[out++] = ' ';
-			memcpy(result + out, token, strlen(token)); out += strlen(token); continue;
-		}
-		equals = strchr(token + 2, '=');
-		if (equals) { *equals = '\0'; value = equals + 1; }
-		if (!strcmp(token + 2, "help")) { *help = true; continue; }
-		if (!strcmp(token + 2, "verbose")) emit = 'V';
-		else if (!strcmp(token + 2, "binary")) emit = 'A';
-		else if (!strcmp(token + 2, "decimate")) emit = 'D';
-		else if (!strcmp(token + 2, "format")) emit = 'F';
-		else if (!strcmp(token + 2, "delimiter")) emit = 'G';
-		else if (!strcmp(token + 2, "input")) emit = 'I';
-		else if (!strcmp(token + 2, "longitude-domain")) emit = 'L';
-		else if (!strcmp(token + 2, "output-format")) emit = 'O';
-		else if (!strcmp(token + 2, "segment")) emit = 'Z';
-		if (!emit) {
-			if (equals) *equals = '=';
-			if (out) result[out++] = ' ';
-			memcpy(result + out, token, strlen(token)); out += strlen(token);
-		} else if (emit == 'V' || emit == 'A') {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = emit;
-		} else if (value) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = emit;
-			memcpy(result + out, value, strlen(value)); out += strlen(value);
-		} else pending = emit;
-	}
-	free(copy);
-	return result;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code) { gmt_M_free_options(mode); return (code); }
-#define Return(code) { free(remaining_args); Free_mbctdlist_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code) { if (T) mb_gmt_text_end(T); Free_mbctdlist_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 EXTERN_MSC int GMT_mbctdlist(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
@@ -326,31 +289,23 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION *options = NULL;
 	struct MBCTDLIST_CTRL *Ctrl = NULL;
-	char *remaining_args = NULL;
-	bool staged_help = false;
+	struct MB_GMT_TEXT *T = NULL;	/* the listing: text records through the GMT API, or raw stdout for -A */
 	int parse_error;
 
 	if (!API) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-	{
-		char *joined = join_args(mode, args);
-		const char *text = joined ? joined : (mode == GMT_MODULE_CMD ? (const char *)args : NULL);
-		if (text) remaining_args = preparse_long_options(&staged_help, text);
-		free(joined);
-	}
-	options = GMT_Create_Options(API, remaining_args ? GMT_MODULE_CMD : mode, remaining_args ? (void *)remaining_args : args);
-	if (API->error) { free(remaining_args); return API->error; }
-	/* no arguments is a valid run: mbctdlist reads datalist.mb-1 */
-	if (options && options->option == GMT_OPT_USAGE) { free(remaining_args); bailout(usage(API, GMT_USAGE)); }
-	if (options && options->option == GMT_OPT_SYNOPSIS) { free(remaining_args); bailout(usage(API, GMT_SYNOPSIS)); }
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no arguments is a valid run: mbctdlist reads datalist.mb-1 */
+	if ((parse_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(parse_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) { free(remaining_args); bailout(API->error); }
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 	Ctrl = (struct MBCTDLIST_CTRL *)New_mbctdlist_Ctrl(GMT);
-	Ctrl->H.active = staged_help;
-	if ((parse_error = parse_mbctdlist(GMT, Ctrl, options)) != GMT_OK) Return(parse_error);
+	if ((parse_error = parse_mbctdlist(GMT, Ctrl, options)) != GMT_NOERROR) Return(parse_error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
-	int verbose = GMT->common.V.active;
+	int verbose = Ctrl->verbose;
 	int format;
 	int pings;
 	int lonflip;
@@ -389,7 +344,6 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 	char segment_tag[MB_PATH_MAXLINE] = "";
 
 	{
-		bool help = Ctrl->H.active;
 
 		if (Ctrl->A.active)
 			ascii = false;
@@ -413,7 +367,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 			sscanf(Ctrl->Z.segment_tag, "%1023s", segment_tag);
 		}
 
-		if (verbose == 1 || help) {
+		if (verbose == 1) {
 			fprintf(stderr, "\nProgram %s\n", program_name);
 			fprintf(stderr, "MB-system Version %s\n", MB_VERSION);
 		}
@@ -423,7 +377,6 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 			fprintf(stderr, "dbg2  MB-system Version %s\n", MB_VERSION);
 			fprintf(stderr, "dbg2  Control Parameters:\n");
 			fprintf(stderr, "dbg2       verbose:        %d\n", verbose);
-			fprintf(stderr, "dbg2       help:           %d\n", help);
 			fprintf(stderr, "dbg2       format:         %d\n", format);
 			fprintf(stderr, "dbg2       pings:          %d\n", pings);
 			fprintf(stderr, "dbg2       lonflip:        %d\n", lonflip);
@@ -457,11 +410,6 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 				fprintf(stderr, "dbg2         list[%d]:      %c\n", i, list[i]);
 		}
 
-		if (help) {
-			fprintf(stderr, "\n%s\n", help_message);
-			fprintf(stderr, "\nusage: %s\n", usage_message);
-			Return(MB_ERROR_NO_ERROR);
-		}
 	}
 
 #ifdef _WIN32
@@ -469,6 +417,10 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 	if (!ascii)
 		_setmode(_fileno(stdout), _O_BINARY);
 #endif
+
+	/* the listing: text records through the GMT API; -A's binary doubles raw on stdout */
+	if ((T = ascii ? mb_gmt_text_begin(GMT, options) : mb_gmt_text_stdout(GMT)) == NULL)
+		Return(API->error ? API->error : GMT_RUNTIME_ERROR);
 
 	int error = MB_ERROR_NO_ERROR;
 
@@ -492,7 +444,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		read_data = mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight, &error) == MB_SUCCESS;
 	} else {
@@ -551,7 +503,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 			fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 			fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		/* allocate memory for data arrays */
@@ -580,12 +532,12 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 			mb_error(verbose, error, &message);
 			fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			Return(GMT_MEMORY_ERROR);
 		}
 
 		/* output separator for GMT style segment file output */
 		if (segment && ascii) {
-			printf("%s\n", segment_tag);
+			mb_gmt_text_put(T, "%s\n", segment_tag);
 		}
 
 		/* output info */
@@ -628,7 +580,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 						mb_error(verbose, error, &message);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -682,7 +634,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		read_data = mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight, &error) == MB_SUCCESS;
 	} else {
@@ -751,7 +703,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 			fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 			fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		/* allocate memory for data arrays */
@@ -780,7 +732,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 			mb_error(verbose, error, &message);
 			fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			Return(GMT_MEMORY_ERROR);
 		}
 
 		/* output info */
@@ -903,63 +855,63 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 										mblist_next_value = true;
 										break;
 									case '1': /* Sensor 1 - volts */
-										printsimplevalue(verbose, sensor1[ictd], 0, 3, ascii, &invert_next_value,
+										printsimplevalue(T, verbose, sensor1[ictd], 0, 3, ascii, &invert_next_value,
 										                 &signflip_next_value, &error);
 										break;
 									case '2': /* Sensor 2 - volts */
-										printsimplevalue(verbose, sensor2[ictd], 0, 3, ascii, &invert_next_value,
+										printsimplevalue(T, verbose, sensor2[ictd], 0, 3, ascii, &invert_next_value,
 										                 &signflip_next_value, &error);
 										break;
 									case '3': /* Sensor 3 - volts */
-										printsimplevalue(verbose, sensor3[ictd], 0, 3, ascii, &invert_next_value,
+										printsimplevalue(T, verbose, sensor3[ictd], 0, 3, ascii, &invert_next_value,
 										                 &signflip_next_value, &error);
 										break;
 									case '4': /* Sensor 4 - volts */
-										printsimplevalue(verbose, sensor4[ictd], 0, 3, ascii, &invert_next_value,
+										printsimplevalue(T, verbose, sensor4[ictd], 0, 3, ascii, &invert_next_value,
 										                 &signflip_next_value, &error);
 										break;
 									case '5': /* Sensor 5 - volts */
-										printsimplevalue(verbose, sensor5[ictd], 0, 3, ascii, &invert_next_value,
+										printsimplevalue(T, verbose, sensor5[ictd], 0, 3, ascii, &invert_next_value,
 										                 &signflip_next_value, &error);
 										break;
 									case '6': /* Sensor 6 - volts */
-										printsimplevalue(verbose, sensor6[ictd], 0, 3, ascii, &invert_next_value,
+										printsimplevalue(T, verbose, sensor6[ictd], 0, 3, ascii, &invert_next_value,
 										                 &signflip_next_value, &error);
 										break;
 									case '7': /* Sensor 7 - volts */
-										printsimplevalue(verbose, sensor7[ictd], 0, 3, ascii, &invert_next_value,
+										printsimplevalue(T, verbose, sensor7[ictd], 0, 3, ascii, &invert_next_value,
 										                 &signflip_next_value, &error);
 										break;
 									case '8': /* Sensor 8 - volts */
-										printsimplevalue(verbose, sensor8[ictd], 0, 3, ascii, &invert_next_value,
+										printsimplevalue(T, verbose, sensor8[ictd], 0, 3, ascii, &invert_next_value,
 										                 &signflip_next_value, &error);
 										break;
 									case 'C': /* Conductivity or Sonar altitude (m) */
 										if (!mblist_next_value)
-											printsimplevalue(verbose, conductivity, 0, 5, ascii, &invert_next_value,
+											printsimplevalue(T, verbose, conductivity, 0, 5, ascii, &invert_next_value,
 											                 &signflip_next_value, &error);
 										else {
-											printsimplevalue(verbose, altitude, 0, 3, ascii, &invert_next_value,
+											printsimplevalue(T, verbose, altitude, 0, 3, ascii, &invert_next_value,
 											                 &signflip_next_value, &error);
 											mblist_next_value = false;
 										}
 										break;
 									case 'c': /* Temperature or sonar transducer depth (m) */
 										if (!mblist_next_value)
-											printsimplevalue(verbose, temperature, 0, 5, ascii, &invert_next_value,
+											printsimplevalue(T, verbose, temperature, 0, 5, ascii, &invert_next_value,
 											                 &signflip_next_value, &error);
 										else {
-											printsimplevalue(verbose, sensordepth, 0, 3, ascii, &invert_next_value,
+											printsimplevalue(T, verbose, sensordepth, 0, 3, ascii, &invert_next_value,
 											                 &signflip_next_value, &error);
 											mblist_next_value = false;
 										}
 										break;
 									case 'H': /* heading */
-										printsimplevalue(verbose, heading, 6, 2, ascii, &invert_next_value, &signflip_next_value,
+										printsimplevalue(T, verbose, heading, 6, 2, ascii, &invert_next_value, &signflip_next_value,
 										                 &error);
 										break;
 									case 'h': /* course */
-										printsimplevalue(verbose, course, 6, 2, ascii, &invert_next_value, &signflip_next_value,
+										printsimplevalue(T, verbose, course, 6, 2, ascii, &invert_next_value, &signflip_next_value,
 										                 &error);
 										break;
 									case 'J': /* time string */
@@ -967,7 +919,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 										mb_get_jtime(verbose, time_i, time_j);
 										const double seconds = time_i[5] + 0.000001 * time_i[6];
 										if (ascii) {
-											printf("%.4d %.3d %.2d %.2d %9.6f", time_j[0], time_j[1], time_i[3], time_i[4],
+											mb_gmt_text_put(T, "%.4d %.3d %.2d %.2d %9.6f", time_j[0], time_j[1], time_i[3], time_i[4],
 											       seconds);
 										}
 										else {
@@ -991,7 +943,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 										mb_get_jtime(verbose, time_i, time_j);
 										const double seconds = time_i[5] + 0.000001 * time_i[6];
 										if (ascii) {
-											printf("%.4d %.3d %.4d %9.6f", time_j[0], time_j[1], time_j[2], seconds);
+											mb_gmt_text_put(T, "%.4d %.3d %.4d %9.6f", time_j[0], time_j[1], time_j[2], seconds);
 										}
 										else {
 											double b = time_j[0];
@@ -1008,16 +960,16 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 										break;
 									}
 									case 'L': /* along-track distance (km) */
-										printsimplevalue(verbose, distance_total, 7, 3, ascii, &invert_next_value,
+										printsimplevalue(T, verbose, distance_total, 7, 3, ascii, &invert_next_value,
 										                 &signflip_next_value, &error);
 										break;
 									case 'l': /* along-track distance (m) */
-										printsimplevalue(verbose, 1000.0 * distance_total, 7, 3, ascii, &invert_next_value,
+										printsimplevalue(T, verbose, 1000.0 * distance_total, 7, 3, ascii, &invert_next_value,
 										                 &signflip_next_value, &error);
 										break;
 									case 'M': /* Decimal unix seconds since
 									        1/1/70 00:00:00 */
-										printsimplevalue(verbose, time_d, 0, 6, ascii, &invert_next_value, &signflip_next_value,
+										printsimplevalue(T, verbose, time_d, 0, 6, ascii, &invert_next_value, &signflip_next_value,
 										                 &error);
 										break;
 									case 'm': /* time in decimal seconds since
@@ -1028,7 +980,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 											first_m = false;
 										}
 										const double b = time_d - time_d_ref;
-										printsimplevalue(verbose, b, 0, 6, ascii, &invert_next_value, &signflip_next_value,
+										printsimplevalue(T, verbose, b, 0, 6, ascii, &invert_next_value, &signflip_next_value,
 										                 &error);
 										break;
 									}
@@ -1040,25 +992,25 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 										    0.04 * (1.0 + 0.185 * temperature + 0.35 * (salinity - 35.0)) *
 										        (sensordepth / 1000.0) -
 										    0.0075 * (1.0 - temperature / 30.0) * (sensordepth * sensordepth / 1000000.0);
-										printsimplevalue(verbose, potentialtemperature, 0, 5, ascii, &invert_next_value,
+										printsimplevalue(T, verbose, potentialtemperature, 0, 5, ascii, &invert_next_value,
 										                 &signflip_next_value, &error);
 										break;
 									case 'S': /* salinity or speed */
 										if (!mblist_next_value)
-											printsimplevalue(verbose, salinity, 0, 5, ascii, &invert_next_value,
+											printsimplevalue(T, verbose, salinity, 0, 5, ascii, &invert_next_value,
 											                 &signflip_next_value, &error);
 										else {
-											printsimplevalue(verbose, speed, 5, 2, ascii, &invert_next_value,
+											printsimplevalue(T, verbose, speed, 5, 2, ascii, &invert_next_value,
 											                 &signflip_next_value, &error);
 											mblist_next_value = false;
 										}
 										break;
 									case 's': /* speed made good */
 										if (!mblist_next_value)
-											printsimplevalue(verbose, soundspeed, 0, 3, ascii, &invert_next_value,
+											printsimplevalue(T, verbose, soundspeed, 0, 3, ascii, &invert_next_value,
 											                 &signflip_next_value, &error);
 										else {
-											printsimplevalue(verbose, speed_made_good, 5, 2, ascii, &invert_next_value,
+											printsimplevalue(T, verbose, speed_made_good, 5, 2, ascii, &invert_next_value,
 											                 &signflip_next_value, &error);
 											mblist_next_value = false;
 										}
@@ -1067,7 +1019,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 									{
 										const double seconds = time_i[5] + 1e-6 * time_i[6];
 										if (ascii)
-											printf("%.4d/%.2d/%.2d/%.2d/%.2d/%9.6f", time_i[0], time_i[1], time_i[2], time_i[3],
+											mb_gmt_text_put(T, "%.4d/%.2d/%.2d/%.2d/%.2d/%9.6f", time_i[0], time_i[1], time_i[2], time_i[3],
 											       time_i[4], seconds);
 										else {
 											double b = time_i[0];
@@ -1089,7 +1041,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 									{
 										const double seconds = time_i[5] + 1e-6 * time_i[6];
 										if (ascii)
-											printf("%.4d %.2d %.2d %.2d %.2d %9.6f", time_i[0], time_i[1], time_i[2], time_i[3],
+											mb_gmt_text_put(T, "%.4d %.2d %.2d %.2d %.2d %9.6f", time_i[0], time_i[1], time_i[2], time_i[3],
 											       time_i[4], seconds);
 										else {
 											double b = time_i[0];
@@ -1110,7 +1062,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 									case 'U': /* unix time in seconds since 1/1/70 00:00:00 */
 										time_u = (time_t)time_d;
 										if (ascii)
-											printf("%lld", (long long)time_u);
+											mb_gmt_text_put(T, "%lld", (long long)time_u);
 										else {
 											const double b = time_u;
 											fwrite(&b, sizeof(double), 1, stdout);
@@ -1123,7 +1075,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 											first_u = false;
 										}
 										if (ascii)
-											printf("%lld", (long long)(time_u - time_u_ref));
+											mb_gmt_text_put(T, "%lld", (long long)(time_u - time_u_ref));
 										else {
 											const double b = time_u - time_u_ref;
 											fwrite(&b, sizeof(double), 1, stdout);
@@ -1133,9 +1085,9 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 									case 'v':
 										if (ascii) {
 											if (fabs(time_interval) > 100.)
-												printf("%g", time_interval);
+												mb_gmt_text_put(T, "%g", time_interval);
 											else
-												printf("%7.3f", time_interval);
+												mb_gmt_text_put(T, "%7.3f", time_interval);
 										}
 										else {
 											fwrite(&time_interval, sizeof(double), 1, stdout);
@@ -1143,7 +1095,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 										break;
 									case 'X': /* longitude decimal degrees */
 										dlon = navlon;
-										printsimplevalue(verbose, dlon, 11, 6, ascii, &invert_next_value, &signflip_next_value,
+										printsimplevalue(T, verbose, dlon, 11, 6, ascii, &invert_next_value, &signflip_next_value,
 										                 &error);
 										break;
 									case 'x': /* longitude degress + decimal minutes */
@@ -1157,7 +1109,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 										degrees = (int)dlon;
 										minutes = 60.0 * (dlon - degrees);
 										if (ascii) {
-											printf("%3d %8.5f%c", degrees, minutes, hemi);
+											mb_gmt_text_put(T, "%3d %8.5f%c", degrees, minutes, hemi);
 										}
 										else {
 											double b = degrees;
@@ -1170,7 +1122,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 										break;
 									case 'Y': /* latitude decimal degrees */
 										dlat = navlat;
-										printsimplevalue(verbose, dlat, 11, 6, ascii, &invert_next_value, &signflip_next_value,
+										printsimplevalue(T, verbose, dlat, 11, 6, ascii, &invert_next_value, &signflip_next_value,
 										                 &error);
 										break;
 									case 'y': /* latitude degrees + decimal minutes */
@@ -1184,7 +1136,7 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 										degrees = (int)dlat;
 										minutes = 60.0 * (dlat - degrees);
 										if (ascii) {
-											printf("%3d %8.5f%c", degrees, minutes, hemi);
+											mb_gmt_text_put(T, "%3d %8.5f%c", degrees, minutes, hemi);
 										}
 										else {
 											double b = degrees;
@@ -1197,14 +1149,14 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 										break;
 									default:
 										if (ascii)
-											printf("<Invalid Option: %c>", list[i]);
+											mb_gmt_text_put(T, "<Invalid Option: %c>", list[i]);
 										break;
 									}
 									if (ascii) {
 										if (i < (n_list - 1))
-											printf("%s", delimiter);
+											mb_gmt_text_put(T, "%s", delimiter);
 										else
-											printf("\n");
+											mb_gmt_text_put(T, "\n");
 									}
 								}
 							first = false;
@@ -1266,6 +1218,18 @@ int GMT_mbctdlist(void *V_API, int mode, void *args) {
 		fprintf(stderr, "dbg2       status:  %d\n", status);
 	}
 
-	Return(error);
+	const int output_failed = mb_gmt_text_end(T);
+	T = NULL;
+	if (output_failed) Return(GMT_RUNTIME_ERROR);
+
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+	   The end of the data (EOF) is how every read finishes, not an error. */
+	if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

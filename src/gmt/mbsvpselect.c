@@ -193,9 +193,9 @@
  */
 /*
  * GMT-module port of src/utilities/mbsvpselect.cc: the getopt_long loop
- * is replaced by the GMT option parser (long options are rewritten onto
- * their short forms before GMT sees them) and main() becomes
- * GMT_mbsvpselect(), with every exit() turned into Return(). Helpers
+ * is replaced by the GMT option parser (long options through module_kw,
+ * lower-case aliases kept) and main() becomes
+ * GMT_mbsvpselect(), every exit() a Return() with a GMT error code. Helpers
  * that exited now return a status up to GMT_mbsvpselect(). The file-scope
  * state is static and is reset on every call, because a GMT session can
  * run the module more than once. The atexit()/pause_screen() "press ENTER"
@@ -343,11 +343,11 @@ static bool Is_Leap(int year) {
  double s = difftime(inf_hold->s_Time, inf_hold->e_time);
  if(s>86400.0)
  {
- printf("\n\n\n\n%f\n\n\n", s);
+ fprintf(stderr, "\n\n\n\n%f\n\n\n", s);
  }
  else
  {
- printf("\n\n\n\n%f\n\n\n", s);
+ fprintf(stderr, "\n\n\n\n%f\n\n\n", s);
  }
  }*/
 /* ---------------------------------------------------------------- */
@@ -565,7 +565,7 @@ static int fill_struct_inf(inf *inf_hold, char *holder) {
 	/* reading relative inf file */
 	FILE *fileName = fopen(inf_hold->file_name, MBSVPSELECT_READ);
 	if (fileName == NULL) {
-		printf("%s could not be opened Please check the datalist files\n", inf_hold->file_name);
+		fprintf(stderr, "%s could not be opened Please check the datalist files\n", inf_hold->file_name);
 		return MB_FAILURE;
 	}
 
@@ -669,7 +669,7 @@ static int fill_struct_svp(svp *svp_hold, char *holder) {
 	/* reading relative svp file */
 	FILE *fileName = fopen(svp_hold->file_name, MBSVPSELECT_READ);
 	if (fileName == NULL) {
-		printf("%s could not be opend\n", svp_hold->file_name);
+		fprintf(stderr, "%s could not be opend\n", svp_hold->file_name);
 		return MB_FAILURE;
 	}
 
@@ -696,7 +696,7 @@ static int fill_struct_svp(svp *svp_hold, char *holder) {
 		ptr_mb1 = strstr(buffer, mb1_str);
 		ptr_mb2 = strstr(buffer, mb2_str);
 		if (ptr_caris != NULL) {
-			printf("\n%s\n", buffer);
+			fprintf(stderr, "\n%s\n", buffer);
 			sscanf(buffer, "%*s %d-%d  %i:%i:%i %d:%d:%d %d:%d:%d", &year, &yearDay, &svp_hold->svp_datum_time.tm_hour,
 			       &svp_hold->svp_datum_time.tm_min, &svp_hold->svp_datum_time.tm_sec, &s_lat_deg, &s_lat_min, &s_lat_sec,
 			       &s_lon_deg, &s_lon_min, &s_lon_sec);
@@ -718,7 +718,7 @@ static int fill_struct_svp(svp *svp_hold, char *holder) {
 			break;
 		}
 		else if (ptr_mb1 != NULL) {
-			printf("\n%s\n", buffer);
+			fprintf(stderr, "\n%s\n", buffer);
 			sscanf(buffer, "## MB-SVP %d/%d/%d %d:%d:%lf %Lf %Lf", &year, &month, &svp_hold->svp_datum_time.tm_mday,
 			       &svp_hold->svp_datum_time.tm_hour, &svp_hold->svp_datum_time.tm_min, &seconds, &svp_hold->s_lon,
 			       &svp_hold->s_lat);
@@ -734,7 +734,7 @@ static int fill_struct_svp(svp *svp_hold, char *holder) {
 			break;
 		}
 		else if (ptr_mb2 != NULL) {
-			printf("\n%s\n", buffer);
+			fprintf(stderr, "\n%s\n", buffer);
 			sscanf(buffer, "%*s %*s %d/%d/%d %d:%d:%d %Lf %Lf", &year, &month, &svp_hold->svp_datum_time.tm_mday,
 			       &svp_hold->svp_datum_time.tm_hour, &svp_hold->svp_datum_time.tm_min, &svp_hold->svp_datum_time.tm_sec,
 			       &svp_hold->s_lon, &svp_hold->s_lat);
@@ -801,7 +801,7 @@ static int read_recursive2(char *fname) {
 		trim_newline(file2);
 		FILE *dataFile2 = fopen(file2, MBSVPSELECT_READ);
 		if (dataFile2 == NULL) {
-			printf("Could not open the file %s", file2);
+			fprintf(stderr, "Could not open the file %s", file2);
 			return counter;
 		}
 		while ((fgets(dBuffer, sizeof dBuffer, dataFile2)) != NULL) {
@@ -836,7 +836,7 @@ static int read_recursive(char *fileName) {
 	trim_newline(fileName);
 	FILE *dataFile = fopen(fileName, MBSVPSELECT_READ);
 	if (dataFile == NULL) {
-		printf("Could not open the file %s", fileName);
+		fprintf(stderr, "Could not open the file %s", fileName);
 		return 0;
 	}
 
@@ -872,37 +872,37 @@ static int read_recursive(char *fileName) {
 /* print the inf information on the screen */
 static void print_inf(inf *cd) {
 	struct tm *temp = &cd->s_datum_time;
-	puts("==================================================");
-	printf("file_name: %s\n", cd->file_name);
-	puts("starting Date and time");
-	printf("\n%s\n", asctime(temp));
+	fprintf(stderr, "%s\n", "==================================================");
+	fprintf(stderr, "file_name: %s\n", cd->file_name);
+	fprintf(stderr, "%s\n", "starting Date and time");
+	fprintf(stderr, "\n%s\n", asctime(temp));
 
 	temp = &cd->e_datum_time;
-	puts("ending Date and time");
-	printf("\n%s\n", asctime(temp));
-	puts("Start position");
-	printf("lat: %Lf\t", cd->s_lat);
-	printf("lon: %Lf\n", cd->s_lon);
-	puts("End position");
-	printf("e_lat: %Lf\t", cd->e_lat);
-	printf("e_lon: %Lf\n", cd->e_lon);
-	puts("Average position");
-	printf("ave_lat: %Lf\t", cd->ave_lat);
-	printf("ave_lon: %Lf\n", cd->ave_lon);
-	puts("==================================================");
+	fprintf(stderr, "%s\n", "ending Date and time");
+	fprintf(stderr, "\n%s\n", asctime(temp));
+	fprintf(stderr, "%s\n", "Start position");
+	fprintf(stderr, "lat: %Lf\t", cd->s_lat);
+	fprintf(stderr, "lon: %Lf\n", cd->s_lon);
+	fprintf(stderr, "%s\n", "End position");
+	fprintf(stderr, "e_lat: %Lf\t", cd->e_lat);
+	fprintf(stderr, "e_lon: %Lf\n", cd->e_lon);
+	fprintf(stderr, "%s\n", "Average position");
+	fprintf(stderr, "ave_lat: %Lf\t", cd->ave_lat);
+	fprintf(stderr, "ave_lon: %Lf\n", cd->ave_lon);
+	fprintf(stderr, "%s\n", "==================================================");
 }
 /* --------------------------------------------------------------- */
 /* print the svp information on the screen */
 static void print_svp(svp *cd) {
 	struct tm *temp = &cd->svp_datum_time;
-	puts("==================================================");
-	printf("file_name: %s\n", cd->file_name);
-	puts("Date and time");
-	printf("\n%s\n", asctime(temp));
-	puts("position");
-	printf("lat: %Lf\t", cd->s_lat);
-	printf("lon: %Lf\n", cd->s_lon);
-	puts("==================================================");
+	fprintf(stderr, "%s\n", "==================================================");
+	fprintf(stderr, "file_name: %s\n", cd->file_name);
+	fprintf(stderr, "%s\n", "Date and time");
+	fprintf(stderr, "\n%s\n", asctime(temp));
+	fprintf(stderr, "%s\n", "position");
+	fprintf(stderr, "lat: %Lf\t", cd->s_lat);
+	fprintf(stderr, "lon: %Lf\n", cd->s_lon);
+	fprintf(stderr, "%s\n", "==================================================");
 }
 
 /* ---------------------------------------------------------------- */
@@ -910,7 +910,7 @@ static void print_svp(svp *cd) {
  * pause the screen at the exit of the program
  */
 static void pause_screen() {
-	printf("\nEnd the program press ENTER");
+	fprintf(stderr, "\nEnd the program press ENTER");
 	// TODO(schwehr): Undefine behavior.  Was fflush on stdout intended?
 	// fflush(stdin);
 	getchar();
@@ -923,19 +923,19 @@ static int read_list(char *list, char *list_2) {
 	/* open datalist.mb-1 for names of the files */
 	FILE *fDatalist = fopen(list, MBSVPSELECT_READ);
 	if (fDatalist == NULL) {
-		printf("%s Could not be found", list);
+		fprintf(stderr, "%s Could not be found", list);
 		return MB_FAILURE;
 	}
 
 	FILE *fSvp = fopen(list_2, MBSVPSELECT_READ);
 	if (fSvp == NULL) {
-		printf("%s Could not be found", list_2);
+		fprintf(stderr, "%s Could not be found", list_2);
 		fclose(fDatalist);
 		return MB_FAILURE;
 	}
 	FILE *fresult = fopen("result.txt", MBSVPSELECT_WRITE);
 	if (fresult == NULL) {
-		printf("result.txt could not be found");
+		fprintf(stderr, "result.txt could not be found");
 		fclose(fDatalist);
 		fclose(fSvp);
 		return MB_FAILURE;
@@ -953,7 +953,7 @@ static int read_list(char *list, char *list_2) {
 	/* Allocate memory for inf_struct */
 	inf *inf_hold = (inf *)(malloc((surveyLines_total) * sizeof(inf)));
 	if (inf_hold == NULL) {
-		printf("no memory for the process end of process");
+		fprintf(stderr, "no memory for the process end of process");
 		fclose(fDatalist);
 		fclose(fSvp);
 		fclose(fresult);
@@ -982,14 +982,14 @@ static int read_list(char *list, char *list_2) {
 		svp_total += count_size;
 	}
 	/* ------------------------ */
-	printf("\n\n\n%d svp to be read\n\n\n", svp_total);
+	fprintf(stderr, "\n\n\n%d svp to be read\n\n\n", svp_total);
 	/* fill size of svp_list */
 	size_2 = svp_total;
 
 	/* Allocate memory for svp_struct */
 	svp *svp_hold = (svp *)(malloc((svp_total) * sizeof(svp)));
 	if (svp_hold == NULL) {
-		printf("no memory for the process end of process");
+		fprintf(stderr, "no memory for the process end of process");
 		free(inf_hold);
 		fclose(fDatalist);
 		fclose(fSvp);
@@ -1022,24 +1022,24 @@ static int read_list(char *list, char *list_2) {
 
 	/* calculating the distances and choose the appropriate file */
 	if (p_flag == 0)
-		printf("\n Method chosen is %d nearest in position\n", p_flag);
+		fprintf(stderr, "\n Method chosen is %d nearest in position\n", p_flag);
 	if (p_flag == 1)
-		printf("\n Method chosen is %d nearest in time\n", p_flag);
+		fprintf(stderr, "\n Method chosen is %d nearest in time\n", p_flag);
 	if (p_flag == 2) {
-		printf("\n Method chosen is %d nearest in position within time\n", p_flag);
+		fprintf(stderr, "\n Method chosen is %d nearest in position within time\n", p_flag);
 		if (n_p2 == 1)
-			printf("\n No specific time period was entered and the default time period %d hours will be taken\n", p_3_time);
+			fprintf(stderr, "\n No specific time period was entered and the default time period %d hours will be taken\n", p_3_time);
 		if (n_p2 == 2)
-			printf("\n Time period %d hours will be taken\n", p_3_time);
+			fprintf(stderr, "\n Time period %d hours will be taken\n", p_3_time);
 	}
 	if (p_flag == 3) {
-		printf("\n Method chosen is %d nearest in time within range\n", p_flag);
-		printf("\n range  %d meters will be taken\n", p_4_range);
+		fprintf(stderr, "\n Method chosen is %d nearest in time within range\n", p_flag);
+		fprintf(stderr, "\n range  %d meters will be taken\n", p_4_range);
 		if (p_4_flage == 0)
-			printf("\n Option 0 was chosen. The nearest in time within range will be calculated\n");
+			fprintf(stderr, "\n Option 0 was chosen. The nearest in time within range will be calculated\n");
 
 		if (p_4_flage == 1)
-			printf("\n Option 1 was chosen. The nearest in month within range will be calculated. This will calculate within the "
+			fprintf(stderr, "\n Option 1 was chosen. The nearest in month within range will be calculated. This will calculate within the "
 			       "specified range the SVP with the nearest month to the profile regardless of the year. This is the seasonal "
 			       "interpretation \n");
 	}
@@ -1068,8 +1068,8 @@ static int read_list(char *list, char *list_2) {
 			case 0:
 			{
 				if (verbose == 1) {
-					puts("\n\n========N check passed no 0.0 position was found===========\n\n");
-					printf("\nCalculating the distances to all svp profiles for %s\n", inf_hold[i].file_name);
+					fprintf(stderr, "%s\n", "\n\n========N check passed no 0.0 position was found===========\n\n");
+					fprintf(stderr, "\nCalculating the distances to all svp profiles for %s\n", inf_hold[i].file_name);
 				}
 				double temp_dist = 0.0;
 				for (int j = 0; j < size_2; j++) {
@@ -1083,38 +1083,38 @@ static int read_list(char *list, char *list_2) {
 						n = j;
 					}
 					if (verbose == 1)
-						printf("Distance number %d is : %lf\n", j, dist[0][j]);
+						fprintf(stderr, "Distance number %d is : %lf\n", j, dist[0][j]);
 				}
 				if (verbose == 1) {
-					printf("\nSearching for the SVP with nearest position\n");
-					printf("the shortest distance is number %d from the list\n", n);
-					puts("==================================================");
+					fprintf(stderr, "\nSearching for the SVP with nearest position\n");
+					fprintf(stderr, "the shortest distance is number %d from the list\n", n);
+					fprintf(stderr, "%s\n", "==================================================");
 				}
 
 				fprintf(fresult, "%s\n", "============================================================");
 				fprintf(fresult, "%s\t", inf_hold[i].file_name);
 				fprintf(fresult, "%s\n", svp_hold[n].file_name);
 				fprintf(fresult, "%s\n", "=============================================================");
-				printf("Calling mbset\n");
-				/* printf("%s\n", all_in_sys); */
+				fprintf(stderr, "Calling mbset\n");
+				/* fprintf(stderr, "%s\n", all_in_sys); */
 				strcat(all_in_sys, " -I ");
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				strcat(all_in_sys, inf_hold[i].file_name);
-				/* printf("%s\n", all_in_sys); */
+				/* fprintf(stderr, "%s\n", all_in_sys); */
 				strcat(all_in_sys, " -PSVPFILE:");
 				strcat(all_in_sys, svp_hold[n].file_name);
-				printf("%s\n", all_in_sys);
+				fprintf(stderr, "%s\n", all_in_sys);
 				/* int shellstatus = */ system(all_in_sys);
 				break;
 			}
 			case 1:
 			{
 				if (verbose == 1) {
-					puts("\n\n=====================N check:   0.0 position was found=====================\n\n");
-					printf("\nThe file %s has no navigation information at the start position and the svp profile will be "
+					fprintf(stderr, "%s\n", "\n\n=====================N check:   0.0 position was found=====================\n\n");
+					fprintf(stderr, "\nThe file %s has no navigation information at the start position and the svp profile will be "
 					       "assigned to the end point of the file\n",
 					       inf_hold[i].file_name);
 				}
@@ -1130,38 +1130,38 @@ static int read_list(char *list, char *list_2) {
 						n = j;
 					}
 					if (verbose == 1)
-						printf("Distance number %d is : %lf\n", j, dist[0][j]);
+						fprintf(stderr, "Distance number %d is : %lf\n", j, dist[0][j]);
 				}
 				if (verbose == 1) {
-					printf("\nSearching for the SVP with nearest position\n");
-					printf("the shortest distance is number %d from the list\n", n);
-					puts("==================================================");
+					fprintf(stderr, "\nSearching for the SVP with nearest position\n");
+					fprintf(stderr, "the shortest distance is number %d from the list\n", n);
+					fprintf(stderr, "%s\n", "==================================================");
 				}
 
 				fprintf(fresult, "%s\n", "============================================================");
 				fprintf(fresult, "%s\t", inf_hold[i].file_name);
 				fprintf(fresult, "%s\n", svp_hold[n].file_name);
 				fprintf(fresult, "%s\n", "=============================================================");
-				printf("Building the parameters to call mbset\n");
-				/* printf("%s\n", all_in_sys); */
+				fprintf(stderr, "Building the parameters to call mbset\n");
+				/* fprintf(stderr, "%s\n", all_in_sys); */
 				strcat(all_in_sys, " -I ");
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				strcat(all_in_sys, inf_hold[i].file_name);
-				/* printf("%s\n", all_in_sys); */
+				/* fprintf(stderr, "%s\n", all_in_sys); */
 				strcat(all_in_sys, " -P ");
 				strcat(all_in_sys, svp_hold[n].file_name);
-				printf("%s\n", all_in_sys);
+				fprintf(stderr, "%s\n", all_in_sys);
 				/* int shellstatus = */ system(all_in_sys);
 				break;
 			}
 			case 2:
 			{
 				if (verbose == 1) {
-					puts("\n\n==============N check:   0.0 position was found===================\n\n");
-					printf("\nThe file %s has no navigation information at the end position and the svp profile will be assigned "
+					fprintf(stderr, "%s\n", "\n\n==============N check:   0.0 position was found===================\n\n");
+					fprintf(stderr, "\nThe file %s has no navigation information at the end position and the svp profile will be assigned "
 					       "to the start point of the file\n",
 					       inf_hold[i].file_name);
 				}
@@ -1177,28 +1177,28 @@ static int read_list(char *list, char *list_2) {
 						n = j;
 					}
 					if (verbose == 1)
-						printf("Distance number %d is : %lf\n", j, dist[0][j]);
+						fprintf(stderr, "Distance number %d is : %lf\n", j, dist[0][j]);
 				}
 				if (verbose == 1) {
-					printf("\nSearching for the SVP with nearest position\n");
-					printf("the shortest distance is number %d from the list\n", n);
-					puts("==================================================");
+					fprintf(stderr, "\nSearching for the SVP with nearest position\n");
+					fprintf(stderr, "the shortest distance is number %d from the list\n", n);
+					fprintf(stderr, "%s\n", "==================================================");
 				}
 				fprintf(fresult, "%s\n", "============================================================");
 				fprintf(fresult, "%s\t", inf_hold[i].file_name);
 				fprintf(fresult, "%s\n", svp_hold[n].file_name);
-				printf("Building the parameters to call mbset\n");
-				/* printf("%s\n", all_in_sys); */
+				fprintf(stderr, "Building the parameters to call mbset\n");
+				/* fprintf(stderr, "%s\n", all_in_sys); */
 				strcat(all_in_sys, " -I ");
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				strcat(all_in_sys, inf_hold[i].file_name);
-				/* printf("%s\n", all_in_sys); */
+				/* fprintf(stderr, "%s\n", all_in_sys); */
 				strcat(all_in_sys, " -P ");
 				strcat(all_in_sys, svp_hold[n].file_name);
-				printf("%s\n", all_in_sys);
+				fprintf(stderr, "%s\n", all_in_sys);
 				/* int shellstatus = */ system(all_in_sys);
 				fprintf(fresult, "%s\n", "=============================================================");
 				break;
@@ -1206,8 +1206,8 @@ static int read_list(char *list, char *list_2) {
 			case 3:
 			{
 				if (verbose == 1) {
-					puts("\n\n==============N check:   0.0 position was found====================\n\n");
-					printf("\n!!!The file %s has no navigation information and no svp will be assigned to it!!!\n",
+					fprintf(stderr, "%s\n", "\n\n==============N check:   0.0 position was found====================\n\n");
+					fprintf(stderr, "\n!!!The file %s has no navigation information and no svp will be assigned to it!!!\n",
 					       inf_hold[i].file_name);
 					fprintf(fresult, "%s\n", "============================================================");
 					fprintf(fresult, "%s\t", inf_hold[i].file_name);
@@ -1223,8 +1223,8 @@ static int read_list(char *list, char *list_2) {
 			if (p_flag == 1) /* calculate the nearest in time */
 			{
 				if (verbose == 1) {
-					puts("==================================================");
-					printf("\nCalculating the nearest svp in time for for %s\n", inf_hold[i].file_name);
+					fprintf(stderr, "%s\n", "==================================================");
+					fprintf(stderr, "\nCalculating the nearest svp in time for for %s\n", inf_hold[i].file_name);
 				}
 				double temp_time = 0;
 				for (int j = 0; j < size_2; j++) {
@@ -1237,37 +1237,37 @@ static int read_list(char *list, char *list_2) {
 						n = j;
 					}
 					if (verbose == 1)
-						printf("Time difference number %d is : %lf\n", j, time_hold[0][j]);
+						fprintf(stderr, "Time difference number %d is : %lf\n", j, time_hold[0][j]);
 				}
 				if (verbose == 1) {
-					printf("\nSearch for the SVP that is the nearest in Time\n");
-					printf("the shortest time interval is time difference number %d\n", n);
-					puts("==================================================");
+					fprintf(stderr, "\nSearch for the SVP that is the nearest in Time\n");
+					fprintf(stderr, "the shortest time interval is time difference number %d\n", n);
+					fprintf(stderr, "%s\n", "==================================================");
 				}
 
 				fprintf(fresult, "%s\n", "============================================================");
 				fprintf(fresult, "%s\t", inf_hold[i].file_name);
 				fprintf(fresult, "%s\n", svp_hold[n].file_name);
 				fprintf(fresult, "%s\n", "=============================================================");
-				printf("Building the parameters to call mbset\n");
-				/* printf("%s\n", all_in_sys); */
+				fprintf(stderr, "Building the parameters to call mbset\n");
+				/* fprintf(stderr, "%s\n", all_in_sys); */
 				strcat(all_in_sys, " -I ");
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				strcat(all_in_sys, inf_hold[i].file_name);
-				/* printf("%s\n", all_in_sys); */
+				/* fprintf(stderr, "%s\n", all_in_sys); */
 				strcat(all_in_sys, " -PSVPFILE:");
 				strcat(all_in_sys, svp_hold[n].file_name);
-				printf("%s\n", all_in_sys);
+				fprintf(stderr, "%s\n", all_in_sys);
 				/* int shellstatus = */ system(all_in_sys);
 			}
 			/************calculate the nearest in position within time***************************/
 			if (p_flag == 2) {
 				if (verbose == 1) {
-					puts("==================================================");
-					printf("\nCalculating the nearest svp in position within %d time period for for %s\n", p_3_time,
+					fprintf(stderr, "%s\n", "==================================================");
+					fprintf(stderr, "\nCalculating the nearest svp in position within %d time period for for %s\n", p_3_time,
 					       inf_hold[i].file_name);
 				}
 				double temp_dist = 0.0;
@@ -1283,8 +1283,8 @@ static int read_list(char *list, char *list_2) {
 					geod_inverse(&g, inf_hold[i].ave_lat, inf_hold[i].ave_lon, svp_hold[j].s_lat, svp_hold[j].s_lon, &dist[0][j],
 					             &azi1, &azi2);
 					if (verbose == 1)
-						printf("Time difference number %d is : %lf\n", j, time_hold[0][j]);
-					printf("position difference number %d is : %lf\n", j, dist[0][j]);
+						fprintf(stderr, "Time difference number %d is : %lf\n", j, time_hold[0][j]);
+					fprintf(stderr, "position difference number %d is : %lf\n", j, dist[0][j]);
 					if (time_hold[0][j] < 0) {
 						count = 1;
 						if (j == 0 || temp_dist == 0) {
@@ -1314,46 +1314,46 @@ static int read_list(char *list, char *list_2) {
 				}
 				if (count == 0) {
 					if (verbose == 1) {
-						printf("\nnon of the SVP profiles are within the time period, The tool is selecting nearest in position "
+						fprintf(stderr, "\nnon of the SVP profiles are within the time period, The tool is selecting nearest in position "
 						       "without time considaration\n");
-						printf("the shortest distance is number %d from the list\n", n_pos);
+						fprintf(stderr, "the shortest distance is number %d from the list\n", n_pos);
 					}
 					n = n_pos;
 				}
 				else {
 					if (verbose == 1)
-						printf("the shortest distance within time is number %d from the list\n", n_pos_time);
+						fprintf(stderr, "the shortest distance within time is number %d from the list\n", n_pos_time);
 					n = n_pos_time;
 				}
 				fprintf(fresult, "%s\n", "============================================================");
 				fprintf(fresult, "%s\t", inf_hold[i].file_name);
 				fprintf(fresult, "%s\n", svp_hold[n].file_name);
 				fprintf(fresult, "%s\n", "=============================================================");
-				printf("Building the parameters to call mbset\n");
-				/* printf("%s\n", all_in_sys); */
+				fprintf(stderr, "Building the parameters to call mbset\n");
+				/* fprintf(stderr, "%s\n", all_in_sys); */
 				strcat(all_in_sys, " -I ");
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				strcat(all_in_sys, inf_hold[i].file_name);
-				/* printf("%s\n", all_in_sys); */
+				/* fprintf(stderr, "%s\n", all_in_sys); */
 				strcat(all_in_sys, " -PSVPFILE:");
 				strcat(all_in_sys, svp_hold[n].file_name);
-				printf("%s\n", all_in_sys);
+				fprintf(stderr, "%s\n", all_in_sys);
 				/* int shellstatus = */ system(all_in_sys);
 			}
 			if (p_flag == 3) {
 				// SVP nearest in time within range
 				if (verbose == 1) {
-					puts("==================================================");
-					printf("\nCalculating the nearest svp in time within %d range for for %s\n", p_4_range,
+					fprintf(stderr, "%s\n", "==================================================");
+					fprintf(stderr, "\nCalculating the nearest svp in time within %d range for for %s\n", p_4_range,
 					       inf_hold[i].file_name);
 				}
 				if (p_4_flage == 0)
-					printf("\n Calculating the nearest SVP in time\n");
+					fprintf(stderr, "\n Calculating the nearest SVP in time\n");
 				if (p_4_flage == 1)
-					printf("\n Calculating the nearest SVP in month (seasonal selection)\n");
+					fprintf(stderr, "\n Calculating the nearest SVP in month (seasonal selection)\n");
 				double temp_time = -9999;
 				double temp_day = -9999;
 				double temp_hour = -9999;
@@ -1379,12 +1379,12 @@ static int read_list(char *list, char *list_2) {
 					             &azi1, &azi2);
 					dist[0][j] -= p_4_range;
 					// if the SVP is within the range
-					puts("==================================================");
-					printf("year day difference %d is : %d\n", j, day_hold[0][j]);
-					printf("hour difference %d is : %d\n", j, hour_hold[0][j]);
-					printf("minute difference %d is : %d\n", j, min_hold[0][j]);
-					printf("Time difference %d is : %lf\n", j, time_hold[0][j]);
-					printf("distance - range (if positive then SVP out of range if negative then the SVP within range) %d is : "
+					fprintf(stderr, "%s\n", "==================================================");
+					fprintf(stderr, "year day difference %d is : %d\n", j, day_hold[0][j]);
+					fprintf(stderr, "hour difference %d is : %d\n", j, hour_hold[0][j]);
+					fprintf(stderr, "minute difference %d is : %d\n", j, min_hold[0][j]);
+					fprintf(stderr, "Time difference %d is : %lf\n", j, time_hold[0][j]);
+					fprintf(stderr, "distance - range (if positive then SVP out of range if negative then the SVP within range) %d is : "
 					       "%lf\n",
 					       j, dist[0][j]);
 
@@ -1488,17 +1488,17 @@ static int read_list(char *list, char *list_2) {
 				if (count == 0) {
 					if (p_4_flage == 0) {
 						if (verbose == 1) {
-							printf("\nnon of the SVP profiles are within the specified range, The tool is selecting nearest in "
+							fprintf(stderr, "\nnon of the SVP profiles are within the specified range, The tool is selecting nearest in "
 							       "time without range considaration\n");
-							printf("the nearest in time is number %d from the list\n", n_pos_noSeason);
+							fprintf(stderr, "the nearest in time is number %d from the list\n", n_pos_noSeason);
 						}
 						n = n_pos_noSeason;
 					}
 					else {
 						if (verbose == 1) {
-							printf("\nnon of the SVP profiles are within the specified range, The tool is selecting nearest in "
+							fprintf(stderr, "\nnon of the SVP profiles are within the specified range, The tool is selecting nearest in "
 							       "time without range considaration\n");
-							printf("the nearest in season is number %d from the list\n", n_pos_seasn);
+							fprintf(stderr, "the nearest in season is number %d from the list\n", n_pos_seasn);
 						}
 						n = n_pos_seasn;
 					}
@@ -1506,12 +1506,12 @@ static int read_list(char *list, char *list_2) {
 				else {
 					if (p_4_flage == 0) {
 						if (verbose == 1)
-							printf("the nearest in time within range is number %d from the list\n", n_time_noSeason);
+							fprintf(stderr, "the nearest in time within range is number %d from the list\n", n_time_noSeason);
 						n = n_time_noSeason;
 					}
 					else {
 						if (verbose == 1)
-							printf("the nearest in season within range is number %d from the list\n", n_time_season);
+							fprintf(stderr, "the nearest in season within range is number %d from the list\n", n_time_season);
 						n = n_time_season;
 					}
 				}
@@ -1519,7 +1519,7 @@ static int read_list(char *list, char *list_2) {
 				fprintf(fresult, "%s\t", inf_hold[i].file_name);
 				fprintf(fresult, "%s\n", svp_hold[n].file_name);
 				fprintf(fresult, "%s\n", "=============================================================");
-				printf("Building the parameters to call mbset\n");
+				fprintf(stderr, "Building the parameters to call mbset\n");
 				strcat(all_in_sys, " -I ");
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
 				inf_hold[i].file_name[strlen(inf_hold[i].file_name) - 1] = '\0';
@@ -1528,7 +1528,7 @@ static int read_list(char *list, char *list_2) {
 				strcat(all_in_sys, inf_hold[i].file_name);
 				strcat(all_in_sys, " -PSVPFILE:");
 				strcat(all_in_sys, svp_hold[n].file_name);
-				printf("%s\n", all_in_sys);
+				fprintf(stderr, "%s\n", all_in_sys);
 				/* int shellstatus = */ system(all_in_sys);
 			}
 		}
@@ -1545,19 +1545,20 @@ static int read_list(char *list, char *list_2) {
 /* The body of the -P / --method case of the original getopt loop. It
  * returns 1 where the original paused the screen and called exit(0). */
 static int mbsvpselect_method(const char *optarg) {
-				int n1;
+				int n1 = 0;	/* -P with no number is method 0 (was read uninitialized) */
 				int n2;
 				int n3;
 				const int n = sscanf(optarg, "%d/%d/%d", &n1, &n2, &n3);
 				n_p2 = n;
-				/* printf("\nthis is n %d \n", n); */
+				/* fprintf(stderr, "\nthis is n %d \n", n); */
 				if ((n1 != 0) && (n1 != 1) && (n1 != 2) && (n1 != 3)) {
-					puts("Only four options are available: 0 for nearest position, 1 for nearest in time, 2 for both, 3 for nearest "
-					     "in time within range");
-					puts("The default is svp_nearest in position");
-					puts("If option 2 is chosen without specifying time period, 10 hours is the default value");
-					puts("If option 3 is chosen without specifying range, 10000 meters is the default value");
-					puts("If option 3 is chosen two options are available : nearest in time and nearest in month");
+					/* the program's explanation, on stderr: a module's stdout is data */
+					fputs("Only four options are available: 0 for nearest position, 1 for nearest in time, 2 for both, 3 for nearest "
+					      "in time within range\n", stderr);
+					fputs("The default is svp_nearest in position\n", stderr);
+					fputs("If option 2 is chosen without specifying time period, 10 hours is the default value\n", stderr);
+					fputs("If option 3 is chosen without specifying range, 10000 meters is the default value\n", stderr);
+					fputs("If option 3 is chosen two options are available : nearest in time and nearest in month\n", stderr);
 					/* was: pause_screen() then exit(0) */
 					return 1;
 				}
@@ -1578,7 +1579,7 @@ static int mbsvpselect_method(const char *optarg) {
 					if (n == 2) {
 						p_flag = n1;
 						if ((p_flag == 0) || (p_flag == 1))
-							puts("The options -P0 for nearest in position or -P1 for nearest in time do not need further arguments");
+							fprintf(stderr, "%s\n", "The options -P0 for nearest in position or -P1 for nearest in time do not need further arguments");
 
 						if (p_flag == 2)
 							p_3_time = n2;
@@ -1590,7 +1591,7 @@ static int mbsvpselect_method(const char *optarg) {
 						p_4_range = n2;
 						p_4_flage = n3;
 						if ((p_flag == 0) || (p_flag == 1))
-							puts("The options -P0 for nearest in position or -P1 for nearest in time do not need further arguments");
+							fprintf(stderr, "%s\n", "The options -P0 for nearest in position or -P1 for nearest in time do not need further arguments");
 
 						if ((p_4_flage != 0) && (p_4_flage != 1)) {
 							puts("If option 3 is chosen two options are available : nearest in time with -P3/0 and nearest in month "
@@ -1606,6 +1607,7 @@ static int mbsvpselect_method(const char *optarg) {
 /* --- Control structure ---------------------------------------------- */
 
 struct MBSVPSELECT_CTRL {
+	int verbose;	/* the program's -V/-v count */
 	struct mbss_H { bool active; } H;
 	struct mbss_I { bool active; char datalist[BUFSIZ]; } I;
 	struct mbss_N { bool active; int count; } N;
@@ -1623,12 +1625,24 @@ static void Free_mbsvpselect_Ctrl(struct GMT_CTRL *GMT, struct MBSVPSELECT_CTRL 
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'N', "check-zero-position", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "method",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "svplist",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'v', "verbose",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message_old);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
-	GMT_Message(API, GMT_TIME_NONE, "%s\n\n", help_message);
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
+	GMT_Message(API, GMT_TIME_NONE, "%s\n\nusage: %s\n\n", help_message, usage_message);
 	GMT_Message(API, GMT_TIME_NONE,
 	            "\t-I Input recursive swath datalist [datalist.mb-1].\n"
 	            "\t-S Input recursive sound velocity profile list [svplist.mb-1].\n"
@@ -1636,9 +1650,10 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	            "\t   2/period nearest in position within period hours,\n"
 	            "\t   3/range[/1] nearest in time (or month) within range meters.\n"
 	            "\t-N Check for zero longitude/latitude positions.\n"
-	            "\t-H Print help and exit.\n");
-	GMT_Option(API, "V");
-	return GMT_PARSE_ERROR;
+	            "\t-H Print help and exit.\n"
+	            "\tEvery option also has the program's lower-case and long forms.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse_mbsvpselect(struct GMT_CTRL *GMT, struct MBSVPSELECT_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -1646,6 +1661,9 @@ static int parse_mbsvpselect(struct GMT_CTRL *GMT, struct MBSVPSELECT_CTRL *Ctrl
 	struct GMT_OPTION *opt;
 	for (opt = options; opt; opt = opt->next) {
 		switch (opt->option) {
+		case 'V': case 'v':
+			Ctrl->verbose++;
+			break;
 		case 'H': case 'h':
 			Ctrl->H.active = true;
 			break;
@@ -1660,7 +1678,7 @@ static int parse_mbsvpselect(struct GMT_CTRL *GMT, struct MBSVPSELECT_CTRL *Ctrl
 			Ctrl->N.active = true;
 			Ctrl->N.count++;
 			break;
-		case 'P': case 'p': case 'Q':	/* -P arrives as -Q, see preparse_long_options() */
+		case 'P': case 'p':
 			Ctrl->P.active = true;
 			break;
 		case 'S': case 's':
@@ -1671,80 +1689,15 @@ static int parse_mbsvpselect(struct GMT_CTRL *GMT, struct MBSVPSELECT_CTRL *Ctrl
 			else n_errors++;
 			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
-}
-
-static char *join_args(int mode, void *args) {
-	char **argv = (char **)args, *joined;
-	size_t total = 1;
-	int i;
-	if (mode <= 0 || !args) return NULL;
-	for (i = 0; i < mode; i++) total += strlen(argv[i]) + 1;
-	joined = (char *)calloc(total, 1);
-	if (!joined) return NULL;
-	for (i = 0; i < mode; i++) { if (i) strcat(joined, " "); strcat(joined, argv[i]); }
-	return joined;
-}
-
-/* Rewrite the getopt_long options of mbsvpselect.cc onto short options.
- * GMT reserves -P, so the method is carried as -Q; a bare -P means -P0. */
-static char *preparse_long_options(bool *help, const char *args) {
-	size_t length = args ? strlen(args) : 0, out = 0;
-	char *copy = (char *)calloc(length + 2, 1), *result = (char *)calloc(2 * length + 8, 1);
-	char *token, *saveptr = NULL, pending = '\0';
-	if (!copy || !result) { free(copy); free(result); return NULL; }
-	memcpy(copy, args, length);
-	for (token = strtok_r(copy, " \t", &saveptr); token; token = strtok_r(NULL, " \t", &saveptr)) {
-		char emit = '\0', *equals;
-		const char *value = NULL;
-		if (pending) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = pending;
-			memcpy(result + out, token, strlen(token)); out += strlen(token); pending = '\0'; continue;
-		}
-		if (strncmp(token, "--", 2) != 0) {
-			if (token[0] == '-' && (token[1] == 'P' || token[1] == 'p')) {
-				if (token[2] == '\0') {
-					if (out) result[out++] = ' ';
-					result[out++] = '-'; result[out++] = 'Q'; result[out++] = '0';
-					continue;
-				}
-				token[1] = 'Q';
-			}
-			if (out) result[out++] = ' ';
-			memcpy(result + out, token, strlen(token)); out += strlen(token); continue;
-		}
-		equals = strchr(token + 2, '=');
-		if (equals) { *equals = '\0'; value = equals + 1; }
-		if (!strcmp(token + 2, "help")) { *help = true; continue; }
-		if (!strcmp(token + 2, "verbose")) emit = 'V';
-		else if (!strcmp(token + 2, "check-zero-position")) emit = 'N';
-		else if (!strcmp(token + 2, "input")) emit = 'I';
-		else if (!strcmp(token + 2, "method")) emit = 'Q';
-		else if (!strcmp(token + 2, "svplist")) emit = 'S';
-		if (!emit) {
-			if (equals) *equals = '=';
-			if (out) result[out++] = ' ';
-			memcpy(result + out, token, strlen(token)); out += strlen(token);
-		} else if (emit == 'V' || emit == 'N') {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = emit;
-		} else if (value) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = emit;
-			memcpy(result + out, value, strlen(value)); out += strlen(value);
-		} else pending = emit;
-	}
-	free(copy);
-	return result;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code) { gmt_M_free_options(mode); return (code); }
-#define Return(code) { free(remaining_args); Free_mbsvpselect_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code) { Free_mbsvpselect_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 EXTERN_MSC int GMT_mbsvpselect(void *V_API, int mode, void *args);
 
 /* ------------------------------------------------------------------- */
@@ -1754,29 +1707,20 @@ int GMT_mbsvpselect(void *V_API, int mode, void *args) {
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION *options = NULL, *opt = NULL;
 	struct MBSVPSELECT_CTRL *Ctrl = NULL;
-	char *remaining_args = NULL;
-	bool staged_help = false;
 	int parse_error;
 
 	if (!API) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-	{
-		char *joined = join_args(mode, args);
-		const char *text = joined ? joined : (mode == GMT_MODULE_CMD ? (const char *)args : NULL);
-		if (text) remaining_args = preparse_long_options(&staged_help, text);
-		free(joined);
-	}
-	options = GMT_Create_Options(API, remaining_args ? GMT_MODULE_CMD : mode, remaining_args ? (void *)remaining_args : args);
-	if (API->error) { free(remaining_args); return API->error; }
-	/* no arguments is a valid run: datalist.mb-1 against svplist.mb-1 */
-	if (options && options->option == GMT_OPT_USAGE) { free(remaining_args); bailout(usage(API, GMT_USAGE)); }
-	if (options && options->option == GMT_OPT_SYNOPSIS) { free(remaining_args); bailout(usage(API, GMT_SYNOPSIS)); }
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no arguments is a valid run: datalist.mb-1 against svplist.mb-1 */
+	if ((parse_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(parse_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) { free(remaining_args); bailout(API->error); }
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 	Ctrl = (struct MBSVPSELECT_CTRL *)New_mbsvpselect_Ctrl(GMT);
-	Ctrl->H.active = staged_help;
-	if ((parse_error = parse_mbsvpselect(GMT, Ctrl, options)) != GMT_OK) Return(parse_error);
+	if ((parse_error = parse_mbsvpselect(GMT, Ctrl, options)) != GMT_NOERROR) Return(parse_error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
 	/* reset the file-scope state to its initial values: a GMT session may
 	 * run this module more than once */
@@ -1789,7 +1733,7 @@ int GMT_mbsvpselect(void *V_API, int mode, void *args) {
 	n_p2 = 0;
 	svp_total = 0;
 	surveyLines_total = 0;
-	verbose = GMT->common.V.active;
+	verbose = Ctrl->verbose;
 
 	int error = MB_ERROR_NO_ERROR;
 
@@ -1797,7 +1741,7 @@ int GMT_mbsvpselect(void *V_API, int mode, void *args) {
 	char svplist[BUFSIZ] = "svplist.mb-1";
 
 	{
-		bool help = Ctrl->H.active;
+		const bool help = false;	/* -H returned above */
 
 		if (Ctrl->I.active)
 			sscanf(Ctrl->I.datalist, "%1023s", datalist);
@@ -1805,17 +1749,17 @@ int GMT_mbsvpselect(void *V_API, int mode, void *args) {
 			zero_test += Ctrl->N.count;
 		if (Ctrl->P.active) {
 			for (opt = options; opt; opt = opt->next) {
-				if (opt->option != 'P' && opt->option != 'p' && opt->option != 'Q') continue;
+				if (opt->option != 'P' && opt->option != 'p') continue;
 				if (mbsvpselect_method(opt->arg ? opt->arg : "")) {
-					/* the original paused the screen and called exit(0) */
-					Return(0);
+					/* the program paused the screen and exited 0: an unknown method is a bad option */
+					Return(GMT_PARSE_ERROR);
 				}
 			}
 		}
 		if (Ctrl->S.active)
 			sscanf(Ctrl->S.svplist, "%1023s", svplist);
 
-		if (verbose == 1 || help) {
+		if (verbose == 1) {
 			fprintf(stderr, "\nProgram %s\n", program_name);
 			fprintf(stderr, "MB-system Version %s\n", MB_VERSION);
 		}
@@ -1835,16 +1779,11 @@ int GMT_mbsvpselect(void *V_API, int mode, void *args) {
 			fprintf(stderr, "dbg2       zero_test:  %d\n", zero_test);
 		}
 
-		if (help) {
-			fprintf(stderr, "\n%s\n", help_message);
-			fprintf(stderr, "\nusage: %s\n", usage_message);
-			Return(error);
-		}
 	}
 
 	/* read_list() used to exit(1) on any failure */
 	if (read_list(datalist, svplist) != MB_SUCCESS)
-		Return(1);
+		Return(GMT_RUNTIME_ERROR);
 
 	const int status = MB_SUCCESS;
 
@@ -1855,7 +1794,14 @@ int GMT_mbsvpselect(void *V_API, int mode, void *args) {
 		fprintf(stderr, "dbg2       error:   %d\n", error);
 	}
 
-	Return(error);
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one */
+	if (error != MB_ERROR_NO_ERROR) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 
 } /* main */
 /* ---------------------------------------------------------------- */

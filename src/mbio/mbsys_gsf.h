@@ -52,6 +52,7 @@
 
 #ifndef MBSYS_GSF_H_
 #define MBSYS_GSF_H_
+#include "mbio_export.h"
 
 #include "gsf.h"
 #include "gsf_ft.h"
@@ -98,7 +99,7 @@ int mbsys_gsf_extract_svp(int verbose, void *mbio_ptr, void *store_ptr, int *kin
                           int *error);
 int mbsys_gsf_insert_svp(int verbose, void *mbio_ptr, void *store_ptr, int nsvp, double *depth, double *velocity, int *error);
 int mbsys_gsf_copy(int verbose, void *mbio_ptr, void *store_ptr, void *copy_ptr, int *error);
-int mbsys_gsf_setscalefactors(int verbose, int reset_all, gsfSwathBathyPing *mb_ping, int *error);
+MBIO_API int mbsys_gsf_setscalefactors(int verbose, int reset_all, gsfSwathBathyPing *mb_ping, int *error);
 
 #ifdef __cplusplus
 }  /* extern "C" */

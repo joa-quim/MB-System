@@ -21,6 +21,8 @@
  */
 
 #define THIS_MODULE_NAME    "mbfilter"
+/* the program's own name, as it writes it into the output's comment records */
+static const char program_name[] = "MBFILTER";
 #define THIS_MODULE_LIB     "mbsystem"
 #define THIS_MODULE_PURPOSE "Apply smoothing, hipass or contrast filters to swath sonar data"
 /* Primary input is the swath file or datalist given with -I; writes filtered swath files; nothing is returned. */
@@ -130,6 +132,8 @@ EXTERN_MSC int GMT_mbfilter(void *API, int mode, void *args);
 /* --- Control structure ----------------------------------------------- */
 
 struct MBFILTER_CTRL {
+	int verbose;	/* the program's -V/-v count */
+	struct mbf_H { bool active; } H;
 	struct mbf_A { bool active; int datakind; } A;
 	struct mbf_B { bool active; int t[7]; } B;
 	struct mbf_C { bool active; int mode, xdim, ldim, iter; } C;
@@ -182,6 +186,25 @@ static void Free_mbfilter_Ctrl(struct GMT_CTRL *GMT, struct MBFILTER_CTRL *Ctrl)
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'B', "begin-time",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "bounds",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "buffer-size",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "contrast-filter", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'A', "data-kind",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'E', "end-time",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "hipass-filter",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "smooth-filter",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "threshold",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
@@ -192,10 +215,12 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	    "\t-Eyr/mo/da/hr/mn/sc -Fformat -Iinfile -Nbuffer\n"
 	    "\t-Rwest/east/south/north -Smode/xdim/ldim/iter\n"
 	    "\t-Tthreshold_lo/threshold_hi -V -H]\n\n");
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE,
-	    "\t<inputfile> is an MB-System datalist or single swath file.\n\n");
-	return GMT_PARSE_ERROR;
+	    "\t<inputfile> is an MB-System datalist or single swath file [datalist.mb-1].\n"
+	    "\tEvery option also has the program's lower-case and long forms.\n\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 /* --- parse ----------------------------------------------------------- */
@@ -216,7 +241,8 @@ static int parse(struct GMT_CTRL *GMT, struct MBFILTER_CTRL *Ctrl, struct GMT_OP
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error: only one input file is allowed.\n"); n_errors++; }
 			break;
 
-		case 'A': {
+		case 'A':
+		case 'a': {
 			int tmp = MBFILTER_SS;
 			sscanf(opt->arg, "%d", &tmp);
 			if (tmp != MBFILTER_SS && tmp != MBFILTER_AMP) tmp = MBFILTER_SS;
@@ -226,6 +252,7 @@ static int parse(struct GMT_CTRL *GMT, struct MBFILTER_CTRL *Ctrl, struct GMT_OP
 		}
 
 		case 'B':
+		case 'b':
 			Ctrl->B.t[6] = 0;
 			n = sscanf(opt->arg, "%d/%d/%d/%d/%d/%d",
 			           &Ctrl->B.t[0], &Ctrl->B.t[1], &Ctrl->B.t[2],
@@ -235,6 +262,7 @@ static int parse(struct GMT_CTRL *GMT, struct MBFILTER_CTRL *Ctrl, struct GMT_OP
 			break;
 
 		case 'C':
+		case 'c':
 			n = sscanf(opt->arg, "%d/%d/%d/%d",
 			           &Ctrl->C.mode, &Ctrl->C.xdim, &Ctrl->C.ldim, &Ctrl->C.iter);
 			if (n >= 3) { Ctrl->C.active = true; if (n < 4) Ctrl->C.iter = 1; }
@@ -242,6 +270,7 @@ static int parse(struct GMT_CTRL *GMT, struct MBFILTER_CTRL *Ctrl, struct GMT_OP
 			break;
 
 		case 'D':
+		case 'd':
 			n = sscanf(opt->arg, "%d/%d/%d/%d/%lf",
 			           &Ctrl->D.mode, &Ctrl->D.xdim, &Ctrl->D.ldim, &Ctrl->D.iter, &Ctrl->D.offset);
 			if (n >= 3) {
@@ -253,6 +282,7 @@ static int parse(struct GMT_CTRL *GMT, struct MBFILTER_CTRL *Ctrl, struct GMT_OP
 			break;
 
 		case 'E':
+		case 'e':
 			Ctrl->E.t[6] = 0;
 			n = sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &Ctrl->E.t[0], &Ctrl->E.t[1], &Ctrl->E.t[2],
 			           &Ctrl->E.t[3], &Ctrl->E.t[4], &Ctrl->E.t[5]);
@@ -261,12 +291,14 @@ static int parse(struct GMT_CTRL *GMT, struct MBFILTER_CTRL *Ctrl, struct GMT_OP
 			break;
 
 		case 'F':
+		case 'f':
 			n = sscanf(opt->arg, "%d", &Ctrl->F.format);
 			if (n > 0) Ctrl->F.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -F option\n"); n_errors++; }
 			break;
 
 		case 'I':
+		case 'i':
 			if (!gmt_access(GMT, opt->arg, R_OK)) {
 				Ctrl->I.inputfile = strdup(opt->arg);
 				Ctrl->I.active = true;
@@ -275,6 +307,7 @@ static int parse(struct GMT_CTRL *GMT, struct MBFILTER_CTRL *Ctrl, struct GMT_OP
 			break;
 
 		case 'N':
+		case 'n':
 			n = sscanf(opt->arg, "%d", &Ctrl->N.n_buffer_max);
 			if (n > 0) {
 				Ctrl->N.active = true;
@@ -285,11 +318,13 @@ static int parse(struct GMT_CTRL *GMT, struct MBFILTER_CTRL *Ctrl, struct GMT_OP
 			break;
 
 		case 'R':
+		case 'r':
 			mb_get_bounds(opt->arg, Ctrl->R.bounds);
 			Ctrl->R.active = true;
 			break;
 
 		case 'S':
+		case 's':
 			n = sscanf(opt->arg, "%d/%d/%d/%d/%lf/%lf", &Ctrl->S.mode, &Ctrl->S.xdim, &Ctrl->S.ldim, &Ctrl->S.iter,
 			           &Ctrl->S.threshold_lo, &Ctrl->S.threshold_hi);
 			if (n >= 3) {
@@ -301,20 +336,32 @@ static int parse(struct GMT_CTRL *GMT, struct MBFILTER_CTRL *Ctrl, struct GMT_OP
 			break;
 
 		case 'T':
+		case 't':
 			n = sscanf(opt->arg, "%lf/%lf", &Ctrl->T.threshold_lo, &Ctrl->T.threshold_hi);
 			if (n == 2) Ctrl->T.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -T option\n"); n_errors++; }
 			break;
 
+		case 'V':
+		case 'v':
+			Ctrl->verbose++;
+			break;
+
+		case 'H':
+		case 'h':
+			Ctrl->H.active = true;
+			break;
+
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 
-	n_errors += gmt_M_check_condition(GMT, n_files != 1, "Syntax error: Must specify one input file\n");
+	/* no input file is the program's datalist.mb-1, as in the program */
+	(void)n_files;
 
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code)  { gmt_M_free_options(mode); return (code); }
@@ -336,20 +383,17 @@ int GMT_mbfilter(void *V_API, int mode, void *args) {
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
-	if (!options || options->option == GMT_OPT_USAGE)    bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS)             bailout(usage(API, GMT_SYNOPSIS));
+	/* 1: no options is a run of the program (on datalist.mb-1) */
+	if ((error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(error);
 
-#if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
-#else
-	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
-#endif
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = New_mbfilter_Ctrl(GMT);
 	if ((error = parse(GMT, Ctrl, options)) != 0) Return (error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
-	int    verbose = GMT->common.V.active;
+	int    verbose = Ctrl->verbose;
 	int    format, pings, lonflip;
 	double bounds[4];
 	int    btime_i[7], etime_i[7];
@@ -464,7 +508,7 @@ int GMT_mbfilter(void *V_API, int mode, void *args) {
 		const int look_processed = MB_DATALIST_LOOK_UNSET;
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open data list file: %s\n", read_file);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		read_data = (mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight, &error) == MB_SUCCESS);
 	} else {
@@ -490,7 +534,7 @@ int GMT_mbfilter(void *V_API, int mode, void *args) {
 	ping = (struct mbfilter_ping_struct *)calloc((size_t)n_buffer_max, sizeof(*ping));
 	if (!ping) {
 		GMT_Report(API, GMT_MSG_NORMAL, "\nFailed to allocate ping buffer (%d entries)\n", n_buffer_max);
-		Return(MB_ERROR_MEMORY_FAIL);
+		Return(GMT_MEMORY_ERROR);
 	}
 
 	while (read_data) {
@@ -503,7 +547,7 @@ int GMT_mbfilter(void *V_API, int mode, void *args) {
 			mb_error(verbose, error, &message);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nmb_read_init failed: %s\nFile: %s\n", message, file);
 			free(ping);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		struct mb_io_struct *imb_io_ptr = (struct mb_io_struct *)imbio_ptr;
 
@@ -516,7 +560,7 @@ int GMT_mbfilter(void *V_API, int mode, void *args) {
 			mb_error(verbose, error, &message);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nmb_write_init failed: %s\nFile: %s\n", message, ofile);
 			free(ping);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		struct mb_io_struct *omb_io_ptr = (struct mb_io_struct *)ombio_ptr;
 
@@ -583,11 +627,11 @@ int GMT_mbfilter(void *V_API, int mode, void *args) {
 			mb_error(verbose, error, &message);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nFailed allocating filter scratch: %s\n", message);
 			free(ping);
-			Return(error);
+			Return(GMT_MEMORY_ERROR);
 		}
 
 		kind = MB_DATA_COMMENT;
-		snprintf(comment, sizeof(comment), "Data filtered by program %s", THIS_MODULE_NAME);
+		snprintf(comment, sizeof(comment), "Data filtered by program %s", program_name);
 		status = mb_put_comment(verbose, ombio_ptr, comment, &error);
 		snprintf(comment, sizeof(comment), "MB-system Version %s", MB_VERSION);
 		status &= mb_put_comment(verbose, ombio_ptr, comment, &error);
@@ -641,7 +685,7 @@ int GMT_mbfilter(void *V_API, int mode, void *args) {
 		snprintf(comment, sizeof(comment), "  Input file:         %s", file);    status &= mb_put_comment(verbose, ombio_ptr, comment, &error);
 		snprintf(comment, sizeof(comment), "  Output file:        %s", ofile);   status &= mb_put_comment(verbose, ombio_ptr, comment, &error);
 		snprintf(comment, sizeof(comment), "  Longitude flip:     %d", lonflip); status &= mb_put_comment(verbose, ombio_ptr, comment, &error);
-		snprintf(comment, sizeof(comment), "  Data kind:          %d", datakind); status &= mb_put_comment(verbose, ombio_ptr, comment, &error);
+		snprintf(comment, sizeof(comment), "  Data kind:         %d", datakind); status &= mb_put_comment(verbose, ombio_ptr, comment, &error);
 		snprintf(comment, sizeof(comment), " ");                                 status &= mb_put_comment(verbose, ombio_ptr, comment, &error);
 
 		bool first = true;

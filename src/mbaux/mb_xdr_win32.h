@@ -1,3 +1,4 @@
+#include "mb_xdr_export.h"
 /*--------------------------------------------------------------------
  *    The MB-system:  mb_types_win32.h 7/10/2026
  *
@@ -70,19 +71,19 @@ typedef struct
 } XDR;
 
 
-void xdrstdio_create(XDR* xdrs,FILE* file,XdrOp op);
-void xdr_destroy(XDR* xdrs);
+MBXDR_API void xdrstdio_create(XDR* xdrs,FILE* file,XdrOp op);
+MBXDR_API void xdr_destroy(XDR* xdrs);
 int xdr_long(XDR* xdrs,long* lp);
-int xdr_u_long(XDR* xdrs,u_long* ulp);
-int xdr_short(XDR* xdrs,short* sp);
-int xdr_u_short(XDR* xdrs,u_short* ulp);
-int xdr_int(XDR* xdrs,int* ip);
-int xdr_u_int(XDR* xdrs,u_int* ip);
-int xdr_char(XDR* xdrs,char* cp);
+MBXDR_API int xdr_u_long(XDR* xdrs,u_long* ulp);
+MBXDR_API int xdr_short(XDR* xdrs,short* sp);
+MBXDR_API int xdr_u_short(XDR* xdrs,u_short* ulp);
+MBXDR_API int xdr_int(XDR* xdrs,int* ip);
+MBXDR_API int xdr_u_int(XDR* xdrs,u_int* ip);
+MBXDR_API int xdr_char(XDR* xdrs,char* cp);
 int xdr_u_char(XDR* xdrs,u_char* cp);
-int xdr_opaque(XDR* xdrs,char* cp,unsigned int cnt);
-int xdr_bytes(XDR* xdrs,char** cpp,u_int* sizep,u_int maxsize);
-int xdr_double(XDR* xdrs,double *dp);
-int xdr_float(XDR* xdrs,float *fp);
+MBXDR_API int xdr_opaque(XDR* xdrs,char* cp,unsigned int cnt);
+MBXDR_API int xdr_bytes(XDR* xdrs,char** cpp,u_int* sizep,u_int maxsize);
+MBXDR_API int xdr_double(XDR* xdrs,double *dp);
+MBXDR_API int xdr_float(XDR* xdrs,float *fp);
 
 #endif

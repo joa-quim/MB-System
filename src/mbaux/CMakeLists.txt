@@ -57,7 +57,8 @@ endif()
 
 set(HEADERS 
     mb_aux.h
-    mb_cube.h)
+    mb_cube.h
+    mbaux_export.h)
 
 set_target_properties(mbaux PROPERTIES VERSION "0" SOVERSION "0")
 target_include_directories(mbaux PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -92,7 +93,8 @@ if(WIN32)
 		mb_xdr_win32.c)
 	set(HEADERS
     mb_xdr_win32.h
-    mb_types_win32.h)
+    mb_types_win32.h
+    mb_xdr_export.h)
 
 	target_include_directories(mb_xdr_win32 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

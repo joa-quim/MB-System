@@ -1,3 +1,4 @@
+#include "mbbsio_export.h"
 /*--------------------------------------------------------------------
  *    The MB-system:	mbbs.h	3/3/2014
  *
@@ -62,9 +63,9 @@ int mbbs_appendstr(char **, char *);
 void mbbs_cal2jul(struct tm *);
 int mbbs_copypng(int, XDR *, XDR *, int);
 int mbbs_freebsfmem(BSFile *);
-int mbbs_getpngdataptrs(Ping *, MemType *, PingData *);
-int mbbs_isnand(double);
-int mbbs_isnanf(float);
+MBBSIO_API int mbbs_getpngdataptrs(Ping *, MemType *, PingData *);
+MBBSIO_API int mbbs_isnand(double);
+MBBSIO_API int mbbs_isnanf(float);
 void mbbs_jul2cal(struct tm *);
 int mbbs_leapyr(struct tm *);
 int mbbs_mrkget(void *, int, int);
@@ -74,14 +75,14 @@ double mbbs_nand();
 float mbbs_nanf();
 int mbbs_pngdatabufsz(Ping *, unsigned long long *);
 MemType *mbbs_pngmemalloc(Ping *);
-int mbbs_pngrealloc(Ping *, MemType **, unsigned int *);
-int mbbs_rdbsfhdr(BSFile *, XDR *);
+MBBSIO_API int mbbs_pngrealloc(Ping *, MemType **, unsigned int *);
+MBBSIO_API int mbbs_rdbsfhdr(BSFile *, XDR *);
 int mbbs_rdpng(Ping *, MemType **, XDR *, int);
-int mbbs_rdpngdata(Ping *, MemType *, XDR *);
-int mbbs_rdpnghdr(Ping *, XDR *, int);
+MBBSIO_API int mbbs_rdpngdata(Ping *, MemType *, XDR *);
+MBBSIO_API int mbbs_rdpnghdr(Ping *, XDR *, int);
 int mbbs_rdpngpddata(Ping *, PingData *, XDR *);
 int mbbs_rdversion(FILE *, int *);
-int mbbs_replacestr(char **, char *);
+MBBSIO_API int mbbs_replacestr(char **, char *);
 int mbbs_seekpng(int, XDR *, int);
 int mbbs_seekpngdata(Ping *, XDR *);
 int mbbs_setgmttz();
@@ -89,16 +90,16 @@ int mbbs_setswradius(int, FILE *, long, int, unsigned int, float);
 int mbbs_striptail(char *, char);
 int mbbs_tmparse(char *, int, double *);
 int mbbs_tmparsegmttz(char *, int, double *);
-int mbbs_wrbsfhdr(BSFile *, XDR *);
+MBBSIO_API int mbbs_wrbsfhdr(BSFile *, XDR *);
 int mbbs_wrfflagsclrbits(FILE *, unsigned int);
 int mbbs_wrfflagssetbits(FILE *, unsigned int);
 int mbbs_wrpflagsclrbits(int, FILE *, long, unsigned int);
 int mbbs_wrpflags(int, FILE *, long, unsigned int);
 int mbbs_wrpflagssetbits(int, FILE *, long, unsigned int);
 int mbbs_wrpng(Ping *, MemType *, XDR *);
-int mbbs_wrpngdata(Ping *, MemType *, XDR *);
+MBBSIO_API int mbbs_wrpngdata(Ping *, MemType *, XDR *);
 int mbbs_wrpngpddata(Ping *, PingData *, XDR *);
-int mbbs_wrpnghdr(Ping *, XDR *);
+MBBSIO_API int mbbs_wrpnghdr(Ping *, XDR *);
 int mbbs_wrsllc(int, FILE *, long, double, double, float);
 int mbbs_wrtll(int, FILE *, long, double, double);
 int mbbs_wrtllc(int, FILE *, long, double, double, float);

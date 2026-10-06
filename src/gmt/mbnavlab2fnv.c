@@ -51,18 +51,17 @@
  *
  *--------------------------------------------------------------------*/
 /*
- * GMT-module port of src/utilities/mbnavlab2fnv.cc. The program's getopt_long() option loop
- * is kept as it is, running on the reentrant mb_getopt_long() (the state
- * lives in a local structure, so the module can run any number of times in
- * one GMT session), and main() becomes GMT_mbnavlab2fnv(), with every exit()
- * turned into Return().
+ * GMT-module port of src/utilities/mbnavlab2fnv.cc: options from GMT's option list (the program's
+ * long options are GMT long options through module_kw), the fnv text written to -O's file or, without
+ * it, as text records through the GMT API (mb_gmt_text.c), and every exit() a Return() with a GMT
+ * error code.
  */
 
 #define THIS_MODULE_NAME "mbnavlab2fnv"
 #define THIS_MODULE_LIB "mbsystem"
 #define THIS_MODULE_PURPOSE "Convert Kongsberg Navlab smoothed navigation to MB-System fnv navigation"
-/* Primary input is the Navlab file given with -I; the fnv file is written by the module itself. */
-#define THIS_MODULE_KEYS "ID{"
+/* Primary input is the Navlab file given with -I; the fnv text goes to -O, else out as records. */
+#define THIS_MODULE_KEYS "ID{,>D}"
 #define THIS_MODULE_NEEDS ""
 #define THIS_MODULE_OPTIONS "->V"
 
@@ -76,7 +75,7 @@
 #include <string.h>
 #include <time.h>
 
-#include "mb_getopt.h"
+#include "mb_gmt_text.h"
 
 /*--------------------------------------------------------------------*/
 /* Program name and version */
@@ -168,111 +167,89 @@ static void epoch_to_calendar(double time_d,
 
 /* --- GMT front end ---------------------------------------------------- */
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'H', "help",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'V', "verbose", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
+struct MBNAVLAB2FNV_CTRL {
+	struct mbnf_H { bool active; } H;
+	struct mbnf_I { bool active; char file[4096]; } I;
+	struct mbnf_O { bool active; char file[4096]; } O;
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
-	return GMT_PARSE_ERROR;
+	GMT_Message(API, GMT_TIME_NONE, "Long options: --input= (-I), --output= (-O), --help (-H), --verbose (-V).\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
-/* The options GMT itself should see: -V (verbosity) and -I (the input the
- * module keys bind). Everything else, long options included, is parsed by
- * the program's own option loop below. */
-static char *mb_gmt_options_string(int argc, char **argv) {
-	size_t total = 1;
-	for (int i = 1; i < argc; i++)
-		total += strlen(argv[i]) + 1;
-	char *s = (char *)calloc(total + 8, 1);
-	if (s == NULL)
-		return NULL;
-	for (int i = 1; i < argc; i++) {
-		if (argv[i][0] == '-' && (argv[i][1] == 'V' || (argv[i][1] == 'I' && argv[i][2] != '\0'))) {
-			if (s[0] != '\0')
-				strcat(s, " ");
-			strcat(s, argv[i]);
+static int parse(struct GMT_CTRL *GMT, struct MBNAVLAB2FNV_CTRL *Ctrl, struct GMT_OPTION *options) {
+	unsigned int n_errors = 0;
+	for (struct GMT_OPTION *opt = options; opt; opt = opt->next) {
+		switch (opt->option) {
+		case 'H':
+			Ctrl->H.active = true;
+			break;
+		case 'I':
+			Ctrl->I.active = true;
+			strncpy(Ctrl->I.file, opt->arg, sizeof (Ctrl->I.file) - 1);
+			break;
+		case 'O':
+			Ctrl->O.active = true;
+			strncpy(Ctrl->O.file, opt->arg, sizeof (Ctrl->O.file) - 1);
+			break;
+		default:
+			n_errors += gmt_default_option_error(GMT, opt);
+			break;
 		}
 	}
-	return s;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
-/* gmt_M_free_options() hard-codes a variable named "options", which the
-   program's own option table shadows here, so destroy gmt_options directly */
-#define bailout(code) { mb_getopt_args_free(argc, argv); free(gmt_args); GMT_Destroy_Options(API, &gmt_options); return (code); }
-#define Return(code) { gmt_end_module(GMT, GMT_cpy); bailout(code); }
-EXTERN_MSC int GMT_mbnavlab2fnv(void *V_API, int gmt_mode, void *args);
+#define bailout(code) { gmt_M_free_options(mode); return code; }
+#define Return(code) { if (ofp) mb_gmt_text_end(ofp); gmt_M_free(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+EXTERN_MSC int GMT_mbnavlab2fnv(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
 
-int GMT_mbnavlab2fnv(void *V_API, int gmt_mode, void *args) {
+int GMT_mbnavlab2fnv(void *V_API, int mode, void *args) {
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
-	struct GMT_OPTION *gmt_options = NULL;
-	char *gmt_args = NULL;
-	char **argv = NULL;
-	int argc = 0;
-	struct mb_getopt_state getopt_state;
-	mb_getopt_init(&getopt_state);
+	struct GMT_OPTION *options = NULL;
+	struct MBNAVLAB2FNV_CTRL *Ctrl = NULL;
+	struct MB_GMT_TEXT *ofp = NULL;	/* the fnv text: -O's file, else records */
+	int error;
 
-	if (!API) return GMT_NOT_A_SESSION;
-	if (gmt_mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-
-	/* the program's own argv[], whatever shape GMT handed us */
-	argc = mb_getopt_args_build(THIS_MODULE_NAME, gmt_mode, args, &argv);
-	if (argc == 2 && (strcmp(argv[1], "-") == 0 || strcmp(argv[1], "?") == 0))
-		bailout(usage(API, GMT_USAGE));
-	if (argc == 2 && strcmp(argv[1], "+") == 0)
-		bailout(usage(API, GMT_SYNOPSIS));
-
-	gmt_args = mb_gmt_options_string(argc, argv);
-	gmt_options = GMT_Create_Options(API, GMT_MODULE_CMD, (gmt_args != NULL && gmt_args[0] != '\0') ? gmt_args : NULL);
-	if (API->error) bailout(API->error);
+	if (API == NULL) return GMT_NOT_A_SESSION;
+	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a valid run -- the program converts stdin */
+	if ((error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &gmt_options, &GMT_cpy)) == NULL) bailout(API->error);
-	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, gmt_options)) Return(API->error);
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
+	Ctrl = gmt_M_memory(GMT, NULL, 1, struct MBNAVLAB2FNV_CTRL);
+	if ((error = parse(GMT, Ctrl, options)) != GMT_NOERROR) Return(error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
-
-    /* --- option defaults --- */
+    /* --- options --- */
     char input_file[4096]  = "";   /* read from stdin if empty */
-    char output_file[4096] = "";   /* write to stdout if empty */
-    int  verbose           = 0;
-
-    /* --- long option table --- */
-    static struct mb_getopt_option long_options[] = {
-        { "help",    mb_no_argument,       NULL, 'H' },
-        { "verbose", mb_no_argument,       NULL, 'V' },
-        { "input",   mb_required_argument, NULL, 'I' },
-        { "output",  mb_required_argument, NULL, 'O' },
-        { NULL,      0,                 NULL,  0  }
-    };
-
-    /* --- parse command-line options --- */
-    int opt;
-    while ((opt = mb_getopt_long(&getopt_state, argc, argv, "HVI:O:", long_options, NULL)) != -1) {
-        switch (opt) {
-        case 'H':
-            fprintf(stdout, "\nProgram %s\n\n", program_name);
-            fprintf(stdout, "Usage:  %s\n\n", usage_message);
-            fprintf(stdout, "%s\n\n", help_message);
-            Return(EXIT_SUCCESS);
-            break;
-        case 'V':
-            verbose = 1;
-            break;
-        case 'I':
-            strncpy(input_file, getopt_state.optarg, sizeof(input_file) - 1);
-            input_file[sizeof(input_file) - 1] = '\0';
-            break;
-        case 'O':
-            strncpy(output_file, getopt_state.optarg, sizeof(output_file) - 1);
-            output_file[sizeof(output_file) - 1] = '\0';
-            break;
-        default:
-            fprintf(stderr, "Usage:  %s\n", usage_message);
-            Return(EXIT_FAILURE);
-        }
-    }
+    char output_file[4096] = "";   /* records if empty */
+    const int verbose = GMT->common.V.active ? 1 : 0;
+    if (Ctrl->I.active) strncpy(input_file, Ctrl->I.file, sizeof (input_file) - 1);
+    if (Ctrl->O.active) strncpy(output_file, Ctrl->O.file, sizeof (output_file) - 1);
 
     /* --- verbose banner --- */
     if (verbose) {
@@ -290,34 +267,35 @@ int GMT_mbnavlab2fnv(void *V_API, int gmt_mode, void *args) {
         if (ifp == NULL) {
             fprintf(stderr, "\n%s: ERROR - cannot open input file '%s': %s\n",
                     program_name, input_file, strerror(errno));
-            Return(EXIT_FAILURE);
+            Return(GMT_ERROR_ON_FOPEN);
         }
     }
     else {
         ifp = stdin;
     }
 
-    /* --- open output --- */
-    FILE *ofp;
+    /* --- open output: -O's file, else text records through the GMT API --- */
     if (strlen(output_file) > 0) {
-        ofp = fopen(output_file, "w");
+        ofp = mb_gmt_text_file(GMT, output_file);
         if (ofp == NULL) {
             fprintf(stderr, "\n%s: ERROR - cannot open output file '%s': %s\n",
                     program_name, output_file, strerror(errno));
             if (ifp != stdin)
                 fclose(ifp);
-            Return(EXIT_FAILURE);
+            Return(GMT_ERROR_ON_FOPEN);
         }
     }
-    else {
-        ofp = stdout;
+    else if ((ofp = mb_gmt_text_begin(GMT, options)) == NULL) {
+        if (ifp != stdin)
+            fclose(ifp);
+        Return(API->error);
     }
 
     /* --- determine whether byte-swapping is needed --- */
     const int swap = host_is_bigendian();
 
     /* --- write fnv header --- */
-    fprintf(ofp,
+    mb_gmt_text_put(ofp,
         "## <yyyy mm dd hh mm ss.ssssss> <epoch seconds> "
         "<longitude (deg)> <latitude (deg)> "
         "<heading (deg)> <speed (km/hr)> <draft (m)> "
@@ -380,7 +358,7 @@ int GMT_mbnavlab2fnv(void *V_API, int gmt_mode, void *args) {
          *   pitch <TAB>
          *   heave
          */
-        fprintf(ofp,
+        mb_gmt_text_put(ofp,
             "%4d %02d %02d %02d %02d %09.6f\t"   /* date and time      */
             "%.6f\t"                               /* epoch seconds      */
             "%15.10f\t"                            /* longitude          */
@@ -414,8 +392,9 @@ int GMT_mbnavlab2fnv(void *V_API, int gmt_mode, void *args) {
     /* --- close files --- */
     if (ifp != stdin)
         fclose(ifp);
-    if (ofp != stdout)
-        fclose(ofp);
+    const int output_failed = mb_gmt_text_end(ofp);
+    ofp = NULL;	/* closed: Return() must not close it again */
+    if (output_failed) Return(GMT_RUNTIME_ERROR);
 
     /* --- final status --- */
     if (verbose) {
@@ -426,6 +405,6 @@ int GMT_mbnavlab2fnv(void *V_API, int gmt_mode, void *args) {
                     program_name, nread - nwritten);
     }
 
-    Return(EXIT_SUCCESS);
+    Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

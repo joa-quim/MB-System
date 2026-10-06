@@ -724,6 +724,7 @@ struct MBLIST_CTRL {
 	struct ml_T { bool active; double timegap; } T;
 	struct ml_U { bool active; check_t check_values; bool check_nav; } U;
 	struct ml_W { bool active; } W;        /* feet */
+	struct ml_H { bool active; } H;        /* help */
 	struct ml_X { bool active; char outfile[MB_PATH_MAXLINE]; } X;
 	struct ml_Y { bool active; char secfile[MB_PATH_MAXLINE]; } Y;
 	struct ml_Z { bool active; segment_mode_t mode; char tag[MB_PATH_MAXLINE]; } Z;
@@ -747,6 +748,38 @@ static void Free_mblist_Ctrl(struct GMT_CTRL *GMT, struct MBLIST_CTRL *Ctrl) {
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones (each one has a short twin) */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'M', "beam-range",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'B', "begin-time",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'A', "binary",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "bounds",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'U', "check-mode",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'K', "decimate",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'G', "delimiter",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "dump-mode",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'E', "end-time",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "longitude-domain", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "netcdf",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Q', "no-value-check",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'X', "output-file",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output-format",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "ping-average",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "pixel-range",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'J', "projection",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Y', "secondary-file",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Z', "segment",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "speed-minimum",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "time-gap",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'W', "use-feet",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'v', "verbose",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
@@ -755,8 +788,11 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	    "\t-Fformat -Gdelim -Ifile -Jproj -Kdec -Llonflip\n"
 	    "\t-M[beam0/beam1|A|X%%] -Npix0/pix1 -Ooptions -Ppings -Q\n"
 	    "\t-Rw/e/s/n -Sspeed -Ttimegap -Ucheck -W -Xoutfile -Ysec -Zseg -V -H]\n\n");
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
-	return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
+	GMT_Message(API, GMT_TIME_NONE,
+	    "Every option also has the program's lower-case and long forms (--input=, --output-format=, ...).\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse(struct GMT_CTRL *GMT, struct MBLIST_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -773,49 +809,55 @@ static int parse(struct GMT_CTRL *GMT, struct MBLIST_CTRL *Ctrl, struct GMT_OPTI
 				Ctrl->I.inputfile = strdup(opt->arg); n_files = 1;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'A': Ctrl->A.active = true; break;
-		case 'B':
+		/* Every option keeps the program's lower-case alias: GMT_Parse_Common only touches the
+		   common options named in THIS_MODULE_OPTIONS (-V), so these arrive here untouched. */
+		case 'A': case 'a': Ctrl->A.active = true; break;
+		case 'H': case 'h': Ctrl->H.active = true; break;
+		case 'v':	/* the program's -v: verbosity, as -V */
+			GMT->current.setting.verbose = GMT_MSG_INFORMATION;
+			break;
+		case 'B': case 'b':
 			Ctrl->B.t[6] = 0;
 			n = sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &Ctrl->B.t[0], &Ctrl->B.t[1], &Ctrl->B.t[2],
 			           &Ctrl->B.t[3], &Ctrl->B.t[4], &Ctrl->B.t[5]);
 			if (n == 6) Ctrl->B.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'C': Ctrl->C.active = true; break;
-		case 'D': {
+		case 'C': case 'c': Ctrl->C.active = true; break;
+		case 'D': case 'd': {
 			int tmp;
 			if (sscanf(opt->arg, "%d", &tmp) > 0) { Ctrl->D.mode = tmp; Ctrl->D.active = true; }
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		}
-		case 'E':
+		case 'E': case 'e':
 			Ctrl->E.t[6] = 0;
 			n = sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &Ctrl->E.t[0], &Ctrl->E.t[1], &Ctrl->E.t[2],
 			           &Ctrl->E.t[3], &Ctrl->E.t[4], &Ctrl->E.t[5]);
 			if (n == 6) Ctrl->E.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'F':
+		case 'F': case 'f':
 			if (sscanf(opt->arg, "%d", &Ctrl->F.format) > 0) Ctrl->F.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'G':
+		case 'G': case 'g':
 			sscanf(opt->arg, "%1023s", Ctrl->G.delim);
 			Ctrl->G.active = true;
 			break;
-		case 'I':
+		case 'I': case 'i':
 			if (!gmt_access(GMT, opt->arg, R_OK)) {
 				Ctrl->I.inputfile = strdup(opt->arg); Ctrl->I.active = true; n_files = 1;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'J':
+		case 'J': case 'j':
 			sscanf(opt->arg, "%1023s", Ctrl->J.proj);
 			Ctrl->J.active = true;
 			break;
-		case 'K':
+		case 'K': case 'k':
 			if (sscanf(opt->arg, "%d", &Ctrl->K.decimate) > 0) Ctrl->K.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'L':
+		case 'L': case 'l':
 			if (sscanf(opt->arg, "%d", &Ctrl->L.lonflip) > 0) Ctrl->L.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'M':
+		case 'M': case 'm':
 			if (opt->arg[0] == 'a' || opt->arg[0] == 'A') {
 				Ctrl->M.beam_set = MBLIST_SET_ALL;
 			} else if (opt->arg[0] == 'x' || opt->arg[0] == 'X') {
@@ -827,7 +869,7 @@ static int parse(struct GMT_CTRL *GMT, struct MBLIST_CTRL *Ctrl, struct GMT_OPTI
 			}
 			Ctrl->M.active = true;
 			break;
-		case 'N':
+		case 'N': case 'n':
 			if (opt->arg[0] == 'a' || opt->arg[0] == 'A') {
 				Ctrl->N.pixel_set = MBLIST_SET_ALL;
 			} else {
@@ -836,7 +878,7 @@ static int parse(struct GMT_CTRL *GMT, struct MBLIST_CTRL *Ctrl, struct GMT_OPTI
 			}
 			Ctrl->N.active = true;
 			break;
-		case 'O':
+		case 'O': case 'o':
 			if (strcmp(opt->arg, "%fnv") == 0 || strcmp(opt->arg, "%FNV") == 0) {
 				strncpy(Ctrl->O.list, "tMXYHScRPr=X=Y+X+Y", sizeof(Ctrl->O.list));
 				Ctrl->O.n_list = (int)strlen(Ctrl->O.list);
@@ -851,22 +893,22 @@ static int parse(struct GMT_CTRL *GMT, struct MBLIST_CTRL *Ctrl, struct GMT_OPTI
 			}
 			Ctrl->O.active = true;
 			break;
-		case 'P':
+		case 'P': case 'p':
 			if (sscanf(opt->arg, "%d", &Ctrl->P.pings) > 0) Ctrl->P.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'Q':
+		case 'Q': case 'q':
 			Ctrl->Q.active = true; break;
-		case 'R':
+		case 'R': case 'r':
 			mb_get_bounds(opt->arg, Ctrl->R.bounds);
 			Ctrl->R.active = true;
 			break;
-		case 'S':
+		case 'S': case 's':
 			if (sscanf(opt->arg, "%lf", &Ctrl->S.speedmin) > 0) Ctrl->S.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'T':
+		case 'T': case 't':
 			if (sscanf(opt->arg, "%lf", &Ctrl->T.timegap) > 0) Ctrl->T.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'U':
+		case 'U': case 'u':
 			if (opt->arg[0] == 'N') Ctrl->U.check_nav = true;
 			else {
 				int tmp;
@@ -877,17 +919,17 @@ static int parse(struct GMT_CTRL *GMT, struct MBLIST_CTRL *Ctrl, struct GMT_OPTI
 			}
 			Ctrl->U.active = true;
 			break;
-		case 'W':
+		case 'W': case 'w':
 			Ctrl->W.active = true; break;
-		case 'X':
+		case 'X': case 'x':
 			sscanf(opt->arg, "%1023s", Ctrl->X.outfile);
 			Ctrl->X.active = true;
 			break;
-		case 'Y':
+		case 'Y': case 'y':
 			sscanf(opt->arg, "%1023s", Ctrl->Y.secfile);
 			Ctrl->Y.active = true;
 			break;
-		case 'Z':
+		case 'Z': case 'z':
 			sscanf(opt->arg, "%1023s", Ctrl->Z.tag);
 			if      (strcmp(Ctrl->Z.tag, "swathfile") == 0) Ctrl->Z.mode = MBLIST_SEGMENT_MODE_SWATHFILE;
 			else if (strcmp(Ctrl->Z.tag, "datalist") == 0)  Ctrl->Z.mode = MBLIST_SEGMENT_MODE_DATALIST;
@@ -895,13 +937,14 @@ static int parse(struct GMT_CTRL *GMT, struct MBLIST_CTRL *Ctrl, struct GMT_OPTI
 			Ctrl->Z.active = true;
 			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 
-	n_errors += gmt_M_check_condition(GMT, n_files != 1, "Syntax: Must specify one input file\n");
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
+	if (Ctrl->H.active) return GMT_NOERROR;	/* help: no input needed */
+	n_errors += gmt_M_check_condition(GMT, n_files != 1, "Must specify one input file (-I)\n");
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code)  { gmt_M_free_options(mode); return (code); }
@@ -946,18 +989,15 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
-	if (!options || options->option == GMT_OPT_USAGE)    bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS)             bailout(usage(API, GMT_SYNOPSIS));
+	if ((error = gmt_report_usage(API, options, 0, usage)) != GMT_NOERROR) bailout(error);
 
-#if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
-#else
-	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
-#endif
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS,
+	                           module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = New_mblist_Ctrl(GMT);
-	if ((error = parse(GMT, Ctrl, options)) != 0) Return (error);
+	if ((error = parse(GMT, Ctrl, options)) != 0) Return(error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
 	int verbose = GMT->common.V.active;
 	int format, pings, pings_read, lonflip;
@@ -1123,8 +1163,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 			}
 			fclose(sfp);
 		} else {
-			fprintf(stderr, "\nUnable to open secondary file: %s\n", secondary_file);
-			Return(MB_ERROR_OPEN_FAIL);
+			GMT_Report(API, GMT_MSG_ERROR, "Unable to open secondary file: %s\n", secondary_file);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 	}
 
@@ -1142,8 +1182,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 	if (read_datalist) {
 		const int look_processed = MB_DATALIST_LOOK_UNSET;
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
-			fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
-			Return(MB_ERROR_OPEN_FAIL);
+			GMT_Report(API, GMT_MSG_ERROR, "Unable to open data list file: %s\n", read_file);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		read_data = (mb_datalist_read3(verbose, datalist, &pstatus, path, ppath,
 		                               &astatus, apath, dpath, &format, &file_weight, &error) == MB_SUCCESS);
@@ -1252,8 +1292,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 		if (0 == strncmp("-", output_file, 2)) outfile = stdout;
 		else outfile = fopen(output_file, "w");
 		if (outfile == NULL) {
-			fprintf(stderr, "Could not open file: %s\n", output_file);
-			Return(MB_ERROR_OPEN_FAIL);
+			GMT_Report(API, GMT_MSG_ERROR, "Could not open file: %s\n", output_file);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		for (int i = 0; i < n_list; i++) output[i] = outfile;
 	} else {
@@ -1265,8 +1305,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 			if (!netcdf_cdl) strcat(output_file_temp, ".cdl");
 			outfile = fopen(output_file_temp, "w+");
 			if (outfile == NULL) {
-				fprintf(stderr, "Unable to open file: %s\n", output_file_temp);
-				Return(MB_ERROR_OPEN_FAIL);
+				GMT_Report(API, GMT_MSG_ERROR, "Unable to open file: %s\n", output_file_temp);
+				Return(GMT_ERROR_ON_FOPEN);
 			}
 		}
 
@@ -1297,7 +1337,7 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 
 		for (int i = 0; i < n_list; i++) {
 			output[i] = tmpfile();
-			if (output[i] == NULL) { fprintf(stderr, "Unable to open temp files\n"); Return(MB_ERROR_OPEN_FAIL); }
+			if (output[i] == NULL) { GMT_Report(API, GMT_MSG_ERROR, "Unable to open temp files\n"); Return(GMT_ERROR_ON_FOPEN); }
 			char variable[MB_PATH_MAXLINE] = "";
 			if (!raw_next_value && !ttimes_next_value) {
 				switch (list[i]) {
@@ -1614,8 +1654,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 		                        &beams_bath, &beams_amp, &pixels_ss, &error) != MB_SUCCESS) {
 			char *message;
 			mb_error(verbose, error, &message);
-			fprintf(stderr, "\nmb_read_init_altnav failed: %s\nFile: %s\n", message, file);
-			Return(error);
+			GMT_Report(API, GMT_MSG_ERROR, "mb_read_init_altnav failed: %s File: %s\n", message, file);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		if (dump_mode == DUMP_MODE_BATH || dump_mode == DUMP_MODE_TOPO) use_bath = true;
@@ -1696,8 +1736,8 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 
 		if (error != MB_ERROR_NO_ERROR) {
 			char *message; mb_error(verbose, error, &message);
-			fprintf(stderr, "\nAlloc failed: %s\n", message);
-			Return(error);
+			GMT_Report(API, GMT_MSG_ERROR, "Alloc failed: %s\n", message);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		if (segment && ascii && !netcdf) {
@@ -1771,10 +1811,10 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 					} else strcpy(projection_id, projection_pars);
 					proj_status = mb_proj_init(verbose, projection_id, &(pjptr), &error);
 					if (proj_status != MB_SUCCESS) {
-						fprintf(stderr, "\nOutput projection %s not found in database\n", projection_id);
+						GMT_Report(API, GMT_MSG_ERROR, "Output projection %s not found in database\n", projection_id);
 						error = MB_ERROR_BAD_PARAMETER;
 						mb_memory_clear(verbose, &error);
-						Return(MB_ERROR_BAD_PARAMETER);
+						Return(GMT_RUNTIME_ERROR);
 					}
 				}
 				mb_proj_forward(verbose, pjptr, navlon, navlat, &naveasting, &navnorthing, &error);
@@ -1811,7 +1851,11 @@ int GMT_mblist(void *V_API, int mode, void *args) {
 				status &= set_output(verbose, beams_bath, beams_amp, pixels_ss, use_bath, use_amp, use_ss, dump_mode, beam_set,
 				                     pixel_set, beam_vertical, pixel_vertical, &beam_start, &beam_end, &beam_exclude_percent,
 				                     &pixel_start, &pixel_end, &n_list, list, &error);
-				if (status == MB_FAILURE) Return(error);
+				if (status == MB_FAILURE) {
+					char *message; mb_error(verbose, error, &message);
+					GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+					Return(GMT_RUNTIME_ERROR);
+				}
 
 				if (verbose >= 2) {
 					fprintf(stderr, "\ndbg2  Beams set for output in <%s>\n", THIS_MODULE_NAME);

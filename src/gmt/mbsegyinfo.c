@@ -27,10 +27,10 @@
  * Author:	D. W. Caress
  * Date:	June 2, 2004
  *
- * GMT-module rewrite of mbsegyinfo.cc: wrapped as GMT_mbsegyinfo entry
- * so it can be invoked from the GMT API (Julia FFI / Matlab MEX).
- * Single-letter options (-I, -L, -O, -V, -H) map directly to GMT_OPTION
- * entries — no getopt_long lookup table required.
+ * GMT-module port of src/utilities/mbsegyinfo.cc: options parsed in parse() from GMT's option
+ * list, the program's long options kept through module_kw and its lower-case aliases kept; the
+ * report printed through the GMT API (mb_gmt_text.c), or to <file>.sinf with -O, as the program
+ * does; every Return() a GMT error code.
  */
 
 #define THIS_MODULE_NAME		"mbsegyinfo"
@@ -38,7 +38,7 @@
 #define THIS_MODULE_PURPOSE		"List basic statistics (file/trace headers, navigation, time, ranges) from a SEGY data file"
 #define THIS_MODULE_KEYS		">D}"
 #define THIS_MODULE_NEEDS		""
-#define THIS_MODULE_OPTIONS		"-:>Vh"
+#define THIS_MODULE_OPTIONS		"->V"
 
 #include "gmt_dev.h"
 
@@ -50,6 +50,7 @@
 #include "mb_format.h"
 #include "mb_segy.h"
 #include "mb_status.h"
+#include "mb_gmt_text.h"
 
 static const char program_name[] = "MBsegyinfo";
 static const char help_message[] =
@@ -62,6 +63,7 @@ EXTERN_MSC int GMT_mbsegyinfo(void *API, int mode, void *args);
 /* --- Control structure ---------------------------------------------- */
 
 struct MBSEGYINFO_CTRL {
+	int verbose;	/* the program's -V/-v count */
 	struct mbsi_H { bool active; } H;
 	struct mbsi_I { bool active; char file[MB_PATH_MAXLINE]; } I;
 	struct mbsi_L { bool active; int lonflip; } L;
@@ -78,19 +80,32 @@ static void Free_mbsegyinfo_Ctrl(struct GMT_CTRL *GMT, struct MBSEGYINFO_CTRL *C
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'H', "help",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "longitude-domain", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output-file",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'v', "verbose",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "\n%s\n\n", help_message);
 	GMT_Message(API, GMT_TIME_NONE,
 		"\t-I Input SEGY data file.\n"
 		"\t-L Longitude flip control (-1=use 0..-360, 0=use -180..180, 1=use 0..360).\n"
 		"\t-O Write info to <file>.sinf instead of stdout.\n"
-		"\t-H Print description and exit.\n");
-	GMT_Option(API, "V,:");
-	return GMT_PARSE_ERROR;
+		"\t-H Print description and exit.\n"
+		"\tEvery option also has the program's lower-case and long forms (--input, --longitude-domain,\n"
+		"\t--output-file, --help, --verbose).\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse(struct GMT_CTRL *GMT, struct MBSEGYINFO_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -100,66 +115,74 @@ static int parse(struct GMT_CTRL *GMT, struct MBSEGYINFO_CTRL *Ctrl, struct GMT_
 
 	for (opt = options; opt; opt = opt->next) {
 		switch (opt->option) {
+		case 'V':
+		case 'v':
+			Ctrl->verbose++;
+			break;
 		case 'H':
+		case 'h':
 			Ctrl->H.active = true;
 			break;
 		case 'I':
+		case 'i':
 			if (opt->arg && opt->arg[0]) {
 				strncpy(Ctrl->I.file, opt->arg, MB_PATH_MAXLINE - 1);
 				Ctrl->I.file[MB_PATH_MAXLINE - 1] = '\0';
 				Ctrl->I.active = true;
-			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
+			} else { GMT_Report(API, GMT_MSG_ERROR, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'L':
-			if (opt->arg && opt->arg[0]) {
-				if (sscanf(opt->arg, "%d", &Ctrl->L.lonflip) == 1)
-					Ctrl->L.active = true;
-				else {
-					GMT_Report(API, GMT_MSG_NORMAL, "Syntax -L option: expected integer lonflip\n");
-					{ GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
-				}
-			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
+		case 'l':
+			if (opt->arg && opt->arg[0] && sscanf(opt->arg, "%d", &Ctrl->L.lonflip) == 1)
+				Ctrl->L.active = true;
+			else {
+				GMT_Report(API, GMT_MSG_ERROR, "Syntax error -%c option: expected integer lonflip\n", opt->option);
+				n_errors++;
+			}
 			break;
 		case 'O':
+		case 'o':
 			Ctrl->O.active = true;
 			break;
+		case 'W':	/* in the program's option string, without any effect there either */
+		case 'w':
+			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code)  { gmt_M_free_options(mode); return code; }
-#define Return(code)   { Free_mbsegyinfo_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code)   { if (T) mb_gmt_text_end(T); Free_mbsegyinfo_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 
 /*--------------------------------------------------------------------*/
 int GMT_mbsegyinfo(void *V_API, int mode, void *args) {
 	struct MBSEGYINFO_CTRL *Ctrl = NULL;
+	struct MB_GMT_TEXT     *T = NULL;	/* the report: GMT API records, or the -O .sinf file */
 	struct GMT_CTRL        *GMT  = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION      *options = NULL;
 	struct GMTAPI_CTRL     *API = gmt_get_api_ptr(V_API);
+	int gmt_error;
 
 	if (API == NULL) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
-	if (!options || options->option == GMT_OPT_USAGE)   bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS)            bailout(usage(API, GMT_SYNOPSIS));
+	/* 1: no options is a run of the program, which reports the missing input itself */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 
-#if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
-#else
-	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
-#endif
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = New_mbsegyinfo_Ctrl(GMT);
-	{ int perr = parse(GMT, Ctrl, options); if (perr) Return(perr); }
+	if ((gmt_error = parse(GMT, Ctrl, options)) != GMT_NOERROR) Return(gmt_error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
-	int verbose = GMT->common.V.active;
+	const int verbose = Ctrl->verbose;
 
 	int format;
 	int pings;
@@ -179,9 +202,8 @@ int GMT_mbsegyinfo(void *V_API, int mode, void *args) {
 	}
 	if (Ctrl->L.active) lonflip = Ctrl->L.lonflip;
 	const bool output_usefile = Ctrl->O.active;
-	const bool help           = Ctrl->H.active;
 
-	if (verbose == 1 || help) {
+	if (verbose == 1) {
 		fprintf(stderr, "\nProgram %s\n", program_name);
 		fprintf(stderr, "MB-system Version %s\n", MB_VERSION);
 	}
@@ -191,7 +213,6 @@ int GMT_mbsegyinfo(void *V_API, int mode, void *args) {
 		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  MB-system Version %s\n", MB_VERSION);
 		GMT_Report(API, GMT_MSG_NORMAL, "dbg2  Control Parameters:\n");
 		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       verbose:        %d\n", verbose);
-		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       help:           %d\n", (int)help);
 		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       lonflip:        %d\n", lonflip);
 		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       bounds[0]:      %f\n", bounds[0]);
 		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       bounds[1]:      %f\n", bounds[1]);
@@ -216,12 +237,6 @@ int GMT_mbsegyinfo(void *V_API, int mode, void *args) {
 		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       read_file:      %s\n", read_file);
 	}
 
-	if (help) {
-		fprintf(stderr, "\n%s\n", help_message);
-		fprintf(stderr, "\nusage: %s\n", usage_message);
-		Return(MB_ERROR_NO_ERROR);
-	}
-
 	int error = MB_ERROR_NO_ERROR;
 
 	/* initialize reading the segy file */
@@ -232,25 +247,20 @@ int GMT_mbsegyinfo(void *V_API, int mode, void *args) {
 		if (mb_segy_read_init(verbose, read_file, &mbsegyioptr, &asciiheader, &fileheader, &error) != MB_SUCCESS) {
 			char *message;
 			mb_error(verbose, error, &message);
-			fprintf(stderr, "\nMBIO Error returned from function <mb_segy_read_init>:\n%s\n", message);
-			fprintf(stderr, "\nSEGY File <%s> not initialized for reading\n", read_file);
-			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			GMT_Report(API, GMT_MSG_ERROR, "MBIO Error returned from function <mb_segy_read_init>: %s\n", message);
+			GMT_Report(API, GMT_MSG_ERROR, "SEGY File <%s> not initialized for reading\n", read_file);
+			Return(GMT_RUNTIME_ERROR);
 		}
 	}
 
-	FILE *stream = verbose <= 1 ? stdout : stderr;
-
-	FILE *output = NULL;
+	/* the report: to <file>.sinf with -O, as the program writes it, else through the GMT API */
 	if (output_usefile) {
 		char output_file[MB_PATH_MAXLINE + 5];
 		snprintf(output_file, sizeof(output_file), "%s.sinf", read_file);
-		if ((output = fopen(output_file, "w")) == NULL)
-			output = stream;
+		T = mb_gmt_text_file(GMT, output_file);
 	}
-	else {
-		output = stream;
-	}
+	if (T == NULL && (T = mb_gmt_text_begin(GMT, options)) == NULL)
+		Return(API->error);
 
 	double delaymin = 0.0;
 	double delaymax = 0.0;
@@ -457,61 +467,61 @@ int GMT_mbsegyinfo(void *V_API, int mode, void *args) {
 	status = mb_segy_close(verbose, &mbsegyioptr, &error);
 
 	const double tracelength = 0.000001 * (double)(fileheader.sample_interval * fileheader.number_samples);
-	fprintf(output, "\nSEGY Data File:      %s\n", read_file);
-	fprintf(output, "\nFile Header Info:\n");
-	fprintf(output, "  Channels:                   %8d\n", fileheader.channels);
-	fprintf(output, "  Auxiliary Channels:         %8d\n", fileheader.aux_channels);
-	fprintf(output, "  Sample Interval (usec):     %8d\n", fileheader.sample_interval);
-	fprintf(output, "  Number of Samples in Trace: %8d\n", fileheader.number_samples);
-	fprintf(output, "  Trace length (sec):         %8f\n", tracelength);
+	mb_gmt_text_put(T, "\nSEGY Data File:      %s\n", read_file);
+	mb_gmt_text_put(T, "\nFile Header Info:\n");
+	mb_gmt_text_put(T, "  Channels:                   %8d\n", fileheader.channels);
+	mb_gmt_text_put(T, "  Auxiliary Channels:         %8d\n", fileheader.aux_channels);
+	mb_gmt_text_put(T, "  Sample Interval (usec):     %8d\n", fileheader.sample_interval);
+	mb_gmt_text_put(T, "  Number of Samples in Trace: %8d\n", fileheader.number_samples);
+	mb_gmt_text_put(T, "  Trace length (sec):         %8f\n", tracelength);
 	if (fileheader.format == 1)
-		fprintf(output, "  Data Format:                IBM 32 bit floating point\n");
+		mb_gmt_text_put(T, "  Data Format:                IBM 32 bit floating point\n");
 	else if (fileheader.format == 2)
-		fprintf(output, "  Data Format:                32 bit integer\n");
+		mb_gmt_text_put(T, "  Data Format:                32 bit integer\n");
 	else if (fileheader.format == 3)
-		fprintf(output, "  Data Format:                16 bit integer\n");
+		mb_gmt_text_put(T, "  Data Format:                16 bit integer\n");
 	else if (fileheader.format == 5)
-		fprintf(output, "  Data Format:                IEEE 32 bit integer\n");
+		mb_gmt_text_put(T, "  Data Format:                IEEE 32 bit integer\n");
 	else if (fileheader.format == 6)
-		fprintf(output, "  Data Format:                IEEE 32 bit integer\n");
+		mb_gmt_text_put(T, "  Data Format:                IEEE 32 bit integer\n");
 	else if (fileheader.format == 8)
-		fprintf(output, "  Data Format:                8 bit integer\n");
+		mb_gmt_text_put(T, "  Data Format:                8 bit integer\n");
 	else if (fileheader.format == 11)
-		fprintf(output, "  Data Format:                Little-endian IEEE 32 bit floating point\n");
+		mb_gmt_text_put(T, "  Data Format:                Little-endian IEEE 32 bit floating point\n");
 	else
-		fprintf(output, "  Data Format:                Unknown\n");
-	fprintf(output, "  CDP Fold:                   %8d\n", fileheader.cdp_fold);
-	fprintf(output, "\nData Totals:\n");
-	fprintf(output, "  Number of Traces:           %8d\n", nread);
-	fprintf(output, "  Min Max Delta:\n");
-	fprintf(output, "    Shot number:              %8d %8d %8d\n", shotmin, shotmax, shotmax - shotmin + 1);
-	fprintf(output, "    Shot trace:               %8d %8d %8d\n", shottracemin, shottracemax, shottracemax - shottracemin + 1);
-	fprintf(output, "    RP number:                %8d %8d %8d\n", rpmin, rpmax, rpmax - rpmin + 1);
-	fprintf(output, "    RP trace:                 %8d %8d %8d\n", rptracemin, rptracemax, rptracemax - rptracemin + 1);
-	fprintf(output, "    Delay (sec):              %8f %8f %8f\n", delaymin, delaymax, delaymax - delaymin);
-	fprintf(output, "    Range (m):                %8f %8f %8f\n", rangemin, rangemax, rangemax - rangemin);
-	fprintf(output, "    Receiver Elevation (m):   %8f %8f %8f\n", receiverelevationmin, receiverelevationmax,
+		mb_gmt_text_put(T, "  Data Format:                Unknown\n");
+	mb_gmt_text_put(T, "  CDP Fold:                   %8d\n", fileheader.cdp_fold);
+	mb_gmt_text_put(T, "\nData Totals:\n");
+	mb_gmt_text_put(T, "  Number of Traces:           %8d\n", nread);
+	mb_gmt_text_put(T, "  Min Max Delta:\n");
+	mb_gmt_text_put(T, "    Shot number:              %8d %8d %8d\n", shotmin, shotmax, shotmax - shotmin + 1);
+	mb_gmt_text_put(T, "    Shot trace:               %8d %8d %8d\n", shottracemin, shottracemax, shottracemax - shottracemin + 1);
+	mb_gmt_text_put(T, "    RP number:                %8d %8d %8d\n", rpmin, rpmax, rpmax - rpmin + 1);
+	mb_gmt_text_put(T, "    RP trace:                 %8d %8d %8d\n", rptracemin, rptracemax, rptracemax - rptracemin + 1);
+	mb_gmt_text_put(T, "    Delay (sec):              %8f %8f %8f\n", delaymin, delaymax, delaymax - delaymin);
+	mb_gmt_text_put(T, "    Range (m):                %8f %8f %8f\n", rangemin, rangemax, rangemax - rangemin);
+	mb_gmt_text_put(T, "    Receiver Elevation (m):   %8f %8f %8f\n", receiverelevationmin, receiverelevationmax,
 	        receiverelevationmax - receiverelevationmin);
-	fprintf(output, "    Source Elevation (m):     %8f %8f %8f\n", sourceelevationmin, sourceelevationmax,
+	mb_gmt_text_put(T, "    Source Elevation (m):     %8f %8f %8f\n", sourceelevationmin, sourceelevationmax,
 	        sourceelevationmax - sourceelevationmin);
-	fprintf(output, "    Source Depth (m):         %8f %8f %8f\n", sourcedepthmin, sourcedepthmax,
+	mb_gmt_text_put(T, "    Source Depth (m):         %8f %8f %8f\n", sourcedepthmin, sourcedepthmax,
 	        sourcedepthmax - sourcedepthmin);
-	fprintf(output, "    Receiver Water Depth (m): %8f %8f %8f\n", receiverwaterdepthmin, receiverwaterdepthmax,
+	mb_gmt_text_put(T, "    Receiver Water Depth (m): %8f %8f %8f\n", receiverwaterdepthmin, receiverwaterdepthmax,
 	        receiverwaterdepthmax - receiverwaterdepthmin);
-	fprintf(output, "    Source Water Depth (m):   %8f %8f %8f\n", sourcewaterdepthmin, sourcewaterdepthmax,
+	mb_gmt_text_put(T, "    Source Water Depth (m):   %8f %8f %8f\n", sourcewaterdepthmin, sourcewaterdepthmax,
 	        sourcewaterdepthmax - sourcewaterdepthmin);
-	fprintf(output, "\nNavigation Totals:\n");
-	fprintf(output, "\n  Start of Data:\n");
-	fprintf(output, "    Start Time:  %2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d\n", timbeg_i[1], timbeg_i[2], timbeg_i[0],
+	mb_gmt_text_put(T, "\nNavigation Totals:\n");
+	mb_gmt_text_put(T, "\n  Start of Data:\n");
+	mb_gmt_text_put(T, "    Start Time:  %2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d\n", timbeg_i[1], timbeg_i[2], timbeg_i[0],
 	        timbeg_i[3], timbeg_i[4], timbeg_i[5], timbeg_i[6], timbeg_j[1]);
-	fprintf(output, "    Start Position: Lon: %14.9f     Lat: %14.9f\n", lonbeg, latbeg);
-	fprintf(output, "\n  End of Data:\n");
-	fprintf(output, "    End Time:    %2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d\n", timend_i[1], timend_i[2], timend_i[0],
+	mb_gmt_text_put(T, "    Start Position: Lon: %14.9f     Lat: %14.9f\n", lonbeg, latbeg);
+	mb_gmt_text_put(T, "\n  End of Data:\n");
+	mb_gmt_text_put(T, "    End Time:    %2.2d %2.2d %4.4d %2.2d:%2.2d:%2.2d.%6.6d  JD%d\n", timend_i[1], timend_i[2], timend_i[0],
 	        timend_i[3], timend_i[4], timend_i[5], timend_i[6], timend_j[1]);
-	fprintf(output, "    End Position:   Lon: %14.9f     Lat: %14.9f \n", lonend, latend);
-	fprintf(output, "\nLimits:\n");
-	fprintf(output, "  Minimum Longitude:   %14.9f   Maximum Longitude:   %14.9f\n", lonmin, lonmax);
-	fprintf(output, "  Minimum Latitude:    %14.9f   Maximum Latitude:    %14.9f\n", latmin, latmax);
+	mb_gmt_text_put(T, "    End Position:   Lon: %14.9f     Lat: %14.9f \n", lonend, latend);
+	mb_gmt_text_put(T, "\nLimits:\n");
+	mb_gmt_text_put(T, "  Minimum Longitude:   %14.9f   Maximum Longitude:   %14.9f\n", lonmin, lonmax);
+	mb_gmt_text_put(T, "  Minimum Latitude:    %14.9f   Maximum Latitude:    %14.9f\n", latmin, latmax);
 
 	/* check memory */
 	if (verbose >= 4)
@@ -523,6 +533,18 @@ int GMT_mbsegyinfo(void *V_API, int mode, void *args) {
 		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       status:  %d\n", status);
 	}
 
-	Return(error);
+	const int output_failed = mb_gmt_text_end(T);
+	T = NULL;
+	if (output_failed) Return(GMT_RUNTIME_ERROR);
+
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+	   The end of the data (EOF) is how every read finishes, not an error. */
+	if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

@@ -30,11 +30,11 @@
  *
  */
 /*
- * GMT-module port of src/utilities/mbmakeplatform.cc. The program's getopt_long() option loop
- * is kept as it is, running on the reentrant mb_getopt_long() (the state
- * lives in a local structure, so the module can run any number of times in
- * one GMT session), and main() becomes GMT_mbmakeplatform(), with every exit()
- * turned into Return().
+ * GMT-module port of src/utilities/mbmakeplatform.cc: the program's long options (~200, and no short
+ * ones, more than a module_kw table has letters for) come from GMT's option list in command-line
+ * order through mb_gmt_mark_long_options() / mb_gmt_long_option(); main() becomes
+ * GMT_mbmakeplatform() and every exit() a Return() with a GMT error code. Its result is the
+ * program's own platform file; its messages go to stderr.
  */
 
 #define THIS_MODULE_NAME "mbmakeplatform"
@@ -62,8 +62,7 @@
 #include "mb_format.h"
 #include "mb_io.h"
 #include "mb_status.h"
-
-#include "mb_getopt.h"
+#include "mb_gmt_opts.h"
 
 typedef enum {
     SENSOR_OFF = 0,
@@ -284,71 +283,247 @@ static const char usage_message[] =
 
 /*--------------------------------------------------------------------*/
 
+/* The program's long options, in option_id order (it has no short ones) */
+static const struct MB_GMT_LONGOPT_DEF long_options[] = {
+	{"output", true},
+	{"verbose", false},
+	{"help", false},
+	{"input", true},
+	{"swath", true},
+	{"swath-format", true},
+	{"platform-type-surface-vessel", false},
+	{"platform-type-tow-body", false},
+	{"platform-type-rov", false},
+	{"platform-type-auv", false},
+	{"platform-type-aircraft", false},
+	{"platform-type-satellite", false},
+	{"platform-name", true},
+	{"platform-organization", true},
+	{"platform-documentation-url", true},
+	{"platform-start-time", true},
+	{"platform-end-time", true},
+	{"add-sensor-sonar-echosounder", false},
+	{"add-sensor-sonar-multiechosounder", false},
+	{"add-sensor-sonar-sidescan", false},
+	{"add-sensor-sonar-interferometry", false},
+	{"add-sensor-sonar-multibeam", false},
+	{"add-sensor-sonar-multibeam-twohead", false},
+	{"add-sensor-sonar-subbottom", false},
+	{"add-sensor-camera-mono", false},
+	{"add-sensor-camera-stereo", false},
+	{"add-sensor-camera-video", false},
+	{"add-sensor-lidar-scan", false},
+	{"add-sensor-lidar-swath", false},
+	{"add-sensor-position", false},
+	{"add-sensor-compass", false},
+	{"add-sensor-vru", false},
+	{"add-sensor-imu", false},
+	{"add-sensor-ins", false},
+	{"add-sensor-ins-with-pressure", false},
+	{"add-sensor-ctd", false},
+	{"add-sensor-pressure", false},
+	{"add-sensor-soundspeed", false},
+	{"modify-sensor", true},
+	{"modify-sensor-bathymetry", false},
+	{"modify-sensor-bathymetry1", false},
+	{"modify-sensor-bathymetry2", false},
+	{"modify-sensor-bathymetry3", false},
+	{"modify-sensor-backscatter", false},
+	{"modify-sensor-backscatter1", false},
+	{"modify-sensor-backscatter2", false},
+	{"modify-sensor-backscatter3", false},
+	{"modify-sensor-subbottom", false},
+	{"modify-sensor-subbottom1", false},
+	{"modify-sensor-subbottom2", false},
+	{"modify-sensor-subbottom3", false},
+	{"modify-sensor-camera", false},
+	{"modify-sensor-camera1", false},
+	{"modify-sensor-camera2", false},
+	{"modify-sensor-camera3", false},
+	{"modify-sensor-position", false},
+	{"modify-sensor-position1", false},
+	{"modify-sensor-position2", false},
+	{"modify-sensor-position3", false},
+	{"modify-sensor-depth", false},
+	{"modify-sensor-depth1", false},
+	{"modify-sensor-depth2", false},
+	{"modify-sensor-depth3", false},
+	{"modify-sensor-heading", false},
+	{"modify-sensor-heading1", false},
+	{"modify-sensor-heading2", false},
+	{"modify-sensor-heading3", false},
+	{"modify-sensor-rollpitch", false},
+	{"modify-sensor-rollpitch1", false},
+	{"modify-sensor-rollpitch2", false},
+	{"modify-sensor-rollpitch3", false},
+	{"modify-sensor-heave", false},
+	{"modify-sensor-heave1", false},
+	{"modify-sensor-heave2", false},
+	{"modify-sensor-heave3", false},
+	{"sensor-model", true},
+	{"sensor-manufacturer", true},
+	{"sensor-serialnumber", true},
+	{"sensor-capability-position", false},
+	{"sensor-capability-depth", false},
+	{"sensor-capability-altitude", false},
+	{"sensor-capability-velocity", false},
+	{"sensor-capability-acceleration", false},
+	{"sensor-capability-pressure", false},
+	{"sensor-capability-rollpitch", false},
+	{"sensor-capability-heading", false},
+	{"sensor-capability-magneticfield", false},
+	{"sensor-capability-temperature", false},
+	{"sensor-capability-conductivity", false},
+	{"sensor-capability-salinity", false},
+	{"sensor-capability-soundspeed", false},
+	{"sensor-capability-gravity", false},
+	{"sensor-capability-topography-echosounder", false},
+	{"sensor-capability-topography-interferometry", false},
+	{"sensor-capability-topography-sass", false},
+	{"sensor-capability-topography-multibeam", false},
+	{"sensor-capability-topography-photogrammetry", false},
+	{"sensor-capability-topography-structurefrommotion", false},
+	{"sensor-capability-topography-lidar", false},
+	{"sensor-capability-topography-structuredlight", false},
+	{"sensor-capability-topography-laserscanner", false},
+	{"sensor-capability-backscatter-echosounder", false},
+	{"sensor-capability-backscatter-sidescan", false},
+	{"sensor-capability-backscatter-interferometry", false},
+	{"sensor-capability-backscatter-sass", false},
+	{"sensor-capability-backscatter-multibeam", false},
+	{"sensor-capability-backscatter-lidar", false},
+	{"sensor-capability-backscatter-structuredlight", false},
+	{"sensor-capability-backscatter-laserscanner", false},
+	{"sensor-capability-photography", false},
+	{"sensor-capability-stereophotography", false},
+	{"sensor-capability-video", false},
+	{"sensor-capability-stereovideo", false},
+	{"sensor-capability1", true},
+	{"sensor-capability2", true},
+	{"sensor-offsets", true},
+	{"sensor-offset-positions", true},
+	{"sensor-offset-angles", true},
+	{"sensor-time-latency", true},
+	{"sensor-time-latency-model", true},
+	{"sensor-flipsign-heading", false},
+	{"sensor-flipsign-roll", false},
+	{"sensor-flipsign-pitch", false},
+	{"sensor-source-bathymetry", false},
+	{"sensor-source-bathymetry1", false},
+	{"sensor-source-bathymetry2", false},
+	{"sensor-source-bathymetry3", false},
+	{"sensor-source-backscatter", false},
+	{"sensor-source-backscatter1", false},
+	{"sensor-source-backscatter2", false},
+	{"sensor-source-backscatter3", false},
+	{"sensor-source-subbottom", false},
+	{"sensor-source-subbottom1", false},
+	{"sensor-source-subbottom2", false},
+	{"sensor-source-subbottom3", false},
+	{"sensor-source-camera", false},
+	{"sensor-source-camera1", false},
+	{"sensor-source-camera2", false},
+	{"sensor-source-camera3", false},
+	{"sensor-source-position", false},
+	{"sensor-source-position1", false},
+	{"sensor-source-position2", false},
+	{"sensor-source-position3", false},
+	{"sensor-source-depth", false},
+	{"sensor-source-depth1", false},
+	{"sensor-source-depth2", false},
+	{"sensor-source-depth3", false},
+	{"sensor-source-heading", false},
+	{"sensor-source-heading1", false},
+	{"sensor-source-heading2", false},
+	{"sensor-source-heading3", false},
+	{"sensor-source-rollpitch", false},
+	{"sensor-source-rollpitch1", false},
+	{"sensor-source-rollpitch2", false},
+	{"sensor-source-rollpitch3", false},
+	{"sensor-source-heave", false},
+	{"sensor-source-heave1", false},
+	{"sensor-source-heave2", false},
+	{"sensor-source-heave3", false},
+	{"modify-offsets", true},
+	{"modify-offset-positions", true},
+	{"modify-offset-angles", true},
+	{"modify-time-latency", true},
+	{"modify-time-latency-model", true},
+	{"end-sensor", false},
+	{"set-source-bathymetry", true},
+	{"set-source-bathymetry1", true},
+	{"set-source-bathymetry2", true},
+	{"set-source-bathymetry3", true},
+	{"set-source-backscatter", true},
+	{"set-source-backscatter1", true},
+	{"set-source-backscatter2", true},
+	{"set-source-backscatter3", true},
+	{"set-source-subbottom", true},
+	{"set-source-subbottom1", true},
+	{"set-source-subbottom2", true},
+	{"set-source-subbottom3", true},
+	{"set-source-camera", true},
+	{"set-source-camera1", true},
+	{"set-source-camera2", true},
+	{"set-source-camera3", true},
+	{"set-source-position", true},
+	{"set-source-position1", true},
+	{"set-source-position2", true},
+	{"set-source-position3", true},
+	{"set-source-depth", true},
+	{"set-source-depth1", true},
+	{"set-source-depth2", true},
+	{"set-source-depth3", true},
+	{"set-source-heading", true},
+	{"set-source-heading1", true},
+	{"set-source-heading2", true},
+	{"set-source-heading3", true},
+	{"set-source-rollpitch", true},
+	{"set-source-rollpitch1", true},
+	{"set-source-rollpitch2", true},
+	{"set-source-rollpitch3", true},
+	{"set-source-heave", true},
+	{"set-source-heave1", true},
+	{"set-source-heave2", true},
+	{"set-source-heave3", true},
+	{NULL, false}};
+
 /* --- GMT front end ---------------------------------------------------- */
 
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
-	return GMT_PARSE_ERROR;
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
-/* The options GMT itself should see: -V (verbosity) and -I (the input the
- * module keys bind). Everything else, long options included, is parsed by
- * the program's own option loop below. */
-static char *mb_gmt_options_string(int argc, char **argv) {
-	size_t total = 1;
-	for (int i = 1; i < argc; i++)
-		total += strlen(argv[i]) + 1;
-	char *s = (char *)calloc(total + 8, 1);
-	if (s == NULL)
-		return NULL;
-	for (int i = 1; i < argc; i++) {
-		if (argv[i][0] == '-' && (argv[i][1] == 'V' || (argv[i][1] == 'I' && argv[i][2] != '\0'))) {
-			if (s[0] != '\0')
-				strcat(s, " ");
-			strcat(s, argv[i]);
-		}
-	}
-	return s;
-}
-
-/* gmt_M_free_options() hard-codes a variable named "options", which the
-   program's own option table shadows here, so destroy gmt_options directly */
-#define bailout(code) { mb_getopt_args_free(argc, argv); free(gmt_args); GMT_Destroy_Options(API, &gmt_options); return (code); }
+#define bailout(code) { gmt_M_free_options(mode); return code; }
 #define Return(code) { gmt_end_module(GMT, GMT_cpy); bailout(code); }
-EXTERN_MSC int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args);
+EXTERN_MSC int GMT_mbmakeplatform(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
 
-int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
+int GMT_mbmakeplatform(void *V_API, int mode, void *args) {
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
-	struct GMT_OPTION *gmt_options = NULL;
-	char *gmt_args = NULL;
-	char **argv = NULL;
-	int argc = 0;
-	struct mb_getopt_state getopt_state;
-	mb_getopt_init(&getopt_state);
+	struct GMT_OPTION *options = NULL;
+	int gmt_error;
 
-	if (!API) return GMT_NOT_A_SESSION;
-	if (gmt_mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-
-	/* the program's own argv[], whatever shape GMT handed us */
-	argc = mb_getopt_args_build(THIS_MODULE_NAME, gmt_mode, args, &argv);
-	if (argc == 2 && (strcmp(argv[1], "-") == 0 || strcmp(argv[1], "?") == 0))
-		bailout(usage(API, GMT_USAGE));
-	if (argc == 2 && strcmp(argv[1], "+") == 0)
-		bailout(usage(API, GMT_SYNOPSIS));
-
-	gmt_args = mb_gmt_options_string(argc, argv);
-	gmt_options = GMT_Create_Options(API, GMT_MODULE_CMD, (gmt_args != NULL && gmt_args[0] != '\0') ? gmt_args : NULL);
-	if (API->error) bailout(API->error);
+	if (API == NULL) return GMT_NOT_A_SESSION;
+	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a run of the program (which then does nothing) */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &gmt_options, &GMT_cpy)) == NULL) bailout(API->error);
-	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, gmt_options)) Return(API->error);
+	                           THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	/* the program's long options (more than a module_kw could give letters) kept out of GMT's
+	   --PAR=value handling */
+	mb_gmt_mark_long_options(API, &options, long_options);
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
   int verbose = 0;
   int input_swath_format = 0;
@@ -579,209 +754,6 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
     option_set_source_heave3,
   } option_id;
 
-  static struct mb_getopt_option options[] = {
-    {"output", mb_required_argument, NULL, 0},
-    {"verbose", mb_no_argument, NULL, 0},
-    {"help", mb_no_argument, NULL, 0},
-    {"input", mb_required_argument, NULL, 0},
-    {"swath", mb_required_argument, NULL, 0},
-    {"swath-format", mb_required_argument, NULL, 0},
-    {"platform-type-surface-vessel", mb_no_argument, NULL, 0},
-    {"platform-type-tow-body", mb_no_argument, NULL, 0},
-    {"platform-type-rov", mb_no_argument, NULL, 0},
-    {"platform-type-auv", mb_no_argument, NULL, 0},
-    {"platform-type-aircraft", mb_no_argument, NULL, 0},
-    {"platform-type-satellite", mb_no_argument, NULL, 0},
-    {"platform-name", mb_required_argument, NULL, 0},
-    {"platform-organization", mb_required_argument, NULL, 0},
-    {"platform-documentation-url", mb_required_argument, NULL, 0},
-    {"platform-start-time", mb_required_argument, NULL, 0},
-    {"platform-end-time", mb_required_argument, NULL, 0},
-    {"add-sensor-sonar-echosounder", mb_no_argument, NULL, 0},
-    {"add-sensor-sonar-multiechosounder", mb_no_argument, NULL, 0},
-    {"add-sensor-sonar-sidescan", mb_no_argument, NULL, 0},
-    {"add-sensor-sonar-interferometry", mb_no_argument, NULL, 0},
-    {"add-sensor-sonar-multibeam", mb_no_argument, NULL, 0},
-    {"add-sensor-sonar-multibeam-twohead", mb_no_argument, NULL, 0},
-    {"add-sensor-sonar-subbottom", mb_no_argument, NULL, 0},
-    {"add-sensor-camera-mono", mb_no_argument, NULL, 0},
-    {"add-sensor-camera-stereo", mb_no_argument, NULL, 0},
-    {"add-sensor-camera-video", mb_no_argument, NULL, 0},
-    {"add-sensor-lidar-scan", mb_no_argument, NULL, 0},
-    {"add-sensor-lidar-swath", mb_no_argument, NULL, 0},
-    {"add-sensor-position", mb_no_argument, NULL, 0},
-    {"add-sensor-compass", mb_no_argument, NULL, 0},
-    {"add-sensor-vru", mb_no_argument, NULL, 0},
-    {"add-sensor-imu", mb_no_argument, NULL, 0},
-    {"add-sensor-ins", mb_no_argument, NULL, 0},
-    {"add-sensor-ins-with-pressure", mb_no_argument, NULL, 0},
-    {"add-sensor-ctd", mb_no_argument, NULL, 0},
-    {"add-sensor-pressure", mb_no_argument, NULL, 0},
-    {"add-sensor-soundspeed", mb_no_argument, NULL, 0},
-    {"modify-sensor", mb_required_argument, NULL, 0},
-    {"modify-sensor-bathymetry", mb_no_argument, NULL, 0},
-    {"modify-sensor-bathymetry1", mb_no_argument, NULL, 0},
-    {"modify-sensor-bathymetry2", mb_no_argument, NULL, 0},
-    {"modify-sensor-bathymetry3", mb_no_argument, NULL, 0},
-    {"modify-sensor-backscatter", mb_no_argument, NULL, 0},
-    {"modify-sensor-backscatter1", mb_no_argument, NULL, 0},
-    {"modify-sensor-backscatter2", mb_no_argument, NULL, 0},
-    {"modify-sensor-backscatter3", mb_no_argument, NULL, 0},
-    {"modify-sensor-subbottom", mb_no_argument, NULL, 0},
-    {"modify-sensor-subbottom1", mb_no_argument, NULL, 0},
-    {"modify-sensor-subbottom2", mb_no_argument, NULL, 0},
-    {"modify-sensor-subbottom3", mb_no_argument, NULL, 0},
-    {"modify-sensor-camera", mb_no_argument, NULL, 0},
-    {"modify-sensor-camera1", mb_no_argument, NULL, 0},
-    {"modify-sensor-camera2", mb_no_argument, NULL, 0},
-    {"modify-sensor-camera3", mb_no_argument, NULL, 0},
-    {"modify-sensor-position", mb_no_argument, NULL, 0},
-    {"modify-sensor-position1", mb_no_argument, NULL, 0},
-    {"modify-sensor-position2", mb_no_argument, NULL, 0},
-    {"modify-sensor-position3", mb_no_argument, NULL, 0},
-    {"modify-sensor-depth", mb_no_argument, NULL, 0},
-    {"modify-sensor-depth1", mb_no_argument, NULL, 0},
-    {"modify-sensor-depth2", mb_no_argument, NULL, 0},
-    {"modify-sensor-depth3", mb_no_argument, NULL, 0},
-    {"modify-sensor-heading", mb_no_argument, NULL, 0},
-    {"modify-sensor-heading1", mb_no_argument, NULL, 0},
-    {"modify-sensor-heading2", mb_no_argument, NULL, 0},
-    {"modify-sensor-heading3", mb_no_argument, NULL, 0},
-    {"modify-sensor-rollpitch", mb_no_argument, NULL, 0},
-    {"modify-sensor-rollpitch1", mb_no_argument, NULL, 0},
-    {"modify-sensor-rollpitch2", mb_no_argument, NULL, 0},
-    {"modify-sensor-rollpitch3", mb_no_argument, NULL, 0},
-    {"modify-sensor-heave", mb_no_argument, NULL, 0},
-    {"modify-sensor-heave1", mb_no_argument, NULL, 0},
-    {"modify-sensor-heave2", mb_no_argument, NULL, 0},
-    {"modify-sensor-heave3", mb_no_argument, NULL, 0},
-    {"sensor-model", mb_required_argument, NULL, 0},
-    {"sensor-manufacturer", mb_required_argument, NULL, 0},
-    {"sensor-serialnumber", mb_required_argument, NULL, 0},
-    {"sensor-capability-position", mb_no_argument, NULL, 0},
-    {"sensor-capability-depth", mb_no_argument, NULL, 0},
-    {"sensor-capability-altitude", mb_no_argument, NULL, 0},
-    {"sensor-capability-velocity", mb_no_argument, NULL, 0},
-    {"sensor-capability-acceleration", mb_no_argument, NULL, 0},
-    {"sensor-capability-pressure", mb_no_argument, NULL, 0},
-    {"sensor-capability-rollpitch", mb_no_argument, NULL, 0},
-    {"sensor-capability-heading", mb_no_argument, NULL, 0},
-    {"sensor-capability-magneticfield", mb_no_argument, NULL, 0},
-    {"sensor-capability-temperature", mb_no_argument, NULL, 0},
-    {"sensor-capability-conductivity", mb_no_argument, NULL, 0},
-    {"sensor-capability-salinity", mb_no_argument, NULL, 0},
-    {"sensor-capability-soundspeed", mb_no_argument, NULL, 0},
-    {"sensor-capability-gravity", mb_no_argument, NULL, 0},
-    {"sensor-capability-topography-echosounder", mb_no_argument, NULL, 0},
-    {"sensor-capability-topography-interferometry", mb_no_argument, NULL, 0},
-    {"sensor-capability-topography-sass", mb_no_argument, NULL, 0},
-    {"sensor-capability-topography-multibeam", mb_no_argument, NULL, 0},
-    {"sensor-capability-topography-photogrammetry", mb_no_argument, NULL, 0},
-    {"sensor-capability-topography-structurefrommotion", mb_no_argument, NULL, 0},
-    {"sensor-capability-topography-lidar", mb_no_argument, NULL, 0},
-    {"sensor-capability-topography-structuredlight", mb_no_argument, NULL, 0},
-    {"sensor-capability-topography-laserscanner", mb_no_argument, NULL, 0},
-    {"sensor-capability-backscatter-echosounder", mb_no_argument, NULL, 0},
-    {"sensor-capability-backscatter-sidescan", mb_no_argument, NULL, 0},
-    {"sensor-capability-backscatter-interferometry", mb_no_argument, NULL, 0},
-    {"sensor-capability-backscatter-sass", mb_no_argument, NULL, 0},
-    {"sensor-capability-backscatter-multibeam", mb_no_argument, NULL, 0},
-    {"sensor-capability-backscatter-lidar", mb_no_argument, NULL, 0},
-    {"sensor-capability-backscatter-structuredlight", mb_no_argument, NULL, 0},
-    {"sensor-capability-backscatter-laserscanner", mb_no_argument, NULL, 0},
-    {"sensor-capability-photography", mb_no_argument, NULL, 0},
-    {"sensor-capability-stereophotography", mb_no_argument, NULL, 0},
-    {"sensor-capability-video", mb_no_argument, NULL, 0},
-    {"sensor-capability-stereovideo", mb_no_argument, NULL, 0},
-    {"sensor-capability1", mb_required_argument, NULL, 0},
-    {"sensor-capability2", mb_required_argument, NULL, 0},
-    {"sensor-offsets", mb_required_argument, NULL, 0},
-    {"sensor-offset-positions", mb_required_argument, NULL, 0},
-    {"sensor-offset-angles", mb_required_argument, NULL, 0},
-    {"sensor-time-latency", mb_required_argument, NULL, 0},
-    {"sensor-time-latency-model", mb_required_argument, NULL, 0},
-    {"sensor-flipsign-heading", mb_no_argument, NULL, 0},
-    {"sensor-flipsign-roll", mb_no_argument, NULL, 0},
-    {"sensor-flipsign-pitch", mb_no_argument, NULL, 0},
-    {"sensor-source-bathymetry", mb_no_argument, NULL, 0},
-    {"sensor-source-bathymetry1", mb_no_argument, NULL, 0},
-    {"sensor-source-bathymetry2", mb_no_argument, NULL, 0},
-    {"sensor-source-bathymetry3", mb_no_argument, NULL, 0},
-    {"sensor-source-backscatter", mb_no_argument, NULL, 0},
-    {"sensor-source-backscatter1", mb_no_argument, NULL, 0},
-    {"sensor-source-backscatter2", mb_no_argument, NULL, 0},
-    {"sensor-source-backscatter3", mb_no_argument, NULL, 0},
-    {"sensor-source-subbottom", mb_no_argument, NULL, 0},
-    {"sensor-source-subbottom1", mb_no_argument, NULL, 0},
-    {"sensor-source-subbottom2", mb_no_argument, NULL, 0},
-    {"sensor-source-subbottom3", mb_no_argument, NULL, 0},
-    {"sensor-source-camera", mb_no_argument, NULL, 0},
-    {"sensor-source-camera1", mb_no_argument, NULL, 0},
-    {"sensor-source-camera2", mb_no_argument, NULL, 0},
-    {"sensor-source-camera3", mb_no_argument, NULL, 0},
-    {"sensor-source-position", mb_no_argument, NULL, 0},
-    {"sensor-source-position1", mb_no_argument, NULL, 0},
-    {"sensor-source-position2", mb_no_argument, NULL, 0},
-    {"sensor-source-position3", mb_no_argument, NULL, 0},
-    {"sensor-source-depth", mb_no_argument, NULL, 0},
-    {"sensor-source-depth1", mb_no_argument, NULL, 0},
-    {"sensor-source-depth2", mb_no_argument, NULL, 0},
-    {"sensor-source-depth3", mb_no_argument, NULL, 0},
-    {"sensor-source-heading", mb_no_argument, NULL, 0},
-    {"sensor-source-heading1", mb_no_argument, NULL, 0},
-    {"sensor-source-heading2", mb_no_argument, NULL, 0},
-    {"sensor-source-heading3", mb_no_argument, NULL, 0},
-    {"sensor-source-rollpitch", mb_no_argument, NULL, 0},
-    {"sensor-source-rollpitch1", mb_no_argument, NULL, 0},
-    {"sensor-source-rollpitch2", mb_no_argument, NULL, 0},
-    {"sensor-source-rollpitch3", mb_no_argument, NULL, 0},
-    {"sensor-source-heave", mb_no_argument, NULL, 0},
-    {"sensor-source-heave1", mb_no_argument, NULL, 0},
-    {"sensor-source-heave2", mb_no_argument, NULL, 0},
-    {"sensor-source-heave3", mb_no_argument, NULL, 0},
-    {"modify-offsets", mb_required_argument, NULL, 0},
-    {"modify-offset-positions", mb_required_argument, NULL, 0},
-    {"modify-offset-angles", mb_required_argument, NULL, 0},
-    {"modify-time-latency", mb_required_argument, NULL, 0},
-    {"modify-time-latency-model", mb_required_argument, NULL, 0},
-    {"end-sensor", mb_no_argument, NULL, 0},
-    {"set-source-bathymetry", mb_required_argument, NULL, 0},
-    {"set-source-bathymetry1", mb_required_argument, NULL, 0},
-    {"set-source-bathymetry2", mb_required_argument, NULL, 0},
-    {"set-source-bathymetry3", mb_required_argument, NULL, 0},
-    {"set-source-backscatter", mb_required_argument, NULL, 0},
-    {"set-source-backscatter1", mb_required_argument, NULL, 0},
-    {"set-source-backscatter2", mb_required_argument, NULL, 0},
-    {"set-source-backscatter3", mb_required_argument, NULL, 0},
-    {"set-source-subbottom", mb_required_argument, NULL, 0},
-    {"set-source-subbottom1", mb_required_argument, NULL, 0},
-    {"set-source-subbottom2", mb_required_argument, NULL, 0},
-    {"set-source-subbottom3", mb_required_argument, NULL, 0},
-    {"set-source-camera", mb_required_argument, NULL, 0},
-    {"set-source-camera1", mb_required_argument, NULL, 0},
-    {"set-source-camera2", mb_required_argument, NULL, 0},
-    {"set-source-camera3", mb_required_argument, NULL, 0},
-    {"set-source-position", mb_required_argument, NULL, 0},
-    {"set-source-position1", mb_required_argument, NULL, 0},
-    {"set-source-position2", mb_required_argument, NULL, 0},
-    {"set-source-position3", mb_required_argument, NULL, 0},
-    {"set-source-depth", mb_required_argument, NULL, 0},
-    {"set-source-depth1", mb_required_argument, NULL, 0},
-    {"set-source-depth2", mb_required_argument, NULL, 0},
-    {"set-source-depth3", mb_required_argument, NULL, 0},
-    {"set-source-heading", mb_required_argument, NULL, 0},
-    {"set-source-heading1", mb_required_argument, NULL, 0},
-    {"set-source-heading2", mb_required_argument, NULL, 0},
-    {"set-source-heading3", mb_required_argument, NULL, 0},
-    {"set-source-rollpitch", mb_required_argument, NULL, 0},
-    {"set-source-rollpitch1", mb_required_argument, NULL, 0},
-    {"set-source-rollpitch2", mb_required_argument, NULL, 0},
-    {"set-source-rollpitch3", mb_required_argument, NULL, 0},
-    {"set-source-heave", mb_required_argument, NULL, 0},
-    {"set-source-heave1", mb_required_argument, NULL, 0},
-    {"set-source-heave2", mb_required_argument, NULL, 0},
-    {"set-source-heave3", mb_required_argument, NULL, 0},
-    {NULL, 0, NULL, 0}};
 
   /* MBIO read control parameters */
   mb_path swath_file;
@@ -835,9 +807,26 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
   bool read_data;
   option_id option_index;
   bool errflg = false;
-  int c;
-  while ((c = mb_getopt_long(&getopt_state, argc, argv, "", options, (int *)&option_index)) != -1) {
-    if (c == 0) {
+  /* the program's long options from GMT's option list, in their command-line order (the order
+     matters: sensors are added, then modified, in sequence); GMT's own -V counts as --verbose */
+  for (struct GMT_OPTION *opt = options; opt; opt = opt->next) {
+    const char *optarg_value = "";
+    int k;
+    if (opt->option == MB_GMT_LONGOPT) {
+      if ((k = mb_gmt_long_option(opt, long_options, &optarg_value)) == -2) {
+        GMT_Report(API, GMT_MSG_ERROR, "Option --%s requires an argument\n", opt->arg);
+        errflg = true;
+        continue;
+      }
+    }
+    else if (opt->option == 'V')
+      k = option_verbose;
+    else {
+      errflg |= (gmt_default_option_error(GMT, opt) != 0);
+      continue;
+    }
+    option_index = (option_id)k;
+    {
       switch (option_index) {
         case option_verbose:
           verbose++;
@@ -848,21 +837,19 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
           break;
 
         case option_help:
-          fprintf(stderr, "\n%s\n", help_message);
-          fprintf(stderr, "\nusage: %s\n", usage_message);
-          Return(error);
+          Return(usage(API, GMT_USAGE));
           break;
 
         case option_input:
           /* set the name of the input platform file */
-          snprintf(input_platform_file, sizeof(input_platform_file), "%s", getopt_state.optarg);
+          snprintf(input_platform_file, sizeof(input_platform_file), "%s", optarg_value);
 
           /* read the pre-existing platform file */
           status = mb_platform_read(verbose, input_platform_file, (void **)&platform, &error);
           if (status == MB_FAILURE) {
             fprintf(stderr, "\nUnable to read the pre-existing platform file: %s\n", input_platform_file);
             fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-            Return(MB_ERROR_OPEN_FAIL);
+            Return(GMT_ERROR_ON_FOPEN);
           }
           platform_num_sensors = platform->num_sensors;
 
@@ -973,7 +960,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
 
         case option_swath:
           /* set the name of the input platform file */
-          snprintf(input_swath_file, sizeof(input_swath_file), "%s", getopt_state.optarg);
+          snprintf(input_swath_file, sizeof(input_swath_file), "%s", optarg_value);
 
           /* get format if required */
           if (input_swath_format == 0)
@@ -985,7 +972,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
             if (mb_datalist_open(verbose, &datalist, input_swath_file, look_processed, &error) != MB_SUCCESS) {
               fprintf(stderr, "\nUnable to open data list file: %s\n", input_swath_file);
               fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-              Return(MB_ERROR_OPEN_FAIL);
+              Return(GMT_ERROR_ON_FOPEN);
             }
             read_data = mb_datalist_read(verbose, datalist, swath_file, dfile, &input_swath_format, &file_weight,
                                            &error) == MB_SUCCESS;
@@ -1004,7 +991,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
               mb_error(verbose, error, &message);
               fprintf(stderr, "\nMBIO Error returned from function <mb_format_source>:\n%s\n", message);
               fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-              Return(error);
+              Return(GMT_RUNTIME_ERROR);
             }
 
             /* initialize reading the swath file */
@@ -1016,7 +1003,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
               fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
               fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", swath_file);
               fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-              Return(error);
+              Return(GMT_RUNTIME_ERROR);
             }
 
             /* get store_ptr */
@@ -1153,12 +1140,12 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
 
         case option_swath_format:
           /* set the swath format */
-          sscanf(getopt_state.optarg, "%d", &input_swath_format);
+          sscanf(optarg_value, "%d", &input_swath_format);
           break;
 
         case option_output:
           /* set output platform file */
-          snprintf(output_platform_file, sizeof(output_platform_file), "%s", getopt_state.optarg);
+          snprintf(output_platform_file, sizeof(output_platform_file), "%s", optarg_value);
           output_platform_file_defined = true;
           break;
 
@@ -1187,19 +1174,19 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
           break;
 
         case option_platform_name:
-          snprintf(platform->name, sizeof(platform->name), "%s", getopt_state.optarg);
+          snprintf(platform->name, sizeof(platform->name), "%s", optarg_value);
           break;
 
         case option_platform_organization:
-          snprintf(platform->organization, sizeof(platform->organization), "%s", getopt_state.optarg);
+          snprintf(platform->organization, sizeof(platform->organization), "%s", optarg_value);
           break;
 
         case option_platform_documentation_url:
-          snprintf(platform->documentation_url, sizeof(platform->documentation_url), "%s", getopt_state.optarg);
+          snprintf(platform->documentation_url, sizeof(platform->documentation_url), "%s", optarg_value);
           break;
 
         case option_platform_start_time:
-          sscanf(getopt_state.optarg, "%d/%d/%d %d:%d:%lf", &platform->start_time_i[0], &platform->start_time_i[1],
+          sscanf(optarg_value, "%d/%d/%d %d:%d:%lf", &platform->start_time_i[0], &platform->start_time_i[1],
                  &platform->start_time_i[2], &platform->start_time_i[3], &platform->start_time_i[4], &seconds);
           platform->start_time_i[5] = (int)floor(seconds);
           platform->start_time_i[6] = (int)(1000000 * (seconds - floor(seconds)));
@@ -1207,7 +1194,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
           break;
 
         case option_platform_end_time:
-          sscanf(getopt_state.optarg, "%d/%d/%d %d:%d:%lf", &platform->end_time_i[0], &platform->end_time_i[1], &platform->end_time_i[2],
+          sscanf(optarg_value, "%d/%d/%d %d:%d:%lf", &platform->end_time_i[0], &platform->end_time_i[1], &platform->end_time_i[2],
                  &platform->end_time_i[3], &platform->end_time_i[4], &seconds);
           platform->end_time_i[5] = (int)floor(seconds);
           platform->end_time_i[6] = (int)(1000000 * (seconds - floor(seconds)));
@@ -1466,7 +1453,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
           }
           break;
         case option_modify_sensor:
-          sscanf(getopt_state.optarg, "%d", &sensor_id);
+          sscanf(optarg_value, "%d", &sensor_id);
           sensor_mode = SENSOR_MODIFY;
           active_sensor = &platform->sensors[sensor_id];
           break;
@@ -1868,15 +1855,15 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
           break;
 
         case option_sensor_model:
-          snprintf(tmp_sensor.model, sizeof(tmp_sensor.model), "%s", getopt_state.optarg);
+          snprintf(tmp_sensor.model, sizeof(tmp_sensor.model), "%s", optarg_value);
           break;
 
         case option_sensor_manufacturer:
-          snprintf(tmp_sensor.manufacturer, sizeof(tmp_sensor.manufacturer), "%s", getopt_state.optarg);
+          snprintf(tmp_sensor.manufacturer, sizeof(tmp_sensor.manufacturer), "%s", optarg_value);
           break;
 
         case option_sensor_serialnumber:
-          snprintf(tmp_sensor.serialnumber, sizeof(tmp_sensor.serialnumber), "%s", getopt_state.optarg);
+          snprintf(tmp_sensor.serialnumber, sizeof(tmp_sensor.serialnumber), "%s", optarg_value);
           break;
 
         case option_sensor_capability_position:
@@ -2022,15 +2009,15 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
       /*-------------------------------------------------------
        * Set sensor capability bitmasks directly */
         case option_sensor_capability1:
-          sscanf(getopt_state.optarg, "%d", &tmp_sensor.capability1);
+          sscanf(optarg_value, "%d", &tmp_sensor.capability1);
           break;
 
         case option_sensor_capability2:
-          sscanf(getopt_state.optarg, "%d", &tmp_sensor.capability2);
+          sscanf(optarg_value, "%d", &tmp_sensor.capability2);
           break;
 
         case option_sensor_offsets:
-          sscanf(getopt_state.optarg, "%lf/%lf/%lf/%lf/%lf/%lf", &tmp_offsets[tmp_sensor.num_offsets].position_offset_x,
+          sscanf(optarg_value, "%lf/%lf/%lf/%lf/%lf/%lf", &tmp_offsets[tmp_sensor.num_offsets].position_offset_x,
                  &tmp_offsets[tmp_sensor.num_offsets].position_offset_y,
                  &tmp_offsets[tmp_sensor.num_offsets].position_offset_z,
                  &tmp_offsets[tmp_sensor.num_offsets].attitude_offset_heading,
@@ -2040,27 +2027,27 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
           break;
 
         case option_sensor_offset_positions:
-          sscanf(getopt_state.optarg, "%lf/%lf/%lf", &tmp_offsets[tmp_sensor.num_offsets].position_offset_x,
+          sscanf(optarg_value, "%lf/%lf/%lf", &tmp_offsets[tmp_sensor.num_offsets].position_offset_x,
                  &tmp_offsets[tmp_sensor.num_offsets].position_offset_y,
                  &tmp_offsets[tmp_sensor.num_offsets].position_offset_z);
           tmp_sensor.num_offsets++;
           break;
 
         case option_sensor_offset_angles:
-          sscanf(getopt_state.optarg, "%lf/%lf/%lf", &tmp_offsets[tmp_sensor.num_offsets].attitude_offset_heading,
+          sscanf(optarg_value, "%lf/%lf/%lf", &tmp_offsets[tmp_sensor.num_offsets].attitude_offset_heading,
                  &tmp_offsets[tmp_sensor.num_offsets].attitude_offset_roll,
                  &tmp_offsets[tmp_sensor.num_offsets].attitude_offset_pitch);
           tmp_sensor.num_offsets++;
           break;
 
         case option_sensor_time_latency:
-          sscanf(getopt_state.optarg, "%lf", &tmp_sensor.time_latency_static);
+          sscanf(optarg_value, "%lf", &tmp_sensor.time_latency_static);
           tmp_sensor.time_latency_mode = MB_SENSOR_TIME_LATENCY_STATIC;
           break;
 
         case option_sensor_time_latency_model:
           /* set the name of the input time latency file */
-          snprintf(time_latency_model_file, sizeof(time_latency_model_file), "%s", getopt_state.optarg);
+          snprintf(time_latency_model_file, sizeof(time_latency_model_file), "%s", optarg_value);
           tmp_sensor.time_latency_mode = MB_SENSOR_TIME_LATENCY_MODEL;
 
           /* count the data points in the time latency file */
@@ -2068,7 +2055,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
           if ((tfp = fopen(time_latency_model_file, "r")) == NULL) {
             fprintf(stderr, "\nUnable to open time latency model file <%s> for reading\n", time_latency_model_file);
             fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-            Return(MB_ERROR_OPEN_FAIL);
+            Return(GMT_ERROR_ON_FOPEN);
           }
           char *result;
           while ((result = fgets(buffer, MB_PATH_MAXLINE, tfp)) == buffer)
@@ -2088,7 +2075,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
               mb_error(verbose, error, &message);
               fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
               fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-              Return(error);
+              Return(GMT_MEMORY_ERROR);
             }
             tmp_sensor.num_time_latency_alloc = tmp_sensor.num_time_latency;
           }
@@ -2264,7 +2251,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
 
         case option_modify_offsets:
           if (sensor_mode == SENSOR_MODIFY || sensor_mode == SENSOR_ADD) {
-            nscan = sscanf(getopt_state.optarg, "%d/%lf/%lf/%lf/%lf/%lf/%lf", &ioffset, &d1, &d2, &d3, &d4, &d5, &d6);
+            nscan = sscanf(optarg_value, "%d/%lf/%lf/%lf/%lf/%lf/%lf", &ioffset, &d1, &d2, &d3, &d4, &d5, &d6);
             if (nscan == 7 && ioffset >= 0 && ioffset < active_sensor->num_offsets) {
               active_sensor->offsets[ioffset].position_offset_x = d1;
               active_sensor->offsets[ioffset].position_offset_y = d2;
@@ -2278,7 +2265,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
 
         case option_modify_offset_positions:
           if (sensor_mode == SENSOR_MODIFY || sensor_mode == SENSOR_ADD) {
-            nscan = sscanf(getopt_state.optarg, "%d/%lf/%lf/%lf", &ioffset, &d1, &d2, &d3);
+            nscan = sscanf(optarg_value, "%d/%lf/%lf/%lf", &ioffset, &d1, &d2, &d3);
             if (nscan == 4 && ioffset >= 0 && ioffset < active_sensor->num_offsets) {
               active_sensor->offsets[ioffset].position_offset_x = d1;
               active_sensor->offsets[ioffset].position_offset_y = d2;
@@ -2289,7 +2276,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
 
         case option_modify_offset_angles:
           if (sensor_mode == SENSOR_MODIFY || sensor_mode == SENSOR_ADD) {
-            nscan = sscanf(getopt_state.optarg, "%d/%lf/%lf/%lf", &ioffset, &d1, &d2, &d3);
+            nscan = sscanf(optarg_value, "%d/%lf/%lf/%lf", &ioffset, &d1, &d2, &d3);
             if (nscan == 4 && ioffset >= 0 && ioffset < active_sensor->num_offsets) {
               active_sensor->offsets[ioffset].attitude_offset_heading = d1;
               active_sensor->offsets[ioffset].attitude_offset_roll = d2;
@@ -2300,7 +2287,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
 
         case option_modify_time_latency:
           if (sensor_mode == SENSOR_MODIFY || sensor_mode == SENSOR_ADD) {
-            sscanf(getopt_state.optarg, "%lf", &active_sensor->time_latency_static);
+            sscanf(optarg_value, "%lf", &active_sensor->time_latency_static);
             active_sensor->time_latency_mode = MB_SENSOR_TIME_LATENCY_STATIC;
           }
           break;
@@ -2308,7 +2295,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
         case option_modify_time_latency_model:
           if (sensor_mode == SENSOR_MODIFY || sensor_mode == SENSOR_ADD) {
             /* set the name of the input time latency file */
-            snprintf(time_latency_model_file, sizeof(time_latency_model_file), "%s", getopt_state.optarg);
+            snprintf(time_latency_model_file, sizeof(time_latency_model_file), "%s", optarg_value);
             active_sensor->time_latency_mode = MB_SENSOR_TIME_LATENCY_MODEL;
 
             /* count the data points in the time latency file */
@@ -2316,7 +2303,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
             if ((tfp = fopen(time_latency_model_file, "r")) == NULL) {
               fprintf(stderr, "\nUnable to open time latency model file <%s> for reading\n", time_latency_model_file);
               fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-              Return(MB_ERROR_OPEN_FAIL);
+              Return(GMT_ERROR_ON_FOPEN);
             }
             char *result;
             while ((result = fgets(buffer, MB_PATH_MAXLINE, tfp)) == buffer)
@@ -2336,7 +2323,7 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
                 mb_error(verbose, error, &message);
                 fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
                 fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-                Return(error);
+                Return(GMT_MEMORY_ERROR);
               }
               active_sensor->num_time_latency_alloc = active_sensor->num_time_latency;
             }
@@ -2385,217 +2372,217 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
           break;
 
         case option_set_source_bathymetry:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_bathymetry = sensor_id;
           break;
 
         case option_set_source_bathymetry1:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_bathymetry1 = sensor_id;
           break;
 
         case option_set_source_bathymetry2:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_bathymetry2 = sensor_id;
           break;
 
         case option_set_source_bathymetry3:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_bathymetry3 = sensor_id;
           break;
 
         case option_set_source_backscatter:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_backscatter = sensor_id;
           break;
 
         case option_set_source_backscatter1:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_backscatter1 = sensor_id;
           break;
 
         case option_set_source_backscatter2:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_backscatter2 = sensor_id;
           break;
 
         case option_set_source_backscatter3:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_backscatter3 = sensor_id;
           break;
 
         case option_set_source_subbottom:
-        nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+        nscan = sscanf(optarg_value, "%d", &sensor_id);
         if (sensor_id >= -1 && sensor_id < platform->num_sensors)
           platform->source_subbottom = sensor_id;
           break;
 
         case option_set_source_subbottom1:
-        nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+        nscan = sscanf(optarg_value, "%d", &sensor_id);
         if (sensor_id >= -1 && sensor_id < platform->num_sensors)
           platform->source_subbottom1 = sensor_id;
           break;
 
         case option_set_source_subbottom2:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_subbottom2 = sensor_id;
           break;
 
         case option_set_source_subbottom3:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_subbottom3 = sensor_id;
           break;
 
         case option_set_source_camera:
-        nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+        nscan = sscanf(optarg_value, "%d", &sensor_id);
         if (sensor_id >= -1 && sensor_id < platform->num_sensors)
           platform->source_camera = sensor_id;
           break;
 
         case option_set_source_camera1:
-        nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+        nscan = sscanf(optarg_value, "%d", &sensor_id);
         if (sensor_id >= -1 && sensor_id < platform->num_sensors)
           platform->source_camera1 = sensor_id;
           break;
 
         case option_set_source_camera2:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_camera2 = sensor_id;
           break;
 
         case option_set_source_camera3:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_camera3 = sensor_id;
           break;
 
         case option_set_source_position:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_position = sensor_id;
           break;
 
         case option_set_source_position1:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_position1 = sensor_id;
           break;
 
         case option_set_source_position2:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_position2 = sensor_id;
           break;
 
         case option_set_source_position3:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_position3 = sensor_id;
           break;
 
         case option_set_source_depth:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_depth = sensor_id;
           break;
 
         case option_set_source_depth1:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_depth1 = sensor_id;
           break;
 
         case option_set_source_depth2:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_depth2 = sensor_id;
           break;
 
         case option_set_source_depth3:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_depth3 = sensor_id;
           break;
 
         case option_set_source_heading:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_heading = sensor_id;
           break;
 
         case option_set_source_heading1:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_heading1 = sensor_id;
           break;
 
         case option_set_source_heading2:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_heading2 = sensor_id;
           break;
 
         case option_set_source_heading3:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_heading3 = sensor_id;
           break;
 
         case option_set_source_rollpitch:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_rollpitch = sensor_id;
           break;
 
         case option_set_source_rollpitch1:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_rollpitch1 = sensor_id;
           break;
 
         case option_set_source_rollpitch2:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_rollpitch2 = sensor_id;
           break;
 
         case option_set_source_rollpitch3:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_rollpitch3 = sensor_id;
           break;
 
         case option_set_source_heave:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_heave = sensor_id;
           break;
 
         case option_set_source_heave1:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_heave1 = sensor_id;
           break;
 
         case option_set_source_heave2:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_heave2 = sensor_id;
           break;
 
         case option_set_source_heave3:
-          nscan = sscanf(getopt_state.optarg, "%d", &sensor_id);
+          nscan = sscanf(optarg_value, "%d", &sensor_id);
           if (sensor_id >= -1 && sensor_id < platform->num_sensors)
             platform->source_heave3 = sensor_id;
           break;
@@ -2611,11 +2598,8 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
     }
   }
 
-  if (errflg) {
-    fprintf(stderr, "usage: %s\n", usage_message);
-    fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-    Return(MB_ERROR_BAD_USAGE);
-  }
+  if (errflg)
+    Return(GMT_PARSE_ERROR);
 
   /* if an output has been specified but there are still not sensors in the
    * platform, make a generic null platform with one sensor that is the source
@@ -2741,6 +2725,14 @@ int GMT_mbmakeplatform(void *V_API, int gmt_mode, void *args) {
     fprintf(stderr, "dbg2       status:  %d\n", status);
   }
 
-  Return(error);
+  /* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+     The end of the data (EOF) is how every read finishes, not an error. */
+  if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+    char *message;
+    mb_error(verbose, error, &message);
+    GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+    Return(GMT_RUNTIME_ERROR);
+  }
+  Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

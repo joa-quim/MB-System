@@ -37,6 +37,10 @@
  *
  * Author:	D. W. Caress
  * Date:	January 4, 2000
+ *
+ * GMT-module port of src/utilities/mbset.cc: options parsed in parse() from GMT's option list, the
+ * program's long options kept through module_kw and its lower-case aliases kept; every Return() a
+ * GMT error code. Its result is the program's own .par file.
  */
 
 #define THIS_MODULE_NAME	"mbset"
@@ -63,6 +67,8 @@
 static struct MBSET_CTRL {
 	int     read_datalist;
 	void	*datalist;
+	int     verbose;	/* the program's -V/-v count */
+	bool    help;		/* -H/-h/--help */
 
 	struct mbset_E {
 		bool active;
@@ -121,15 +127,34 @@ static void Free_Ctrl (struct GMT_CTRL *GMT, struct MBSET_CTRL *Ctrl) {
 	gmt_M_free (GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'E', "explicit",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "look-for-files",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "parameter",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "remove-nav-adjust", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'v', "verbose",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage (struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose (API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return (GMT_NOERROR);
-	GMT_Message(API, GMT_TIME_NONE, "usage: mbset -Iinfile -PPARAMETER:value [-E -L -N -V]\n");
+	GMT_Message(API, GMT_TIME_NONE, "usage: mbset -Iinfile -PPARAMETER:value [-E -L -N -V -H]\n");
 	GMT_Message(API, GMT_TIME_NONE, "MB-System Version %s\n", MB_VERSION);
 
-	if (level == GMT_SYNOPSIS) return (EXIT_FAILURE);
+	if (level == GMT_SYNOPSIS) return (GMT_MODULE_SYNOPSIS);
 
-	return (EXIT_FAILURE);
+	GMT_Message(API, GMT_TIME_NONE,
+		"\nMBset is a tool for setting values in an mbprocess parameter file.\n"
+		"\tEvery option also has the program's lower-case and long forms (--input, --parameter,\n"
+		"\t--format, --explicit, --look-for-files, --remove-nav-adjust, --verbose, --help).\n");
+	GMT_Option(API, "V,.");
+	return (GMT_MODULE_USAGE);
 }
 
 static int parse (struct GMT_CTRL *GMT, struct MBSET_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -153,9 +178,11 @@ static int parse (struct GMT_CTRL *GMT, struct MBSET_CTRL *Ctrl, struct GMT_OPTI
 				break;
 
 			case 'E':
+			case 'e':
 				Ctrl->E.active = true;
 				break;
 			case 'F':
+			case 'f':
 				n = sscanf(opt->arg, "%d", &(Ctrl->F.format));
 				if (n == 1)
 					Ctrl->F.active = true;
@@ -165,6 +192,7 @@ static int parse (struct GMT_CTRL *GMT, struct MBSET_CTRL *Ctrl, struct GMT_OPTI
 				}
 				break;
 			case 'I':
+			case 'i':
 				Ctrl->I.active = true;
 				if (!gmt_access(GMT, opt->arg, R_OK)) {
 					Ctrl->I.file = strdup(opt->arg);
@@ -176,12 +204,15 @@ static int parse (struct GMT_CTRL *GMT, struct MBSET_CTRL *Ctrl, struct GMT_OPTI
 				}
 				break;
 			case 'L':
+			case 'l':
 				Ctrl->L.active = true;
 				break;
 			case 'N':
+			case 'n':
 				Ctrl->N.active = true;
 				break;
 			case 'P':
+			case 'p':
 				Ctrl->P.active = true;
 				if (strlen(opt->arg) == 0) {
 					GMT_Report (API, GMT_MSG_NORMAL, "Error -p option: Don't invent, number of pings must be >= 0\n");
@@ -203,11 +234,20 @@ static int parse (struct GMT_CTRL *GMT, struct MBSET_CTRL *Ctrl, struct GMT_OPTI
 				strcpy(Ctrl->P.pargv[Ctrl->P.pargc], opt->arg);
 				Ctrl->P.pargc++;
 				break;
+			case 'V':
+			case 'v':
+				Ctrl->verbose++;
+				break;
+			case 'H':
+			case 'h':
+				Ctrl->help = true;
+				break;
 			default:
-				n_errors += gmt_default_error (GMT, opt->option);
+				n_errors += gmt_default_option_error(GMT, opt);
 				break;
 		}
 	}
+	if (Ctrl->help) return (GMT_NOERROR);	/* the program prints its help whatever else is given */
 
 	n_errors += gmt_M_check_condition (GMT, n_files != 1, "Syntax error: Must specify one input file(s)\n");
 	n_errors += gmt_M_check_condition (GMT, Ctrl->I.active && !Ctrl->I.file,
@@ -218,6 +258,8 @@ static int parse (struct GMT_CTRL *GMT, struct MBSET_CTRL *Ctrl, struct GMT_OPTI
 
 #define bailout(code) {gmt_M_free_options (mode); return (code);}
 #define Return(code) {Free_Ctrl (GMT, Ctrl); gmt_end_module (GMT, GMT_cpy); bailout (code);}
+
+EXTERN_MSC int GMT_mbset(void *V_API, int mode, void *args);
 
 int GMT_mbset (void *V_API, int mode, void *args) {
 
@@ -253,17 +295,14 @@ int GMT_mbset (void *V_API, int mode, void *args) {
 	if (!options || options->option == GMT_OPT_USAGE) bailout (usage (API, GMT_USAGE));
 	if (options->option == GMT_OPT_SYNOPSIS) bailout (usage (API, GMT_SYNOPSIS));
 
-#if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module (API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout (API->error);
-#else
-	GMT = gmt_begin_module (API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
-#endif
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout (API->error);
 	if (GMT_Parse_Common (API, THIS_MODULE_OPTIONS, options)) Return (API->error);
 
 	Ctrl = (struct MBSET_CTRL *) New_Ctrl (GMT);
 	if ((error = parse (GMT, Ctrl, options))) Return (error);
+	if (Ctrl->help) Return (usage(API, GMT_USAGE));
 
-	verbose = GMT->common.V.active;
+	verbose = Ctrl->verbose;
 
 	if (Ctrl->E.active) is_explicit = MB_YES;
 	if (Ctrl->L.active) lookforfiles++;
@@ -281,7 +320,7 @@ int GMT_mbset (void *V_API, int mode, void *args) {
 			error = MB_ERROR_OPEN_FAIL;
 			GMT_Report (API, GMT_MSG_NORMAL, "Unable to open data list file: %s\n", Ctrl->I.file);
 			GMT_Report (API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", THIS_MODULE_NAME);
-			Return(error);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		if ((status = mb_datalist_read(verbose, Ctrl->datalist, mbp_ifile, mbp_dfile, &mbp_format, &file_weight, &error)) == MB_SUCCESS)
 			read_data = MB_YES;
@@ -1199,5 +1238,13 @@ int GMT_mbset (void *V_API, int mode, void *args) {
 	if (status == MB_FAILURE)
 		GMT_Report(API, GMT_MSG_NORMAL, "WARNING: status is MB_FAILURE\n");
 
-	Return (error);
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+	   The end of the data list (EOF) is how every run finishes, not an error. */
+	if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return (GMT_RUNTIME_ERROR);
+	}
+	Return (GMT_NOERROR);
 }

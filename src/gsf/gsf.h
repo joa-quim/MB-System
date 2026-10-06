@@ -151,6 +151,7 @@
 
 #ifndef __GSF_H__
 #define __GSF_H__
+#include "mbgsf_export.h"
 
 /* Get the required standard C library includes */
 #include <stdio.h>
@@ -2281,6 +2282,9 @@ typedef struct t_gsfMBParams
 #define GSF_V_DATUM_AISLW_L   "Approximate Indian Springs Low Water"
 #define GSF_V_DATUM_ALLWS_L   "Approximate Lower Low Water Springs"
 
+/* The most recent error (defined in gsf.c), read by programs through the library's DLL */
+MBGSF_API extern int gsfError;
+
 /* Define the error codes which gsfError may be set to */
 #define GSF_NORMAL                                 0
 #define GSF_FOPEN_ERROR                           -1
@@ -2374,7 +2378,7 @@ typedef struct t_gsf_pos_offsets{
     I've added const where appropriate.
  */
 
-int OPTLK       gsfOpen(const char *filename, const int mode, int *handle);
+MBGSF_API int OPTLK       gsfOpen(const char *filename, const int mode, int *handle);
 /*
  * Description : This function attempts to open a GSF data file.  If the
  *   file exists and is opened readonly or update, the GSF header is read
@@ -2462,7 +2466,7 @@ int OPTLK gsfOpenBuffered (const char *filename, const int mode, int *handle, in
  *   GSF_INDEX_FILE_OPEN_ERROR
  */
 
-int OPTLK       gsfClose(const int handle);
+MBGSF_API int OPTLK       gsfClose(const int handle);
 /*
  * Description : This function closes a GSF file previously opened
  *   using gsfOpen.
@@ -2478,7 +2482,7 @@ int OPTLK       gsfClose(const int handle);
  *    GSF_FILE_CLOSE_ERROR
  */
 
-int OPTLK       gsfSeek(int handle, int option);
+MBGSF_API int OPTLK       gsfSeek(int handle, int option);
 /*
  * Description : This function may be used to move the file pointer
  *   for a previously opened GSF file.
@@ -2501,7 +2505,7 @@ int OPTLK       gsfSeek(int handle, int option);
  *   GSF_BAD_SEEK_OPTION
  */
 
-int OPTLK       gsfRead(int handle, int desiredRecord, gsfDataID * dataID, gsfRecords * rec, unsigned char *stream, int max_size);
+MBGSF_API int OPTLK       gsfRead(int handle, int desiredRecord, gsfDataID * dataID, gsfRecords * rec, unsigned char *stream, int max_size);
 /* Description : gsfRead supports both direct and sequential access. If the
  *   file is opened for sequential access, this function reads the desired
  *   record from the GSF data file specified by handle.  The "desiredRecord"
@@ -2569,7 +2573,7 @@ int OPTLK       gsfRead(int handle, int desiredRecord, gsfDataID * dataID, gsfRe
  *   GSF_QUALITY_FLAGS_DECODE_ERROR
  */
 
-int OPTLK       gsfWrite(int handle, gsfDataID * id, gsfRecords * record);
+MBGSF_API int OPTLK       gsfWrite(int handle, gsfDataID * id, gsfRecords * record);
 /* Description : gsfWrite encodes the data from internal to external form,
  *  and then writes the requested record into the file specified by handle,
  *  where handle is the value retured by gsfOpen.  The record is written to
@@ -2665,7 +2669,7 @@ int OPTLK gsfGetScaleFactor(int handle, unsigned int subrecordID, unsigned char 
  *   GSF_ILLEGAL_SCALE_FACTOR_MULTIPLIER
  */
 
-void OPTLK      gsfFree(gsfRecords *rec);
+MBGSF_API void OPTLK      gsfFree(gsfRecords *rec);
 /*
  * Description : This function frees all dynamically allocated memory
  *    from a gsfRecords data structure, and it then clears all the
@@ -2679,7 +2683,7 @@ void OPTLK      gsfFree(gsfRecords *rec);
  * Error Conditions : none
  */
 
-void OPTLK      gsfPrintError(FILE * fp);
+MBGSF_API void OPTLK      gsfPrintError(FILE * fp);
 /* Description : This function is used to print a short message describing
  *  the most recent error encountered.  This function need only be called if
  *  a -1 is returned from one of the gsf functions.
@@ -2783,7 +2787,7 @@ int OPTLK       gsfGetNumberRecords (int handle, int desiredRecord);
  *   GSF_BAD_ACCESS_MODE
  */
 
-int OPTLK       gsfCopyRecords (gsfRecords *target, const gsfRecords *source);
+MBGSF_API int OPTLK       gsfCopyRecords (gsfRecords *target, const gsfRecords *source);
 /* Description : This function will copy all of the data contained in the
  *  source gsfRecords data structure to the target gsfRecords data
  *  structure. The target MUST be memset to zero before the first call to
@@ -2806,7 +2810,7 @@ int OPTLK       gsfCopyRecords (gsfRecords *target, const gsfRecords *source);
  *  GSF_MEMORY_ALLOCATION_FAILED
  */
 
-int OPTLK       gsfPutMBParams(const gsfMBParams *p, gsfRecords *rec, int handle, int numArrays);
+MBGSF_API int OPTLK       gsfPutMBParams(const gsfMBParams *p, gsfRecords *rec, int handle, int numArrays);
 /* Description : This function moves swath bathymetry sonar processing
  *    parameters from internal form to "KEYWORD=VALUE" form.  The internal
  *    form parameters are read from an MB_PARAMETERS data structure maintained
@@ -2866,7 +2870,7 @@ int OPTLK       gsfGetMBParams(const gsfRecords *rec, gsfMBParams *p, int *numAr
  *  none.
  */
 
-int OPTLK       gsfGetSwathBathyBeamWidths(const gsfRecords *data, double *fore_aft, double *athwartship);
+MBGSF_API int OPTLK       gsfGetSwathBathyBeamWidths(const gsfRecords *data, double *fore_aft, double *athwartship);
 /* Description : This function returns to the caller the fore-aft and
  *    the port-starboard beam widths in degrees for a swath bathymetry
  *    multibeam sonar, given a gsfRecords data structure which contains

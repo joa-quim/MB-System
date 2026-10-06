@@ -109,7 +109,9 @@ set (MBSYSTEM_MODULE_SRCS
 # tidal prediction engine, which src/otps also compiles into its program.
 set (MBSYSTEM_EXTRA_SRCS
     ${CMAKE_SOURCE_DIR}/src/otps/mb_otps_predict.c
-    mb_getopt.c)
+    mb_gmt_opts.c
+    mb_gmt_text.c
+    mb_gmt_simrad.c)
 
 set (MBSYSTEM_MODULEINFO_H
     "${CMAKE_CURRENT_BINARY_DIR}/gmt_${MBSYSTEM_SUPPL_NAME}_moduleinfo.h")
@@ -151,13 +153,19 @@ add_library(mbsystem
     ${MBSYSTEM_MODULEINFO_H})
 
 set_target_properties(mbsystem PROPERTIES VERSION "0" SOVERSION "0" PREFIX "" OUTPUT_NAME mbsystem)
+# A GMT plugin exports what GMT looks up by name and nothing else: the GMT_<module> entries and the
+# glue's mbsystem_module_* functions, all declared EXTERN_MSC (dllexport, see LIBRARY_EXPORTS below).
+# Nothing links against mbsystem.dll. So the project-wide MSVC default of exporting every symbol
+# (CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS, top CMakeLists.txt) is switched off here: MSVC then exports the
+# same set as MinGW, and a module missing its EXTERN_MSC declaration fails on both alike.
+set_target_properties(mbsystem PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS OFF)
 target_compile_definitions(mbsystem PUBLIC MB_PACKAGE_VERSION="${PROJECT_VERSION}"
                                        MB_PACKAGE_DATE="${PROJECT_DATE}")
 # GMT's declspec.h flips EXTERN_MSC to __declspec(dllexport) when LIBRARY_EXPORTS
 # is defined — needed when we're the TU defining a GMT_<module> plugin entry.
 # Without this, MSVC warns C4273 (declared dllimport, defined as plain extern).
 target_compile_definitions(mbsystem PRIVATE LIBRARY_EXPORTS)
-# GMT parses module options (reentrant mb_getopt.h where a getopt loop was kept),
+# GMT parses every module's options (GMT_OPTION lists, no getopt anywhere),
 # so keep the system <getopt.h> out of src/mbio/unistd_w.h: getopt-win32's
 # "#define option option_a" breaks struct GMT_OPTION's 'option' member.
 target_compile_definitions(mbsystem PRIVATE MB_NO_SYSTEM_GETOPT)

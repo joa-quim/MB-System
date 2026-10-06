@@ -31,8 +31,9 @@
  * Author:	D. W. Caress
  * Date:	December 28, 1994
  *
- * GMT-module rewrite of mbhistogram.cc: wrapped as GMT_mbhistogram entry
- * so it can be invoked from the GMT API (Julia FFI / Matlab MEX).
+ * GMT-module port of src/utilities/mbhistogram.cc: options parsed in parse() from GMT's option
+ * list, the program's long options kept through module_kw and its lower-case aliases kept; the
+ * histogram printed through the GMT API (mb_gmt_text.c); every Return() a GMT error code.
  */
 
 #define THIS_MODULE_NAME		"mbhistogram"
@@ -40,7 +41,8 @@
 #define THIS_MODULE_PURPOSE		"Generate histogram of bathymetry, amplitude, or sidescan values from swath sonar data"
 #define THIS_MODULE_KEYS		">D}"
 #define THIS_MODULE_NEEDS		""
-#define THIS_MODULE_OPTIONS		"-:>RVh"
+/* -R is the program's own bounds (parsed in parse()), and -h/-r its help and bounds aliases */
+#define THIS_MODULE_OPTIONS		"->V"
 
 #include "gmt_dev.h"
 
@@ -51,6 +53,7 @@
 
 #include "mb_define.h"
 #include "mb_status.h"
+#include "mb_gmt_text.h"
 
 typedef enum {
 	MBHISTOGRAM_BATH = 0,
@@ -121,6 +124,8 @@ static double qsnorm(double p) {
 /* --- Control structure ---------------------------------------------- */
 
 struct MBHISTOGRAM_CTRL {
+	int verbose;	/* the program's -V/-v count */
+	struct mhi_H { bool active; } H;
 	struct mhi_A { bool active; histogram_mode_t mode; } A;
 	struct mhi_B { bool active; int t[7]; } B;
 	struct mhi_D { bool active; double value_min, value_max; } D;
@@ -153,13 +158,37 @@ static void Free_mbhistogram_Ctrl(struct GMT_CTRL *GMT, struct MBHISTOGRAM_CTRL 
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'B', "begin-time",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "bins",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "bounds",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'A', "data-type",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'E', "end-time",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'G', "gaussian",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'M', "intervals",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "longitude-domain", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "pings",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "speed-minimum",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "time-gap",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "value-range",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "\n%s\n\n", help_message);
-	return GMT_PARSE_ERROR;
+	GMT_Message(API, GMT_TIME_NONE, "\tEvery option also has the program's lower-case and long forms.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse(struct GMT_CTRL *GMT, struct MBHISTOGRAM_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -176,7 +205,8 @@ static int parse(struct GMT_CTRL *GMT, struct MBHISTOGRAM_CTRL *Ctrl, struct GMT
 				Ctrl->I.inputfile = strdup(opt->arg); n_files = 1;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
-		case 'A': {
+		case 'A':
+		case 'a': {
 			int tmp;
 			if (sscanf(opt->arg, "%d", &tmp) > 0) {
 				Ctrl->A.mode = (histogram_mode_t)tmp;
@@ -185,72 +215,97 @@ static int parse(struct GMT_CTRL *GMT, struct MBHISTOGRAM_CTRL *Ctrl, struct GMT
 			break;
 		}
 		case 'B':
+		case 'b':
 			Ctrl->B.t[6] = 0;
 			n = sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &Ctrl->B.t[0], &Ctrl->B.t[1], &Ctrl->B.t[2],
 			           &Ctrl->B.t[3], &Ctrl->B.t[4], &Ctrl->B.t[5]);
 			if (n == 6) Ctrl->B.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'D':
+		case 'd':
 			n = sscanf(opt->arg, "%lf/%lf", &Ctrl->D.value_min, &Ctrl->D.value_max);
 			if (n == 2) Ctrl->D.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'E':
+		case 'e':
 			Ctrl->E.t[6] = 0;
 			n = sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &Ctrl->E.t[0], &Ctrl->E.t[1], &Ctrl->E.t[2],
 			           &Ctrl->E.t[3], &Ctrl->E.t[4], &Ctrl->E.t[5]);
 			if (n == 6) Ctrl->E.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'F':
+		case 'f':
 			if (sscanf(opt->arg, "%d", &Ctrl->F.format) > 0) Ctrl->F.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'G':
+		case 'g':
 			Ctrl->G.active = true;
 			break;
 		case 'I':
+		case 'i':
 			if (!gmt_access(GMT, opt->arg, R_OK)) {
 				Ctrl->I.inputfile = strdup(opt->arg); Ctrl->I.active = true; n_files = 1;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'L':
+		case 'l':
 			if (sscanf(opt->arg, "%d", &Ctrl->L.lonflip) > 0) Ctrl->L.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'M':
+		case 'm':
 			if (sscanf(opt->arg, "%d", &Ctrl->M.nintervals) > 0) Ctrl->M.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'N':
+		case 'n':
 			if (sscanf(opt->arg, "%d", &Ctrl->N.nbins) > 0) Ctrl->N.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'P':
+		case 'p':
 			if (sscanf(opt->arg, "%d", &Ctrl->P.pings) > 0) Ctrl->P.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'R':
+		case 'r':
 			mb_get_bounds(opt->arg, Ctrl->R.bounds);
 			Ctrl->R.active = true;
 			break;
 		case 'S':
+		case 's':
 			if (sscanf(opt->arg, "%lf", &Ctrl->S.speedmin) > 0) Ctrl->S.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'T':
+		case 't':
 			if (sscanf(opt->arg, "%lf", &Ctrl->T.timegap) > 0) Ctrl->T.active = true; else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
+		case 'V':
+		case 'v':
+			Ctrl->verbose++;
+			break;
+		case 'H':
+		case 'h':
+			Ctrl->H.active = true;
+			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 
 	(void)n_files;
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code)  { gmt_M_free_options(mode); return code; }
-#define Return(code)   { Free_mbhistogram_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code)   { if (T) mb_gmt_text_end(T); Free_mbhistogram_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 
 /*--------------------------------------------------------------------*/
+EXTERN_MSC int GMT_mbhistogram(void *V_API, int mode, void *args);
+
 int GMT_mbhistogram(void *V_API, int mode, void *args) {
 	int error = MB_ERROR_NO_ERROR;
+	int gmt_error;
 
 	struct MBHISTOGRAM_CTRL *Ctrl = NULL;
+	struct MB_GMT_TEXT      *T = NULL;
 	struct GMT_CTRL         *GMT  = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION       *options = NULL;
 	struct GMTAPI_CTRL      *API = gmt_get_api_ptr(V_API);
@@ -259,20 +314,17 @@ int GMT_mbhistogram(void *V_API, int mode, void *args) {
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
-	if (!options || options->option == GMT_OPT_USAGE)    bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS)             bailout(usage(API, GMT_SYNOPSIS));
+	/* 1: no options is a run of the program (it reads stdin) */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 
-#if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
-#else
-	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
-#endif
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = New_mbhistogram_Ctrl(GMT);
-	if ((error = parse(GMT, Ctrl, options)) != 0) Return (error);
+	if ((gmt_error = parse(GMT, Ctrl, options)) != GMT_NOERROR) Return(gmt_error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
-	int verbose = GMT->common.V.active;
+	const int verbose = Ctrl->verbose;
 	int format, pings, lonflip;
 	double bounds[4];
 	int btime_i[7], etime_i[7];
@@ -408,7 +460,7 @@ int GMT_mbhistogram(void *V_API, int mode, void *args) {
 		mb_error(verbose, error, &message);
 		GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating histogram arrays:\n%s\n", message);
 		GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
-		Return(error);
+		Return(GMT_MEMORY_ERROR);
 	}
 
 	/* output some information */
@@ -445,7 +497,7 @@ int GMT_mbhistogram(void *V_API, int mode, void *args) {
 			GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", THIS_MODULE_NAME);
 			mb_freed(verbose, __FILE__, __LINE__, (void **)&histogram, &error);
 			mb_freed(verbose, __FILE__, __LINE__, (void **)&intervals, &error);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		read_data = mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight, &error) == MB_SUCCESS;
 	} else {
@@ -476,7 +528,7 @@ int GMT_mbhistogram(void *V_API, int mode, void *args) {
 			mb_freed(verbose, __FILE__, __LINE__, (void **)&histogram, &error);
 			mb_freed(verbose, __FILE__, __LINE__, (void **)&intervals, &error);
 			if (read_datalist) mb_datalist_close(verbose, &datalist, &error);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		/* allocate memory for data arrays */
@@ -509,7 +561,7 @@ int GMT_mbhistogram(void *V_API, int mode, void *args) {
 			mb_freed(verbose, __FILE__, __LINE__, (void **)&histogram, &error);
 			mb_freed(verbose, __FILE__, __LINE__, (void **)&intervals, &error);
 			if (read_datalist) mb_datalist_close(verbose, &datalist, &error);
-			Return(error);
+			Return(GMT_MEMORY_ERROR);
 		}
 
 		/* output information */
@@ -695,21 +747,26 @@ int GMT_mbhistogram(void *V_API, int mode, void *args) {
 		}
 	}
 
-	/* print out the results */
+	/* print out the results, through the GMT API */
+	if ((T = mb_gmt_text_begin(GMT, options)) == NULL) Return(API->error);
 	if (nintervals <= 0 && gaussian) {
 		for (int i = 0; i < nbins; i++) {
-			fprintf(stdout, "%f %f\n", value_min + i * dvalue_bin, histogram[i]);
+			mb_gmt_text_put(T, "%f %f\n", value_min + i * dvalue_bin, histogram[i]);
 		}
 	}
 	else if (nintervals <= 0) {
 		for (int i = 0; i < nbins; i++) {
-			fprintf(stdout, "%f %d\n", value_min + i * dvalue_bin, (int)histogram[i]);
+			mb_gmt_text_put(T, "%f %d\n", value_min + i * dvalue_bin, (int)histogram[i]);
 		}
 	}
 	else {
 		for (int i = 0; i < nintervals; i++)
-			fprintf(stdout, "%f\n", intervals[i]);
+			mb_gmt_text_put(T, "%f\n", intervals[i]);
 	}
+	mb_gmt_text_put(T, "\n");	/* the program's closing blank line */
+	const int output_failed = mb_gmt_text_end(T);
+	T = NULL;
+	if (output_failed) Return(GMT_RUNTIME_ERROR);
 
 	/* deallocate memory used for data arrays */
 	mb_freed(verbose, __FILE__, __LINE__, (void **)&histogram, &error);
@@ -725,7 +782,14 @@ int GMT_mbhistogram(void *V_API, int mode, void *args) {
 		GMT_Report(API, GMT_MSG_NORMAL, "dbg2       status:  %d\n", status);
 	}
 
-	fprintf(stdout, "\n");
-	Return(error);
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+	   The end of the data (EOF) is how every read finishes, not an error. */
+	if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

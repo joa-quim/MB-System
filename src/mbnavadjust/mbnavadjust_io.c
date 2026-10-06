@@ -35,7 +35,9 @@
 /*--------------------------------------------------------------------*/
 
 #include <assert.h>
+#include <ctype.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,6 +76,28 @@ extern int isnanf(float x);
 #endif
 
 static const char program_name[] = "mbnavadjust i/o functions";
+
+/* The last directory separator in a path: '/', and on Windows '\\' too (a "C:\dir\proj" path has
+   no '/' at all, so splitting on '/' alone took the whole path for the project name and prefixed
+   the current directory to it). */
+static char *mbna_last_separator(const char *path) {
+  char *sep = (char *)strrchr(path, '/');
+#ifdef _WIN32
+  char *bsep = (char *)strrchr(path, '\\');
+  if (bsep != NULL && (sep == NULL || bsep > sep))
+    sep = bsep;
+#endif
+  return sep;
+}
+
+/* An absolute path: "/..." and, on Windows, "\..." or a drive "C:..." */
+static bool mbna_path_is_absolute(const char *path) {
+#ifdef _WIN32
+  if (path[0] == '\\' || (isalpha((unsigned char)path[0]) && path[1] == ':'))
+    return true;
+#endif
+  return path[0] == '/';
+}
 
 /*--------------------------------------------------------------------*/
 int mbnavadjust_new_project(int verbose, char *projectpath, double section_length, int section_soundings, double cont_int,
@@ -117,7 +141,7 @@ int mbnavadjust_new_project(int verbose, char *projectpath, double section_lengt
     status = MB_FAILURE;
   }
   char *nameptr = NULL;
-  char *slashptr = strrchr(projectpath, '/');
+  char *slashptr = mbna_last_separator(projectpath);
   if (slashptr != NULL)
     nameptr = slashptr + 1;
   else
@@ -378,7 +402,7 @@ int mbnavadjust_read_project(int verbose, char *projectpath, struct mbna_project
     *error = MB_ERROR_INIT_FAIL;
     status = MB_FAILURE;
   }
-  char *slashptr = strrchr(projectpath, '/');
+  char *slashptr = mbna_last_separator(projectpath);
   char *nameptr = slashptr != NULL ?slashptr + 1 :projectpath;
   if (strlen(nameptr) > 4 && strcmp(&nameptr[strlen(nameptr) - 4], ".nvh") == 0)
     nameptr[strlen(nameptr) - 4] = '\0';
@@ -5195,7 +5219,7 @@ int mbnavadjust_import_file(int verbose, struct mbna_project *project,
   }
 
   /* turn on message */
-  char *root = (char *)strrchr(ipath, '/');
+  char *root = mbna_last_separator(ipath);
   if (root == NULL)
     root = ipath;
   mb_pathplus message;
@@ -5995,9 +6019,9 @@ int mbnavadjust_update_file(int verbose, struct mbna_project *project,
       mb_pr_get_ofile(verbose, project->files[ifile].path, &ofile_specified, ipath, error);
       if (ofile_specified == MB_YES) {
         int len = 0;
-		if (strlen(ipath) > 0 && ipath[0] != '/' 
-			&& strrchr(project->files[ifile].path, '/') != NULL 
-			&& (len = strrchr(project->files[ifile].path, '/') - project->files[ifile].path + 1) > 1) {
+		if (strlen(ipath) > 0 && !mbna_path_is_absolute(ipath)
+			&& mbna_last_separator(project->files[ifile].path) != NULL
+			&& (len = mbna_last_separator(project->files[ifile].path) - project->files[ifile].path + 1) > 1) {
           mb_path tmpstr;
 		  strcpy(tmpstr, ipath);
 		  strncpy(ipath, project->files[ifile].path, len);
@@ -6653,8 +6677,8 @@ int mbnavadjust_import_reference(int verbose, struct mbna_project *project, char
   if (status == MB_SUCCESS) {
     if (project->num_refgrids < MBNA_REFGRID_NUM_MAX) {
       mb_path name;
-      if (strrchr(path, '/') != NULL) {
-        strncpy(name, strrchr(path, '/')+1, sizeof(name));
+      if (mbna_last_separator(path) != NULL) {
+        strncpy(name, mbna_last_separator(path)+1, sizeof(name));
       } else {
         strncpy(name, path, sizeof(name));
       }

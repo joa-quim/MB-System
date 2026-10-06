@@ -29,10 +29,11 @@
  * Author:	D. W. Caress
  * Date:	October 10, 2001
  *
- * GMT-module port of src/utilities/mbdatalist.cc: the getopt_long loop
- * is replaced by the GMT option parser (long options are rewritten onto
- * their short forms before GMT sees them) and main() becomes
- * GMT_mbdatalist(), with every exit() turned into Return().
+ * GMT-module port of src/utilities/mbdatalist.cc: options from GMT's option list (the program's
+ * long options are GMT long options through module_kw, its lower-case aliases are kept --
+ * GMT_Parse_Common only parses the common options named in THIS_MODULE_OPTIONS; the argument-less
+ * -Y and -p, which GMT would complete from its history, go through mb_gmt_shorthand_guard), and
+ * the listing is written as text records through the GMT API (mb_gmt_text.c).
  */
 
 #define THIS_MODULE_NAME "mbdatalist"
@@ -65,6 +66,8 @@
 #include "mb_format.h"
 #include "mb_process.h"
 #include "mb_status.h"
+#include "mb_gmt_opts.h"
+#include "mb_gmt_text.h"
 
 static const char program_name[] = "mbdatalist";
 static const char help_message[] =
@@ -76,6 +79,27 @@ static const char usage_message[] =
     "\t--update-ancillary {-O}\n\t--processed {-P}\n\t--problem {-Q}\n"
     "\t--bounds=w/e/s/n {-Rw/e/s/n}\n\t--status\n"
     "\t--raw {-U}\n\t--unlock {-Y}\n\t--datalistp {-Z}\n";
+
+/* Translation table from the program's long options to its short ones (each one has a short twin) */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'C', "copy",                               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "report",                             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",                             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",                               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",                              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "make-ancillary|make-ancilliary",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "update-ancillary|update-ancilliary", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "processed",                          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Q', "problem",                            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "bounds",                             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "status",                             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'U', "raw",                                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'y', "unlock",                             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Z', "datalistp",                          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'v', "verbose",                            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
 
 /* --- Control structure ---------------------------------------------- */
 
@@ -113,7 +137,7 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n\n", help_message);
 	GMT_Message(API, GMT_TIME_NONE,
 	            "\t-C Copy listed data files into the current directory.\n"
@@ -129,9 +153,10 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	            "\t-U Prefer raw files.\n"
 	            "\t-Y Remove lock files.\n"
 	            "\t-Z Create a processed-file convenience datalist.\n"
-	            "\t-H Print help and exit.\n");
-	GMT_Option(API, "V");
-	return GMT_PARSE_ERROR;
+	            "\t-H Print help and exit.\n"
+	            "Every option also has the program's lower-case form.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse_mbdatalist(struct GMT_CTRL *GMT, struct MBDATALIST_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -165,7 +190,7 @@ static int parse_mbdatalist(struct GMT_CTRL *GMT, struct MBDATALIST_CTRL *Ctrl, 
 		case 'O': case 'o':
 			Ctrl->O.active = true;
 			break;
-		case 'P': case 'p': case 'A':	/* -P arrives as -A, see preparse_long_options() */
+		case 'P': case 'p':	/* -p arrives as -P: mb_gmt_shorthand_guard */
 			Ctrl->P.active = true;
 			Ctrl->look_processed = MB_DATALIST_LOOK_YES;
 			break;
@@ -182,91 +207,26 @@ static int parse_mbdatalist(struct GMT_CTRL *GMT, struct MBDATALIST_CTRL *Ctrl, 
 		case 'S': case 's':
 			Ctrl->S.active = true;
 			break;
-		case 'U': case 'u': case 'E':	/* -U arrives as -E, see preparse_long_options() */
+		case 'U': case 'u':
 			Ctrl->U.active = true;
 			Ctrl->look_processed = MB_DATALIST_LOOK_NO;
 			break;
-		case 'Y': case 'y':
+		case 'Y': case 'y':	/* -Y arrives as -y: mb_gmt_shorthand_guard */
 			Ctrl->Y.active = true;
 			break;
 		case 'Z': case 'z':
 			Ctrl->Z.active = true;
 			break;
+		case 'v':	/* the program's -v: verbosity, as -V */
+			GMT->current.setting.verbose = GMT_MSG_INFORMATION;
+			GMT->common.V.active = true;
+			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
-}
-
-static char *join_args(int mode, void *args) {
-	char **argv = (char **)args, *joined;
-	size_t total = 1;
-	int i;
-	if (mode <= 0 || !args) return NULL;
-	for (i = 0; i < mode; i++) total += strlen(argv[i]) + 1;
-	joined = (char *)calloc(total, 1);
-	if (!joined) return NULL;
-	for (i = 0; i < mode; i++) { if (i) strcat(joined, " "); strcat(joined, argv[i]); }
-	return joined;
-}
-
-/* Rewrite the getopt_long options of mbdatalist.cc onto short options.
- * GMT reserves -P and -U, so those are carried as -A and -E (not -B,
- * which GMT also intercepts: "Found no history for option -B"). */
-static char *preparse_long_options(bool *help, const char *args) {
-	size_t length = args ? strlen(args) : 0, out = 0;
-	char *copy = (char *)calloc(length + 2, 1), *result = (char *)calloc(2 * length + 8, 1);
-	char *token, *saveptr = NULL, pending = '\0';
-	if (!copy || !result) { free(copy); free(result); return NULL; }
-	memcpy(copy, args, length);
-	for (token = strtok_r(copy, " \t", &saveptr); token; token = strtok_r(NULL, " \t", &saveptr)) {
-		char emit = '\0', *equals;
-		const char *value = NULL;
-		if (pending) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = pending;
-			memcpy(result + out, token, strlen(token)); out += strlen(token); pending = '\0'; continue;
-		}
-		if (strncmp(token, "--", 2) != 0) {
-			if (token[0] == '-' && (token[1] == 'P' || token[1] == 'p')) token[1] = 'A';
-			if (token[0] == '-' && (token[1] == 'U' || token[1] == 'u')) token[1] = 'E';
-			if (out) result[out++] = ' ';
-			memcpy(result + out, token, strlen(token)); out += strlen(token); continue;
-		}
-		equals = strchr(token + 2, '=');
-		if (equals) { *equals = '\0'; value = equals + 1; }
-		if (!strcmp(token + 2, "help")) { *help = true; continue; }
-		if (!strcmp(token + 2, "verbose")) emit = 'V';
-		else if (!strcmp(token + 2, "copy")) emit = 'C';
-		else if (!strcmp(token + 2, "report")) emit = 'D';
-		else if (!strcmp(token + 2, "format")) emit = 'F';
-		else if (!strcmp(token + 2, "input")) emit = 'I';
-		else if (!strcmp(token + 2, "make-ancillary") || !strcmp(token + 2, "make-ancilliary")) emit = 'N';
-		else if (!strcmp(token + 2, "update-ancillary") || !strcmp(token + 2, "update-ancilliary")) emit = 'O';
-		else if (!strcmp(token + 2, "processed")) emit = 'A';
-		else if (!strcmp(token + 2, "problem")) emit = 'Q';
-		else if (!strcmp(token + 2, "bounds")) emit = 'R';
-		else if (!strcmp(token + 2, "status")) emit = 'S';
-		else if (!strcmp(token + 2, "raw")) emit = 'E';
-		else if (!strcmp(token + 2, "unlock")) emit = 'Y';
-		else if (!strcmp(token + 2, "datalistp")) emit = 'Z';
-		if (!emit) {
-			if (equals) *equals = '=';
-			if (out) result[out++] = ' ';
-			memcpy(result + out, token, strlen(token)); out += strlen(token);
-		} else if (strchr("VCDNOAQSEYZ", emit)) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = emit;
-		} else if (value) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = emit;
-			memcpy(result + out, value, strlen(value)); out += strlen(value);
-		} else pending = emit;
-	}
-	free(copy);
-	return result;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 /*--------------------------------------------------------------------*/
@@ -274,7 +234,7 @@ static char *preparse_long_options(bool *help, const char *args) {
  * whose name starts with the swath file name, as "cp file* ." did) into
  * the current directory. Done in-process: there is no "cp" on Windows.
  * Nothing is copied when the file already lives in the current directory. */
-static void mbdatalist_copy_file_family(FILE *output, const char *file) {
+static void mbdatalist_copy_file_family(struct MB_GMT_TEXT *output, const char *file) {
 	const char *slash = strrchr(file, '/');
 #ifdef _WIN32
 	const char *bslash = strrchr(file, '\\');
@@ -295,7 +255,7 @@ static void mbdatalist_copy_file_family(FILE *output, const char *file) {
 	const size_t rootlen = strlen(root);
 	DIR *dp = opendir(dir);
 	if (dp == NULL) {
-		fprintf(output, "Unable to open directory %s\n", dir);
+		mb_gmt_text_put(output,"Unable to open directory %s\n", dir);
 		return;
 	}
 	struct dirent *de;
@@ -312,7 +272,7 @@ static void mbdatalist_copy_file_family(FILE *output, const char *file) {
 			continue;
 		FILE *out = fopen(de->d_name, "wb");
 		if (out == NULL) {
-			fprintf(output, "Unable to copy %s\n", src);
+			mb_gmt_text_put(output,"Unable to copy %s\n", src);
 			fclose(in);
 			continue;
 		}
@@ -320,7 +280,7 @@ static void mbdatalist_copy_file_family(FILE *output, const char *file) {
 		size_t n;
 		while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
 			if (fwrite(buf, 1, n, out) != n) {
-				fprintf(output, "Unable to copy %s\n", src);
+				mb_gmt_text_put(output,"Unable to copy %s\n", src);
 				break;
 			}
 		}
@@ -331,7 +291,7 @@ static void mbdatalist_copy_file_family(FILE *output, const char *file) {
 }
 
 #define bailout(code) { gmt_M_free_options(mode); return (code); }
-#define Return(code) { free(remaining_args); Free_mbdatalist_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code) { if (output) mb_gmt_text_end(output); Free_mbdatalist_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 EXTERN_MSC int GMT_mbdatalist(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
@@ -341,29 +301,22 @@ int GMT_mbdatalist(void *V_API, int mode, void *args) {
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION *options = NULL;
 	struct MBDATALIST_CTRL *Ctrl = NULL;
-	char *remaining_args = NULL;
-	bool staged_help = false;
+	struct MB_GMT_TEXT *output = NULL;	/* the listing, as GMT records */
 	int parse_error;
 
 	if (!API) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-	{
-		char *joined = join_args(mode, args);
-		const char *text = joined ? joined : (mode == GMT_MODULE_CMD ? (const char *)args : NULL);
-		if (text) remaining_args = preparse_long_options(&staged_help, text);
-		free(joined);
-	}
-	options = GMT_Create_Options(API, remaining_args ? GMT_MODULE_CMD : mode, remaining_args ? (void *)remaining_args : args);
-	if (API->error) { free(remaining_args); return API->error; }
-	/* no arguments is a valid run: mbdatalist lists datalist.mb-1 */
-	if (options && options->option == GMT_OPT_USAGE) { free(remaining_args); bailout(usage(API, GMT_USAGE)); }
-	if (options && options->option == GMT_OPT_SYNOPSIS) { free(remaining_args); bailout(usage(API, GMT_SYNOPSIS)); }
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no arguments is a valid run -- mbdatalist lists ./datalist.mb-1 */
+	if ((parse_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(parse_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) { free(remaining_args); bailout(API->error); }
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	mb_gmt_shorthand_guard(options, "Yp");	/* -Y unlock, -p processed: no argument */
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 	Ctrl = (struct MBDATALIST_CTRL *)New_mbdatalist_Ctrl(GMT);
-	Ctrl->H.active = staged_help;
-	if ((parse_error = parse_mbdatalist(GMT, Ctrl, options)) != GMT_OK) Return(parse_error);
+	if ((parse_error = parse_mbdatalist(GMT, Ctrl, options)) != GMT_NOERROR) Return(parse_error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
 	int verbose = GMT->common.V.active;
 	int format;
@@ -389,7 +342,6 @@ int GMT_mbdatalist(void *V_API, int mode, void *args) {
 	bool remove_locks = false;
 	bool make_datalistp = false;
 	bool reportdatalists = false;
-	FILE *output = NULL;
 
 	{
 		bool help = Ctrl->H.active;
@@ -424,62 +376,56 @@ int GMT_mbdatalist(void *V_API, int mode, void *args) {
 		if (Ctrl->Z.active)
 			make_datalistp = true;
 
-		if (verbose <= 1)
-			output = stdout;
-		else
-			output = stderr;
+		/* The listing: text records through the GMT API (the program put it on stderr at -V2;
+		   as a module the caller receives it as data, and the debug lines below go to stderr) */
+		if ((output = mb_gmt_text_begin(GMT, options)) == NULL)
+			Return(API->error);
 
-		if (verbose == 1 || help) {
-			fprintf(output, "\nProgram %s\n", program_name);
-			fprintf(output, "MB-system Version %s\n", MB_VERSION);
-		}
+		GMT_Report(API, GMT_MSG_INFORMATION, "Program %s\n", program_name);
+		GMT_Report(API, GMT_MSG_INFORMATION, "MB-system Version %s\n", MB_VERSION);
 
 		if (verbose >= 2) {
-			fprintf(output, "\ndbg2  Program <%s>\n", program_name);
-			fprintf(output, "dbg2  MB-system Version %s\n", MB_VERSION);
-			fprintf(output, "dbg2  Control Parameters:\n");
-			fprintf(output, "dbg2       verbose:             %d\n", verbose);
-			fprintf(output, "dbg2       help:                %d\n", help);
-			fprintf(output, "dbg2       file:                %s\n", read_file);
-			fprintf(output, "dbg2       format:              %d\n", format);
-			fprintf(output, "dbg2       look_processed:      %d\n", look_processed);
-			fprintf(output, "dbg2       copyfiles:           %d\n", copyfiles);
-			fprintf(output, "dbg2       reportdatalists:     %d\n", reportdatalists);
-			fprintf(output, "dbg2       make_inf:            %d\n", make_inf);
-			fprintf(output, "dbg2       force_update:        %d\n", force_update);
-			fprintf(output, "dbg2       status_report:       %d\n", status_report);
-			fprintf(output, "dbg2       problem_report:      %d\n", problem_report);
-			fprintf(output, "dbg2       make_datalistp:      %d\n", make_datalistp);
-			fprintf(output, "dbg2       remove_locks:        %d\n", remove_locks);
-			fprintf(output, "dbg2       pings:               %d\n", pings);
-			fprintf(output, "dbg2       lonflip:             %d\n", lonflip);
-			fprintf(output, "dbg2       bounds[0]:           %f\n", bounds[0]);
-			fprintf(output, "dbg2       bounds[1]:           %f\n", bounds[1]);
-			fprintf(output, "dbg2       bounds[2]:           %f\n", bounds[2]);
-			fprintf(output, "dbg2       bounds[3]:           %f\n", bounds[3]);
-			fprintf(output, "dbg2       btime_i[0]:          %d\n", btime_i[0]);
-			fprintf(output, "dbg2       btime_i[1]:          %d\n", btime_i[1]);
-			fprintf(output, "dbg2       btime_i[2]:          %d\n", btime_i[2]);
-			fprintf(output, "dbg2       btime_i[3]:          %d\n", btime_i[3]);
-			fprintf(output, "dbg2       btime_i[4]:          %d\n", btime_i[4]);
-			fprintf(output, "dbg2       btime_i[5]:          %d\n", btime_i[5]);
-			fprintf(output, "dbg2       btime_i[6]:          %d\n", btime_i[6]);
-			fprintf(output, "dbg2       etime_i[0]:          %d\n", etime_i[0]);
-			fprintf(output, "dbg2       etime_i[1]:          %d\n", etime_i[1]);
-			fprintf(output, "dbg2       etime_i[2]:          %d\n", etime_i[2]);
-			fprintf(output, "dbg2       etime_i[3]:          %d\n", etime_i[3]);
-			fprintf(output, "dbg2       etime_i[4]:          %d\n", etime_i[4]);
-			fprintf(output, "dbg2       etime_i[5]:          %d\n", etime_i[5]);
-			fprintf(output, "dbg2       etime_i[6]:          %d\n", etime_i[6]);
-			fprintf(output, "dbg2       speedmin:            %f\n", speedmin);
-			fprintf(output, "dbg2       timegap:             %f\n", timegap);
+			fprintf(stderr, "\ndbg2  Program <%s>\n", program_name);
+			fprintf(stderr, "dbg2  MB-system Version %s\n", MB_VERSION);
+			fprintf(stderr, "dbg2  Control Parameters:\n");
+			fprintf(stderr, "dbg2       verbose:             %d\n", verbose);
+			fprintf(stderr, "dbg2       help:                %d\n", help);
+			fprintf(stderr, "dbg2       file:                %s\n", read_file);
+			fprintf(stderr, "dbg2       format:              %d\n", format);
+			fprintf(stderr, "dbg2       look_processed:      %d\n", look_processed);
+			fprintf(stderr, "dbg2       copyfiles:           %d\n", copyfiles);
+			fprintf(stderr, "dbg2       reportdatalists:     %d\n", reportdatalists);
+			fprintf(stderr, "dbg2       make_inf:            %d\n", make_inf);
+			fprintf(stderr, "dbg2       force_update:        %d\n", force_update);
+			fprintf(stderr, "dbg2       status_report:       %d\n", status_report);
+			fprintf(stderr, "dbg2       problem_report:      %d\n", problem_report);
+			fprintf(stderr, "dbg2       make_datalistp:      %d\n", make_datalistp);
+			fprintf(stderr, "dbg2       remove_locks:        %d\n", remove_locks);
+			fprintf(stderr, "dbg2       pings:               %d\n", pings);
+			fprintf(stderr, "dbg2       lonflip:             %d\n", lonflip);
+			fprintf(stderr, "dbg2       bounds[0]:           %f\n", bounds[0]);
+			fprintf(stderr, "dbg2       bounds[1]:           %f\n", bounds[1]);
+			fprintf(stderr, "dbg2       bounds[2]:           %f\n", bounds[2]);
+			fprintf(stderr, "dbg2       bounds[3]:           %f\n", bounds[3]);
+			fprintf(stderr, "dbg2       btime_i[0]:          %d\n", btime_i[0]);
+			fprintf(stderr, "dbg2       btime_i[1]:          %d\n", btime_i[1]);
+			fprintf(stderr, "dbg2       btime_i[2]:          %d\n", btime_i[2]);
+			fprintf(stderr, "dbg2       btime_i[3]:          %d\n", btime_i[3]);
+			fprintf(stderr, "dbg2       btime_i[4]:          %d\n", btime_i[4]);
+			fprintf(stderr, "dbg2       btime_i[5]:          %d\n", btime_i[5]);
+			fprintf(stderr, "dbg2       btime_i[6]:          %d\n", btime_i[6]);
+			fprintf(stderr, "dbg2       etime_i[0]:          %d\n", etime_i[0]);
+			fprintf(stderr, "dbg2       etime_i[1]:          %d\n", etime_i[1]);
+			fprintf(stderr, "dbg2       etime_i[2]:          %d\n", etime_i[2]);
+			fprintf(stderr, "dbg2       etime_i[3]:          %d\n", etime_i[3]);
+			fprintf(stderr, "dbg2       etime_i[4]:          %d\n", etime_i[4]);
+			fprintf(stderr, "dbg2       etime_i[5]:          %d\n", etime_i[5]);
+			fprintf(stderr, "dbg2       etime_i[6]:          %d\n", etime_i[6]);
+			fprintf(stderr, "dbg2       speedmin:            %f\n", speedmin);
+			fprintf(stderr, "dbg2       timegap:             %f\n", timegap);
 		}
 
-		if (help) {
-			fprintf(output, "\n%s\n", help_message);
-			fprintf(output, "\nusage: %s\n", usage_message);
-			Return(MB_ERROR_NO_ERROR);
-		}
+		(void)help;	/* -H returned usage() before this point */
 	}
 
 	int error = MB_ERROR_NO_ERROR;
@@ -492,27 +438,25 @@ int GMT_mbdatalist(void *V_API, int mode, void *args) {
 		char fileroot[MB_PATH_MAXLINE] = {0};
 		status = mb_get_format(verbose, read_file, fileroot, &format, &error);
 		if (strlen(fileroot) >= MB_PATH_MAXLINE - 6) {
-			fprintf(stderr, "\nFile root too long: %s\n", fileroot);
-			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_BAD_PARAMETER);
+			GMT_Report(API, GMT_MSG_ERROR, "File root too long: %s\n", fileroot);
+			Return(GMT_RUNTIME_ERROR);
 		}
 		char file[MB_PATH_MAXLINE+10];
 		snprintf(file, sizeof(file), "%sp.mb-1", fileroot);
 
 		FILE *fp = fopen(file, "w");
 		if (fp == NULL) {
-			fprintf(stderr, "\nUnable to open output file %s\n", file);
-			fprintf(stderr, "Program %s aborted!\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			GMT_Report(API, GMT_MSG_ERROR, "Unable to open output file %s\n", file);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		fprintf(fp, "$PROCESSED\n%s %d\n", read_file, format);
 		fclose(fp);
 		if (verbose > 0)
-			fprintf(output, "Convenience datalist file %s created...\n", file);
+			mb_gmt_text_put(output,"Convenience datalist file %s created...\n", file);
 
 		/* exit unless building ancillary files has also been requested */
 		if (!make_inf)
-			Return(error);
+			Return(GMT_NOERROR);
 	}
 
 	/* get format if required */
@@ -569,32 +513,32 @@ int GMT_mbdatalist(void *V_API, int mode, void *args) {
 			/* output file if no bounds checking or in bounds */
 			if (!look_bounds || file_in_bounds) {
 				if (verbose > 0)
-					fprintf(output, "%s %d %f\n", read_file, format, file_weight);
+					mb_gmt_text_put(output,"%s %d %f\n", read_file, format, file_weight);
 				else
-					fprintf(output, "%s %d %f", read_file, format, file_weight);
+					mb_gmt_text_put(output,"%s %d %f", read_file, format, file_weight);
 
 				/* check status if desired */
 				if (status_report) {
 					status = mb_pr_checkstatus(verbose, read_file, &prstatus, &error);
 					if (verbose > 0) {
 						if (prstatus == MB_PR_FILE_UP_TO_DATE)
-							fprintf(output, "\tStatus: up to date\n");
+							mb_gmt_text_put(output,"\tStatus: up to date\n");
 						else if (prstatus == MB_PR_FILE_NEEDS_PROCESSING)
-							fprintf(output, "\tStatus: out of date - needs processing\n");
+							mb_gmt_text_put(output,"\tStatus: out of date - needs processing\n");
 						else if (prstatus == MB_PR_FILE_NOT_EXIST)
-							fprintf(output, "\tStatus: file does not exist\n");
+							mb_gmt_text_put(output,"\tStatus: file does not exist\n");
 						else if (prstatus == MB_PR_NO_PARAMETER_FILE)
-							fprintf(output, "\tStatus: no parameter file - processing undefined\n");
+							mb_gmt_text_put(output,"\tStatus: no parameter file - processing undefined\n");
 					}
 					else {
 						if (prstatus == MB_PR_FILE_UP_TO_DATE)
-							fprintf(output, "\t<Up-to-date>");
+							mb_gmt_text_put(output,"\t<Up-to-date>");
 						else if (prstatus == MB_PR_FILE_NEEDS_PROCESSING)
-							fprintf(output, "\t<Needs-processing>");
+							mb_gmt_text_put(output,"\t<Needs-processing>");
 						else if (prstatus == MB_PR_FILE_NOT_EXIST)
-							fprintf(output, "\t<Does-not-exist>");
+							mb_gmt_text_put(output,"\t<Does-not-exist>");
 						else if (prstatus == MB_PR_NO_PARAMETER_FILE)
-							fprintf(output, "\t<No-parameter-file>");
+							mb_gmt_text_put(output,"\t<No-parameter-file>");
 					}
 				}
 
@@ -604,10 +548,10 @@ int GMT_mbdatalist(void *V_API, int mode, void *args) {
 					                             lock_date, &lock_error);
 					if (locked && status_report) {
 						if (verbose > 0)
-							fprintf(output, "\tLocked by program <%s> run by <%s> on <%s> at <%s>\n", lock_program, lock_user,
+							mb_gmt_text_put(output,"\tLocked by program <%s> run by <%s> on <%s> at <%s>\n", lock_program, lock_user,
 							        lock_cpu, lock_date);
 						else
-							fprintf(output, "\t<Locked>");
+							mb_gmt_text_put(output,"\t<Locked>");
 					}
 					if (locked && remove_locks) {
 						if (strlen(read_file) >= MB_PATH_MAXLINE - 4) {
@@ -620,7 +564,7 @@ int GMT_mbdatalist(void *V_API, int mode, void *args) {
 				}
 
 				if (verbose == 0)
-					fprintf(output, "\n");
+					mb_gmt_text_put(output,"\n");
 			}
 		}
 	}
@@ -628,9 +572,8 @@ int GMT_mbdatalist(void *V_API, int mode, void *args) {
 	/* else parse datalist */
 	else {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
-			fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
-			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			GMT_Report(API, GMT_MSG_ERROR, "Unable to open data list file: %s\n", read_file);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		mb_path file = "";
 		mb_path dfile = "";
@@ -673,7 +616,7 @@ int GMT_mbdatalist(void *V_API, int mode, void *args) {
 
 				/* copy file if no bounds checking or in bounds */
 				if (!look_bounds || file_in_bounds) {
-					fprintf(output, "Copying %s %d %f\n", file, format, file_weight);
+					mb_gmt_text_put(output,"Copying %s %d %f\n", file, format, file_weight);
 					mbdatalist_copy_file_family(output, file);
 					char *filename = strrchr(file, '/');
 					if (filename != NULL)
@@ -717,32 +660,32 @@ int GMT_mbdatalist(void *V_API, int mode, void *args) {
 				/* output file if no bounds checking or in bounds */
 				if (!look_bounds || file_in_bounds) {
 					if (verbose > 0)
-						fprintf(output, "%s %d %f\n", file, format, file_weight);
+						mb_gmt_text_put(output,"%s %d %f\n", file, format, file_weight);
 					else
-						fprintf(output, "%s %d %f", file, format, file_weight);
+						mb_gmt_text_put(output,"%s %d %f", file, format, file_weight);
 
 					/* check status if desired */
 					if (status_report) {
 						status = mb_pr_checkstatus(verbose, file, &prstatus, &error);
 						if (verbose > 0) {
 							if (prstatus == MB_PR_FILE_UP_TO_DATE)
-								fprintf(output, "\tStatus: up to date\n");
+								mb_gmt_text_put(output,"\tStatus: up to date\n");
 							else if (prstatus == MB_PR_FILE_NEEDS_PROCESSING)
-								fprintf(output, "\tStatus: out of date - needs processing\n");
+								mb_gmt_text_put(output,"\tStatus: out of date - needs processing\n");
 							else if (prstatus == MB_PR_FILE_NOT_EXIST)
-								fprintf(output, "\tStatus: file does not exist\n");
+								mb_gmt_text_put(output,"\tStatus: file does not exist\n");
 							else if (prstatus == MB_PR_NO_PARAMETER_FILE)
-								fprintf(output, "\tStatus: no parameter file - processing undefined\n");
+								mb_gmt_text_put(output,"\tStatus: no parameter file - processing undefined\n");
 						}
 						else {
 							if (prstatus == MB_PR_FILE_UP_TO_DATE)
-								fprintf(output, "\t<Up-to-date>");
+								mb_gmt_text_put(output,"\t<Up-to-date>");
 							else if (prstatus == MB_PR_FILE_NEEDS_PROCESSING)
-								fprintf(output, "\t<Needs-processing>");
+								mb_gmt_text_put(output,"\t<Needs-processing>");
 							else if (prstatus == MB_PR_FILE_NOT_EXIST)
-								fprintf(output, "\t<Does-not-exist>");
+								mb_gmt_text_put(output,"\t<Does-not-exist>");
 							else if (prstatus == MB_PR_NO_PARAMETER_FILE)
-								fprintf(output, "\t<No-parameter-file>");
+								mb_gmt_text_put(output,"\t<No-parameter-file>");
 						}
 					}
 
@@ -752,24 +695,24 @@ int GMT_mbdatalist(void *V_API, int mode, void *args) {
 						                             lock_date, &lock_error);
 						if (locked && status_report) {
 							if (verbose > 0)
-								fprintf(output, "\tLocked by program <%s> run by <%s> on <%s> at <%s>\n", lock_program, lock_user,
+								mb_gmt_text_put(output,"\tLocked by program <%s> run by <%s> on <%s> at <%s>\n", lock_program, lock_user,
 								        lock_cpu, lock_date);
 							else
-								fprintf(output, "\t<Locked>");
+								mb_gmt_text_put(output,"\t<Locked>");
 						}
 						if (locked && remove_locks) {
 							if (strlen(file) >= MB_PATH_MAXLINE - 4) {
 								fprintf(stderr, "\nFilename too long to construct lock file name: %s\n", file);
 							} else {
 								snprintf(lockfile, sizeof(lockfile), "%s.lck", file);
-								fprintf(output, "\tRemoving lock file %s\n", lockfile);
+								mb_gmt_text_put(output,"\tRemoving lock file %s\n", lockfile);
 								/* shellstatus = */ remove(lockfile);
 							}
 						}
 					}
 
 					if (verbose == 0)
-						fprintf(output, "\n");
+						mb_gmt_text_put(output,"\n");
 				}
 			}
 		}
@@ -793,11 +736,11 @@ int GMT_mbdatalist(void *V_API, int mode, void *args) {
 
 	/* output counts */
 	if (verbose > 0) {
-		fprintf(output, "\nTotal swath files:         %d\n", nfile);
+		mb_gmt_text_put(output,"\nTotal swath files:         %d\n", nfile);
 		if (problem_report) {
-			fprintf(output, "Total files with problems: %d\n", nproblemfiles);
-			fprintf(output, "Total parameter problems:  %d\n", nparproblemtot);
-			fprintf(output, "Total data problems:       %d\n", ndataproblemtot);
+			mb_gmt_text_put(output,"Total files with problems: %d\n", nproblemfiles);
+			mb_gmt_text_put(output,"Total parameter problems:  %d\n", nparproblemtot);
+			mb_gmt_text_put(output,"Total data problems:       %d\n", ndataproblemtot);
 		}
 	}
 
@@ -806,6 +749,19 @@ int GMT_mbdatalist(void *V_API, int mode, void *args) {
 		fprintf(stderr, "Program %s completed but failed to deallocate all allocated memory - the code has a memory leak somewhere!\n", program_name);
 	}
 
-	Return(error);
+	const int output_failed = mb_gmt_text_end(output);
+	output = NULL;	/* closed: Return() must not close it again */
+	if (output_failed) {
+		GMT_Report(API, GMT_MSG_ERROR, "Writing the listing failed\n");
+		Return(GMT_RUNTIME_ERROR);
+	}
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one */
+	if (error != MB_ERROR_NO_ERROR) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

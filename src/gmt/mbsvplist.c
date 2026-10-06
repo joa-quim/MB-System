@@ -41,9 +41,9 @@
  * Date:  January 3,  2001
  *
  * GMT-module port of src/utilities/mbsvplist.cc: the getopt_long loop
- * is replaced by the GMT option parser (long options are rewritten onto
- * their short forms before GMT sees them) and main() becomes
- * GMT_mbsvplist(), with every exit() turned into Return().
+ * is replaced by the GMT option parser (long options through module_kw,
+ * lower-case aliases kept), the listing goes through the GMT API, and main() becomes
+ * GMT_mbsvplist(), with every exit() a Return() with a GMT error code.
  */
 
 #define THIS_MODULE_NAME "mbsvplist"
@@ -68,6 +68,8 @@
 #include <unistd.h>
 #endif
 #include "mb_status.h"
+#include "mb_gmt_opts.h"
+#include "mb_gmt_text.h"
 #include "mb_format.h"
 #include "mb_define.h"
 #include "mb_process.h"
@@ -133,6 +135,7 @@ static const char usage_message[] =
 /* --- Control structure ---------------------------------------------- */
 
 struct MBSVPLIST_CTRL {
+	int verbose;	/* the program's -V/-v count */
 	struct mbsl_A { bool active; int svp_source_use; } A;
 	struct mbsl_C { bool active; } C;
 	struct mbsl_D { bool active; } D;
@@ -172,11 +175,32 @@ static void Free_mbsvplist_Ctrl(struct GMT_CTRL *GMT, struct MBSVPLIST_CTRL *Ctr
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "bounds",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "counts",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "duplicates",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "min-num-pairs", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'M', "mode",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "process",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'A', "source",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "ssv",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "table",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Z', "zero-depth",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message_old);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n\n", help_message);
 	GMT_Message(API, GMT_TIME_NONE,
 	            "\t-A Select the SVP source by record kind, or C (CTD) / S (SVP).\n"
@@ -192,9 +216,10 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 	            "\t-S Output surface sound velocity values.\n"
 	            "\t-T Output a CSV table of the profiles.\n"
 	            "\t-Z Force the uppermost profile depth to zero.\n"
-	            "\t-H Print help and exit.\n");
-	GMT_Option(API, "V");
-	return GMT_PARSE_ERROR;
+	            "\t-H Print help and exit.\n"
+	            "\tEvery option also has the program's lower-case and long forms.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse_mbsvplist(struct GMT_CTRL *GMT, struct MBSVPLIST_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -202,6 +227,9 @@ static int parse_mbsvplist(struct GMT_CTRL *GMT, struct MBSVPLIST_CTRL *Ctrl, st
 	struct GMT_OPTION *opt;
 	for (opt = options; opt; opt = opt->next) {
 		switch (opt->option) {
+		case 'V': case 'v':
+			Ctrl->verbose++;
+			break;
 		case 'A': case 'a':
 			if (!opt->arg || !opt->arg[0]) { n_errors++; break; }
 			Ctrl->A.active = true;
@@ -247,12 +275,12 @@ static int parse_mbsvplist(struct GMT_CTRL *GMT, struct MBSVPLIST_CTRL *Ctrl, st
 			if (opt->arg && sscanf(opt->arg, "%d", &Ctrl->N.min_num_pairs) == 1) Ctrl->N.active = true;
 			else n_errors++;
 			break;
-		case 'O': case 'o': case 'G':	/* -O arrives as -G, see preparse_long_options() */
+		case 'O': case 'o':
 			Ctrl->O.active = true;
 			Ctrl->mode.svp_file_output = true;
 			Ctrl->mode.ssv_output = false;
 			break;
-		case 'P': case 'p': case 'Q':	/* -P arrives as -Q, see preparse_long_options() */
+		case 'P': case 'p':
 			Ctrl->P.active = true;
 			Ctrl->mode.svp_file_output = true;
 			Ctrl->mode.svp_setprocess = true;
@@ -271,7 +299,7 @@ static int parse_mbsvplist(struct GMT_CTRL *GMT, struct MBSVPLIST_CTRL *Ctrl, st
 			Ctrl->mode.svp_file_output = false;
 			Ctrl->mode.svp_setprocess = false;
 			break;
-		case 'T': case 't': case 'L':	/* -T arrives as -L, see preparse_long_options() */
+		case 'T': case 't':
 			Ctrl->T.active = true;
 			Ctrl->mode.output_as_table = true;
 			Ctrl->mode.ssv_output = false;
@@ -280,84 +308,15 @@ static int parse_mbsvplist(struct GMT_CTRL *GMT, struct MBSVPLIST_CTRL *Ctrl, st
 			Ctrl->Z.active = true;
 			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
-}
-
-static char *join_args(int mode, void *args) {
-	char **argv = (char **)args, *joined;
-	size_t total = 1;
-	int i;
-	if (mode <= 0 || !args) return NULL;
-	for (i = 0; i < mode; i++) total += strlen(argv[i]) + 1;
-	joined = (char *)calloc(total, 1);
-	if (!joined) return NULL;
-	for (i = 0; i < mode; i++) { if (i) strcat(joined, " "); strcat(joined, argv[i]); }
-	return joined;
-}
-
-/* Rewrite the getopt_long options of mbsvplist.cc onto short options.
- * GMT reserves -O, -P and -T, so those are carried as -G, -Q and -L. */
-static char *preparse_long_options(bool *help, const char *args) {
-	size_t length = args ? strlen(args) : 0, out = 0;
-	char *copy = (char *)calloc(length + 2, 1), *result = (char *)calloc(2 * length + 8, 1);
-	char *token, *saveptr = NULL, pending = '\0';
-	if (!copy || !result) { free(copy); free(result); return NULL; }
-	memcpy(copy, args, length);
-	for (token = strtok_r(copy, " \t", &saveptr); token; token = strtok_r(NULL, " \t", &saveptr)) {
-		char emit = '\0', *equals;
-		const char *value = NULL;
-		if (pending) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = pending;
-			memcpy(result + out, token, strlen(token)); out += strlen(token); pending = '\0'; continue;
-		}
-		if (strncmp(token, "--", 2) != 0) {
-			if (token[0] == '-' && (token[1] == 'O' || token[1] == 'o')) token[1] = 'G';
-			if (token[0] == '-' && (token[1] == 'P' || token[1] == 'p')) token[1] = 'Q';
-			if (token[0] == '-' && (token[1] == 'T' || token[1] == 't')) token[1] = 'L';
-			if (out) result[out++] = ' ';
-			memcpy(result + out, token, strlen(token)); out += strlen(token); continue;
-		}
-		equals = strchr(token + 2, '=');
-		if (equals) { *equals = '\0'; value = equals + 1; }
-		if (!strcmp(token + 2, "help")) { *help = true; continue; }
-		if (!strcmp(token + 2, "verbose")) emit = 'V';
-		else if (!strcmp(token + 2, "source")) emit = 'A';
-		else if (!strcmp(token + 2, "counts")) emit = 'C';
-		else if (!strcmp(token + 2, "duplicates")) emit = 'D';
-		else if (!strcmp(token + 2, "format")) emit = 'F';
-		else if (!strcmp(token + 2, "input")) emit = 'I';
-		else if (!strcmp(token + 2, "mode")) emit = 'M';
-		else if (!strcmp(token + 2, "min-num-pairs")) emit = 'N';
-		else if (!strcmp(token + 2, "output")) emit = 'G';
-		else if (!strcmp(token + 2, "process")) emit = 'Q';
-		else if (!strcmp(token + 2, "bounds")) emit = 'R';
-		else if (!strcmp(token + 2, "ssv")) emit = 'S';
-		else if (!strcmp(token + 2, "table")) emit = 'L';
-		else if (!strcmp(token + 2, "zero-depth")) emit = 'Z';
-		if (!emit) {
-			if (equals) *equals = '=';
-			if (out) result[out++] = ' ';
-			memcpy(result + out, token, strlen(token)); out += strlen(token);
-		} else if (strchr("VCDGQSLZ", emit)) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = emit;
-		} else if (value) {
-			if (out) result[out++] = ' ';
-			result[out++] = '-'; result[out++] = emit;
-			memcpy(result + out, value, strlen(value)); out += strlen(value);
-		} else pending = emit;
-	}
-	free(copy);
-	return result;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code) { gmt_M_free_options(mode); return (code); }
-#define Return(code) { free(remaining_args); Free_mbsvplist_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code) { if (T) mb_gmt_text_end(T); Free_mbsvplist_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 EXTERN_MSC int GMT_mbsvplist(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
@@ -367,31 +326,25 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION *options = NULL;
 	struct MBSVPLIST_CTRL *Ctrl = NULL;
-	char *remaining_args = NULL;
-	bool staged_help = false;
+	struct MB_GMT_TEXT *T = NULL;	/* the listing, through the GMT API */
 	int parse_error;
 
 	if (!API) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-	{
-		char *joined = join_args(mode, args);
-		const char *text = joined ? joined : (mode == GMT_MODULE_CMD ? (const char *)args : NULL);
-		if (text) remaining_args = preparse_long_options(&staged_help, text);
-		free(joined);
-	}
-	options = GMT_Create_Options(API, remaining_args ? GMT_MODULE_CMD : mode, remaining_args ? (void *)remaining_args : args);
-	if (API->error) { free(remaining_args); return API->error; }
-	/* no arguments is a valid run: mbsvplist reads datalist.mb-1 */
-	if (options && options->option == GMT_OPT_USAGE) { free(remaining_args); bailout(usage(API, GMT_USAGE)); }
-	if (options && options->option == GMT_OPT_SYNOPSIS) { free(remaining_args); bailout(usage(API, GMT_SYNOPSIS)); }
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no arguments is a valid run: mbsvplist reads datalist.mb-1 */
+	if ((parse_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(parse_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) { free(remaining_args); bailout(API->error); }
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	/* -p (process) takes no argument: keep GMT from completing it as its -p from history */
+	mb_gmt_shorthand_guard(options, "p");
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 	Ctrl = (struct MBSVPLIST_CTRL *)New_mbsvplist_Ctrl(GMT);
-	Ctrl->H.active = staged_help;
-	if ((parse_error = parse_mbsvplist(GMT, Ctrl, options)) != GMT_OK) Return(parse_error);
+	if ((parse_error = parse_mbsvplist(GMT, Ctrl, options)) != GMT_NOERROR) Return(parse_error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
-  int verbose = GMT->common.V.active;
+  int verbose = Ctrl->verbose;
   int format;
   int pings;
   int lonflip;
@@ -422,7 +375,6 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
 
 
   {
-    bool help = Ctrl->H.active;
 
     if (Ctrl->A.active)
       svp_source_use = Ctrl->A.svp_source_use;
@@ -446,7 +398,7 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
     svp_setprocess = Ctrl->mode.svp_setprocess;
     output_as_table = Ctrl->mode.output_as_table;
 
-    if (verbose == 1 || help) {
+    if (verbose == 1) {
       fprintf(stderr, "\nProgram %s\n", program_name);
       fprintf(stderr, "MB-system Version %s\n", MB_VERSION);
     }
@@ -456,7 +408,6 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
       fprintf(stderr, "dbg2  MB-system Version %s\n", MB_VERSION);
       fprintf(stderr, "dbg2  Control Parameters:\n");
       fprintf(stderr, "dbg2       verbose:           %d\n", verbose);
-      fprintf(stderr, "dbg2       help:              %d\n", help);
       fprintf(stderr, "dbg2       format:            %d\n", format);
       fprintf(stderr, "dbg2       pings:             %d\n", pings);
       fprintf(stderr, "dbg2       lonflip:           %d\n", lonflip);
@@ -494,12 +445,11 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
       fprintf(stderr, "dbg2       ssv_bounds[3]:     %f\n", ssv_bounds[3]);
     }
 
-    if (help) {
-      fprintf(stderr, "\n%s\n", help_message);
-      fprintf(stderr, "\nusage: %s\n", usage_message);
-      Return(MB_ERROR_NO_ERROR);
-    }
   }
+
+  /* the listing (profiles, counts, ssv, table): text records through the GMT API */
+  if ((T = mb_gmt_text_begin(GMT, options)) == NULL)
+    Return(API->error);
 
   int error = MB_ERROR_NO_ERROR;
 
@@ -520,7 +470,7 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
     if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
       fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      Return(MB_ERROR_OPEN_FAIL);
+      Return(GMT_ERROR_ON_FOPEN);
     }
     read_data = mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight, &error) == MB_SUCCESS;
   } else {
@@ -609,7 +559,7 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
       mb_error(verbose, error, &message);
       fprintf(stderr, "\nMBIO Error returned from function <mb_format_source>:\n%s\n", message);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      Return(error);
+      Return(GMT_RUNTIME_ERROR);
     }
 
     /* if svp source record type has been specified, override the default svp_source for this format */
@@ -625,7 +575,7 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
       fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
       fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", file);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      Return(error);
+      Return(GMT_RUNTIME_ERROR);
     }
 
     /* allocate memory for data arrays */
@@ -668,7 +618,7 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
       mb_error(verbose, error, &message);
       fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      Return(error);
+      Return(GMT_MEMORY_ERROR);
     }
 
     /* output info */
@@ -791,7 +741,7 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
             if (status != MB_SUCCESS) {
               fprintf(stderr, "\nUnable to allocate SVP save array\n");
               fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-              Return(MB_ERROR_MEMORY_FAIL);
+              Return(GMT_MEMORY_ERROR);
             }
           }
 
@@ -846,7 +796,7 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
           if (status == MB_SUCCESS) {
             if (!ssv_bounds_set || (navlon >= ssv_bounds[0] && navlon <= ssv_bounds[1] &&
                                             navlat >= ssv_bounds[2] && navlat <= ssv_bounds[3]))
-              fprintf(stdout, "%f %f\n", sensordepth, ssv);
+              mb_gmt_text_put(T, "%f %f\n", sensordepth, ssv);
           }
         }
       }
@@ -863,10 +813,10 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
              (svp_printmode == MBSVPLIST_PRINTMODE_UNIQUE && !svp_save[isvp].match_last) ||
              (svp_printmode == MBSVPLIST_PRINTMODE_ALL))) {
           /* set the output */
-          FILE *svp_fp = stdout;
+          struct MB_GMT_TEXT *svp_fp = T;	/* the listing, or the profile's own .svp file */
           if (svp_file_output) {
             snprintf(svp_file, sizeof(svp_file), "%s_%3.3d.svp", file, isvp);
-            svp_fp = fopen(svp_file, "w");
+            svp_fp = mb_gmt_text_file(GMT, svp_file);
           }
 
           /* get time as date */
@@ -877,11 +827,11 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
           {
             if (out_cnt == 0) /* output header records */
             {
-              printf("#mbsvplist CSV table output\n#navigation information is "
+              mb_gmt_text_put(T, "#mbsvplist CSV table output\n#navigation information is "
                      "approximate\n#SVP_cnt,date_time,longitude,latitude,num_data_points\n");
             }
             out_cnt++;
-            printf("%d,%4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d,%.6f,%.6f,%d\n", out_cnt, svp_time_i[0],
+            mb_gmt_text_put(T, "%d,%4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d,%.6f,%.6f,%d\n", out_cnt, svp_time_i[0],
                    svp_time_i[1], svp_time_i[2], svp_time_i[3], svp_time_i[4], svp_time_i[5], svp_time_i[6],
                    svp_save[isvp].longitude, svp_save[isvp].latitude, svp_save[isvp].n);
           }
@@ -892,40 +842,40 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
             }
 
             /* write it out */
-            fprintf(svp_fp, "## MB-SVP %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d %.9f %.9f\n", svp_time_i[0],
+            mb_gmt_text_put(svp_fp, "## MB-SVP %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d %.9f %.9f\n", svp_time_i[0],
                     svp_time_i[1], svp_time_i[2], svp_time_i[3], svp_time_i[4], svp_time_i[5], svp_time_i[6],
                     svp_save[isvp].longitude, svp_save[isvp].latitude);
-            fprintf(svp_fp, "## Water Sound Velocity Profile (SVP)\n");
-            fprintf(svp_fp, "## Output by Program %s\n", program_name);
-            fprintf(svp_fp, "## MB-System Version %s\n", MB_VERSION);
+            mb_gmt_text_put(svp_fp, "## Water Sound Velocity Profile (SVP)\n");
+            mb_gmt_text_put(svp_fp, "## Output by Program %s\n", program_name);
+            mb_gmt_text_put(svp_fp, "## MB-System Version %s\n", MB_VERSION);
             char user[256], host[256], date[32];
             status = mb_user_host_date(verbose, user, host, date, &error);
-            fprintf(svp_fp, "## Run by user <%s> on cpu <%s> at <%s>\n", user, host, date);
-            fprintf(svp_fp, "## Swath File: %s\n", file);
-            fprintf(svp_fp, "## Start Time: %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d\n", svp_time_i[0],
+            mb_gmt_text_put(svp_fp, "## Run by user <%s> on cpu <%s> at <%s>\n", user, host, date);
+            mb_gmt_text_put(svp_fp, "## Swath File: %s\n", file);
+            mb_gmt_text_put(svp_fp, "## Start Time: %4.4d/%2.2d/%2.2d %2.2d:%2.2d:%2.2d.%6.6d\n", svp_time_i[0],
                     svp_time_i[1], svp_time_i[2], svp_time_i[3], svp_time_i[4], svp_time_i[5], svp_time_i[6]);
-            fprintf(svp_fp, "## SVP Longitude: %f\n", svp_save[isvp].longitude);
-            fprintf(svp_fp, "## SVP Latitude:  %f\n", svp_save[isvp].latitude);
-            fprintf(svp_fp, "## SVP Count: %d\n", svp_save_count);
+            mb_gmt_text_put(svp_fp, "## SVP Longitude: %f\n", svp_save[isvp].longitude);
+            mb_gmt_text_put(svp_fp, "## SVP Latitude:  %f\n", svp_save[isvp].latitude);
+            mb_gmt_text_put(svp_fp, "## SVP Count: %d\n", svp_save_count);
             if (svp_save[isvp].depthzero_reset) {
-              fprintf(svp_fp, "## Initial depth reset from %f to 0.0 meters\n", svp_save[isvp].depthzero);
+              mb_gmt_text_put(svp_fp, "## Initial depth reset from %f to 0.0 meters\n", svp_save[isvp].depthzero);
             }
             if (verbose >= 1 && svp_save[isvp].depthzero_reset) {
               fprintf(stderr, "Initial depth reset from %f to 0.0 meters\n", svp_save[isvp].depthzero);
             }
-            fprintf(svp_fp, "## Number of SVP Points: %d\n", svp_save[isvp].n);
+            mb_gmt_text_put(svp_fp, "## Number of SVP Points: %d\n", svp_save[isvp].n);
             for (int i = 0; i < svp_save[isvp].n; i++)
-              fprintf(svp_fp, "%8.2f\t%7.2f\n", svp_save[isvp].depth[i], svp_save[isvp].velocity[i]);
+              mb_gmt_text_put(svp_fp, "%8.2f\t%7.2f\n", svp_save[isvp].depth[i], svp_save[isvp].velocity[i]);
             if (!svp_file_output) {
-              fprintf(svp_fp, "## \n");
-              fprintf(svp_fp, "## \n");
+              mb_gmt_text_put(svp_fp, "## \n");
+              mb_gmt_text_put(svp_fp, "## \n");
             }
             svp_written++;
           }
 
           /* close the svp file */
           if (svp_file_output && svp_fp != NULL) {
-            fclose(svp_fp);
+            mb_gmt_text_end(svp_fp);
 
             /* if desired, set first svp output to be used for recalculating
                 bathymetry */
@@ -968,7 +918,7 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
     fprintf(stderr, "Total %d SVP records written\n", svp_written_tot);
   }
   if (output_counts)
-    fprintf(stdout, "%d\n", svp_unique_tot);
+    mb_gmt_text_put(T, "%d\n", svp_unique_tot);
 
   /* deallocate memory */
   status &= mb_freed(verbose, __FILE__, __LINE__, (void **)&svp_save, &error);
@@ -983,6 +933,18 @@ int GMT_mbsvplist(void *V_API, int mode, void *args) {
     fprintf(stderr, "dbg2       status:  %d\n", status);
   }
 
-  Return(error);
+  const int output_failed = mb_gmt_text_end(T);
+  T = NULL;
+  if (output_failed) Return(GMT_RUNTIME_ERROR);
+
+  /* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+     The end of the data (EOF) is how every read finishes, not an error. */
+  if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+    char *message;
+    mb_error(verbose, error, &message);
+    GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+    Return(GMT_RUNTIME_ERROR);
+  }
+  Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

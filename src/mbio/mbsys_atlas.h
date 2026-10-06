@@ -86,6 +86,7 @@
 
 #ifndef MBSYS_ATLAS_H_
 #define MBSYS_ATLAS_H_
+#include "mbio_export.h"
 
 #include "mb_define.h"
 
@@ -473,7 +474,7 @@ int mbsys_atlas_insert_nav(int verbose, void *mbio_ptr, void *store_ptr, int tim
                            double navlat, double speed, double heading, double draft, double roll, double pitch, double heave,
                            int *error);
 int mbsys_atlas_copy(int verbose, void *mbio_ptr, void *store_ptr, void *copy_ptr, int *error);
-int mbsys_atlas_ttcorr(int verbose, void *mbio_ptr, void *store_ptr, int *error);
+MBIO_API int mbsys_atlas_ttcorr(int verbose, void *mbio_ptr, void *store_ptr, int *error);
 
 #ifdef __cplusplus
 }  /* extern "C" */

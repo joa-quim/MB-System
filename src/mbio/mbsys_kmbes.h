@@ -135,6 +135,7 @@
 
 #ifndef MBSYS_KMBES_H_
 #define MBSYS_KMBES_H_
+#include "mbio_export.h"
 
 #include "mb_define.h"
 
@@ -1849,7 +1850,7 @@ int mbsys_kmbes_dimensions(int verbose, void *mbio_ptr, void *store_ptr, int *ki
 int mbsys_kmbes_pingnumber(int verbose, void *mbio_ptr, unsigned int *pingnumber, int *error);
 int mbsys_kmbes_sonartype(int verbose, void *mbio_ptr, void *store_ptr, int *sonartype, int *error);
 int mbsys_kmbes_sidescantype(int verbose, void *mbio_ptr, void *store_ptr, int *ss_type, int *error);
-int mbsys_kmbes_active_attitude_system(void *store_ptr);
+MBIO_API int mbsys_kmbes_active_attitude_system(void *store_ptr);
 int mbsys_kmbes_preprocess(int verbose, void *mbio_ptr, void *store_ptr,
                             void *platform_ptr, void *preprocess_pars_ptr, int *error);
 int mbsys_kmbes_extract_platform(int verbose, void *mbio_ptr, void *store_ptr,

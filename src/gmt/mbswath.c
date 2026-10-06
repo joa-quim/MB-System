@@ -433,7 +433,7 @@ int GMT_mbswath_usage(struct GMTAPI_CTRL *API, int level) {
 #endif
 
 	if (level == GMT_SYNOPSIS)
-		return (EXIT_FAILURE);
+		return (GMT_MODULE_SYNOPSIS);
 
 	GMT_Message(API, GMT_TIME_NONE, "\t<inputfile> is an MB-System datalist referencing the swath data to be plotted.\n");
 	GMT_Option(API, "J-");
@@ -453,7 +453,7 @@ int GMT_mbswath_usage(struct GMTAPI_CTRL *API, int level) {
 	GMT_Option(API, "R");
 	GMT_Option(API, "U,V,X,c,.");
 
-	return (EXIT_FAILURE);
+	return (GMT_MODULE_USAGE);
 }
 
 int GMT_mbswath_parse(struct GMT_CTRL *GMT, struct MBSWATH_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -2468,6 +2468,6 @@ int GMT_mbswath(void *V_API, int mode, void *args) {
 	if (!Ctrl->N.active && GMT_Destroy_Data(API, &CPTshade) != GMT_OK) {
 		Return(API->error);
 	}
-	Return(EXIT_SUCCESS);
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

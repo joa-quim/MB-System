@@ -57,6 +57,7 @@
 
 #ifndef MBSYS_SINGLEBEAM_H_
 #define MBSYS_SINGLEBEAM_H_
+#include "mbio_export.h"
 
 struct mbsys_singlebeam_struct {
 	/* type of data record */
@@ -289,7 +290,7 @@ int mbsys_singlebeam_extract_nav(int verbose, void *mbio_ptr, void *store_ptr, i
 int mbsys_singlebeam_insert_nav(int verbose, void *mbio_ptr, void *store_ptr, int time_i[7], double time_d, double navlon,
                                 double navlat, double speed, double heading, double draft, double roll, double pitch,
                                 double heave, int *error);
-int mbsys_singlebeam_swathbounds(int verbose, void *mbio_ptr, void *store_ptr, int *kind, double *portlon, double *portlat,
+MBIO_API int mbsys_singlebeam_swathbounds(int verbose, void *mbio_ptr, void *store_ptr, int *kind, double *portlon, double *portlat,
                                  double *stbdlon, double *stbdlat, int *error);
 int mbsys_singlebeam_copy(int verbose, void *mbio_ptr, void *store_ptr, void *copy_ptr, int *error);
 int mbsys_singlebeam_pressuredepth(int verbose, double pressure, double latitude, double *depth, int *error);

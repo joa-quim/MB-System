@@ -30,11 +30,9 @@
  * Date:	November 2, 2009
  */
 /*
- * GMT-module port of src/utilities/mbsegypsd.cc. The program's getopt_long() option loop
- * is kept as it is, running on the reentrant mb_getopt_long() (the state
- * lives in a local structure, so the module can run any number of times in
- * one GMT session), and main() becomes GMT_mbsegypsd(), with every exit()
- * turned into Return().
+ * GMT-module port of src/utilities/mbsegypsd.cc: options from GMT's option list (long options
+ * through module_kw, lower-case aliases kept), main() becomes GMT_mbsegypsd() and every exit() a
+ * Return() with a GMT error code. Its results are the program's own files; its messages go to stderr.
  */
 
 #define THIS_MODULE_NAME "mbsegypsd"
@@ -65,8 +63,7 @@
 #include "mb_format.h"
 #include "mb_segy.h"
 #include "mb_status.h"
-
-#include "mb_getopt.h"
+#include "mb_gmt_opts.h"
 
 typedef enum {
     MBSEGYPSD_USESHOT = 0,
@@ -236,69 +233,55 @@ static int get_segy_limits(int verbose, char *segyfile, tracemode_t *tracemode,
 
 /* --- GMT front end ---------------------------------------------------- */
 
+/* Translation table from the program's long options to its short ones (each one has a short twin) */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "decimate",    "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "fft-length",  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "log-scale",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'A', "shot-scale",  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "time-sweep",  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "trace-range", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'W', "window",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
-	return GMT_PARSE_ERROR;
+	GMT_Message(API, GMT_TIME_NONE, "Every option also has the program's lower-case and long forms.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
-/* The options GMT itself should see: -V (verbosity) and -I (the input the
- * module keys bind). Everything else, long options included, is parsed by
- * the program's own option loop below. */
-static char *mb_gmt_options_string(int argc, char **argv) {
-	size_t total = 1;
-	for (int i = 1; i < argc; i++)
-		total += strlen(argv[i]) + 1;
-	char *s = (char *)calloc(total + 8, 1);
-	if (s == NULL)
-		return NULL;
-	for (int i = 1; i < argc; i++) {
-		if (argv[i][0] == '-' && (argv[i][1] == 'V' || (argv[i][1] == 'I' && argv[i][2] != '\0'))) {
-			if (s[0] != '\0')
-				strcat(s, " ");
-			strcat(s, argv[i]);
-		}
-	}
-	return s;
-}
-
-/* gmt_M_free_options() hard-codes a variable named "options", which the
-   program's own option table shadows here, so destroy gmt_options directly */
-#define bailout(code) { mb_getopt_args_free(argc, argv); free(gmt_args); GMT_Destroy_Options(API, &gmt_options); return (code); }
+#define bailout(code) { gmt_M_free_options(mode); return code; }
 #define Return(code) { gmt_end_module(GMT, GMT_cpy); bailout(code); }
-EXTERN_MSC int GMT_mbsegypsd(void *V_API, int gmt_mode, void *args);
+EXTERN_MSC int GMT_mbsegypsd(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
 
-int GMT_mbsegypsd(void *V_API, int gmt_mode, void *args) {
+int GMT_mbsegypsd(void *V_API, int mode, void *args) {
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
-	struct GMT_OPTION *gmt_options = NULL;
-	char *gmt_args = NULL;
-	char **argv = NULL;
-	int argc = 0;
-	struct mb_getopt_state getopt_state;
-	mb_getopt_init(&getopt_state);
+	struct GMT_OPTION *options = NULL;
+	int gmt_error;
 
-	if (!API) return GMT_NOT_A_SESSION;
-	if (gmt_mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-
-	/* the program's own argv[], whatever shape GMT handed us */
-	argc = mb_getopt_args_build(THIS_MODULE_NAME, gmt_mode, args, &argv);
-	if (argc == 2 && (strcmp(argv[1], "-") == 0 || strcmp(argv[1], "?") == 0))
-		bailout(usage(API, GMT_USAGE));
-	if (argc == 2 && strcmp(argv[1], "+") == 0)
-		bailout(usage(API, GMT_SYNOPSIS));
-
-	gmt_args = mb_gmt_options_string(argc, argv);
-	gmt_options = GMT_Create_Options(API, GMT_MODULE_CMD, (gmt_args != NULL && gmt_args[0] != '\0') ? gmt_args : NULL);
-	if (API->error) bailout(API->error);
+	if (API == NULL) return GMT_NOT_A_SESSION;
+	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a run of the program, which reports the missing input itself */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &gmt_options, &GMT_cpy)) == NULL) bailout(API->error);
-	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, gmt_options)) Return(API->error);
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	int verbose = 0;
 	double shotscale = 1.0;
@@ -324,80 +307,12 @@ int GMT_mbsegypsd(void *V_API, int gmt_mode, void *args) {
 	int ngridxy = 0;
 
 	{
-		static struct mb_getopt_option options[] = {{"verbose", mb_no_argument, NULL, 0},
-		                                  {"help", mb_no_argument, NULL, 0},
-		                                  {"decimate", mb_required_argument, NULL, 0},
-		                                  {"fft-length", mb_required_argument, NULL, 0},
-		                                  {"input", mb_required_argument, NULL, 0},
-		                                  {"log-scale", mb_no_argument, NULL, 0},
-		                                  {"output", mb_required_argument, NULL, 0},
-		                                  {"shot-scale", mb_required_argument, NULL, 0},
-		                                  {"time-sweep", mb_required_argument, NULL, 0},
-		                                  {"trace-range", mb_required_argument, NULL, 0},
-		                                  {"window", mb_required_argument, NULL, 0},
-		                                  {NULL, 0, NULL, 0}};
-
-		int option_index;
 		bool errflg = false;
-		int c;
 		bool help = false;
-		while ((c = mb_getopt_long(&getopt_state, argc, argv, "A:a:D:d:I:i:LlN:n:O:o:S:s:T:t:VvW:w:Hh", options, &option_index)) != -1)
-			switch (c) {
-			/* long options all return c=0 */
-			case 0:
-				if (strcmp("verbose", options[option_index].name) == 0) {
-					verbose++;
-				}
-				else if (strcmp("help", options[option_index].name) == 0) {
-					help = true;
-				}
-				else if (strcmp("decimate", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d", &decimatex);
-				}
-				else if (strcmp("fft-length", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d", &nfft);
-				}
-				else if (strcmp("input", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", segyfile);
-				}
-				else if (strcmp("log-scale", options[option_index].name) == 0) {
-					logscale = true;
-				}
-				else if (strcmp("output", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", fileroot);
-				}
-				else if (strcmp("shot-scale", options[option_index].name) == 0) {
-					const int n = sscanf(getopt_state.optarg, "%lf/%lf", &shotscale, &frequencyscale);
-					if (n == 2)
-						scale2distance = true;
-				}
-				else if (strcmp("time-sweep", options[option_index].name) == 0) {
-					const int n = sscanf(getopt_state.optarg, "%lf/%lf", &timesweep, &timedelay);
-					if (n < 2)
-						timedelay = 0.0;
-				}
-				else if (strcmp("trace-range", options[option_index].name) == 0) {
-					int tracemode_tmp;
-					const int n = sscanf(getopt_state.optarg, "%d/%d/%d/%d/%d", &tracemode_tmp, &tracestart, &traceend, &chanstart, &chanend);
-					tracemode = (tracemode_t)tracemode_tmp;  // TODO(Schwehr): Range check.
-					if (n < 5) {
-						chanstart = 0;
-						chanend = -1;
-					}
-					if (n < 3) {
-						tracestart = 0;
-						traceend = 0;
-					}
-					if (n < 1) {
-						tracemode = MBSEGYPSD_USESHOT;
-					}
-				}
-				else if (strcmp("window", options[option_index].name) == 0) {
-					int windowmode_tmp;
-					sscanf(getopt_state.optarg, "%d/%lf/%lf", &windowmode_tmp, &windowstart, &windowend);
-					windowmode = (windowmode_t)windowmode_tmp;  // TODO(Schwehr): Range check.
-				}
-				break;
+		/* the program's options from GMT's option list (long options come in as their short twins
+		   through module_kw; lower-case aliases kept) */
+		for (struct GMT_OPTION *opt = options; opt; opt = opt->next)
+			switch (opt->option) {
 			case 'H':
 			case 'h':
 				help = true;
@@ -409,18 +324,18 @@ int GMT_mbsegypsd(void *V_API, int gmt_mode, void *args) {
 			case 'A':
 			case 'a':
 			{
-				const int n = sscanf(getopt_state.optarg, "%lf/%lf", &shotscale, &frequencyscale);
+				const int n = sscanf(opt->arg, "%lf/%lf", &shotscale, &frequencyscale);
 				if (n == 2)
 					scale2distance = true;
 				break;
 			}
 			case 'D':
 			case 'd':
-				sscanf(getopt_state.optarg, "%d", &decimatex);
+				sscanf(opt->arg, "%d", &decimatex);
 				break;
 			case 'I':
 			case 'i':
-				sscanf(getopt_state.optarg, "%1023s", segyfile);
+				sscanf(opt->arg, "%1023s", segyfile);
 				break;
 			case 'L':
 			case 'l':
@@ -428,18 +343,18 @@ int GMT_mbsegypsd(void *V_API, int gmt_mode, void *args) {
 				break;
 			case 'N':
 			case 'n':
-				sscanf(getopt_state.optarg, "%d", &nfft);
+				sscanf(opt->arg, "%d", &nfft);
 				break;
 			case 'G':
 			case 'O':
 			case 'o':
-				sscanf(getopt_state.optarg, "%1023s", fileroot);
+				sscanf(opt->arg, "%1023s", fileroot);
 				break;
 			case 'S':
 			case 's':
 			{
 				int tracemode_tmp;
-				const int n = sscanf(getopt_state.optarg, "%d/%d/%d/%d/%d", &tracemode_tmp, &tracestart, &traceend, &chanstart, &chanend);
+				const int n = sscanf(opt->arg, "%d/%d/%d/%d/%d", &tracemode_tmp, &tracestart, &traceend, &chanstart, &chanend);
 				tracemode = (tracemode_t)tracemode_tmp;  // TODO(Schwehr): Range check.
 				if (n < 5) {
 					chanstart = 0;
@@ -457,7 +372,7 @@ int GMT_mbsegypsd(void *V_API, int gmt_mode, void *args) {
 			case 'T':
 			case 't':
 			{
-				const int n = sscanf(getopt_state.optarg, "%lf/%lf", &timesweep, &timedelay);
+				const int n = sscanf(opt->arg, "%lf/%lf", &timesweep, &timedelay);
 				if (n < 2)
 					timedelay = 0.0;
 				break;
@@ -466,24 +381,21 @@ int GMT_mbsegypsd(void *V_API, int gmt_mode, void *args) {
 			case 'w':
 			{
 				int windowmode_tmp;
-				sscanf(getopt_state.optarg, "%d/%lf/%lf", &windowmode_tmp, &windowstart, &windowend);
+				sscanf(opt->arg, "%d/%lf/%lf", &windowmode_tmp, &windowstart, &windowend);
 				windowmode = (windowmode_t)windowmode_tmp;  // TODO(Schwehr): Range check.
 				break;
 			}
-			case '?':
-				errflg = true;
+			default:
+				errflg |= (gmt_default_option_error(GMT, opt) != 0);
+				break;
 			}
 
-		if (verbose >= 2)
-			outfp = stderr;
-		else
-			outfp = stdout;
+		/* The program's messages: on stdout below -V2 in the program, but as a module stdout is
+		   data, and these are diagnostics. The results are the program's own files. */
+		outfp = stderr;
 
-		if (errflg) {
-			fprintf(outfp, "usage: %s\n", usage_message);
-			fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_BAD_USAGE);
-		}
+		if (errflg)
+			Return(GMT_PARSE_ERROR);
 
 		if (verbose == 1 || help) {
 			fprintf(outfp, "\nProgram %s\n", program_name);
@@ -519,17 +431,13 @@ int GMT_mbsegypsd(void *V_API, int gmt_mode, void *args) {
 			fprintf(outfp, "dbg2       logscale:       %d\n", logscale);
 		}
 
-		if (help) {
-			fprintf(outfp, "\n%s\n", help_message);
-			fprintf(outfp, "\nusage: %s\n", usage_message);
-			Return(MB_ERROR_NO_ERROR);
-		}
+		if (help)
+			Return(usage(API, GMT_USAGE));
 	}
 
 	if (decimatex <= 0) {
-		fprintf(outfp, "\nBad trace decimation: %d specified...\n", decimatex);
-		fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
-		Return(MB_ERROR_BAD_PARAMETER);
+		GMT_Report(API, GMT_MSG_ERROR, "Bad trace decimation: %d specified...\n", decimatex);
+		Return(GMT_PARSE_ERROR);
 	}
 
 	int error = MB_ERROR_NO_ERROR;
@@ -563,14 +471,14 @@ int GMT_mbsegypsd(void *V_API, int gmt_mode, void *args) {
 
 	/* check specified parameters */
 	if (traceend < 1 || traceend < tracestart) {
-		fprintf(outfp, "\nBad trace numbers: %d %d specified...\n", tracestart, traceend);
-		fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
-		Return(error);
+		/* the program exits with MBIO's error here, which can be 0 (it is when no segy file was
+		   given): as a module this is the error it is */
+		GMT_Report(API, GMT_MSG_ERROR, "Bad trace numbers: %d %d specified...\n", tracestart, traceend);
+		Return(GMT_RUNTIME_ERROR);
 	}
 	if (timesweep <= 0.0) {
-		fprintf(outfp, "\nBad time sweep: %f specified...\n", timesweep);
-		fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
-		Return(error);
+		GMT_Report(API, GMT_MSG_ERROR, "Bad time sweep: %f specified...\n", timesweep);
+		Return(GMT_RUNTIME_ERROR);
 	}
 
 	/* initialize reading the segy file */
@@ -580,10 +488,9 @@ int GMT_mbsegypsd(void *V_API, int gmt_mode, void *args) {
 	if (mb_segy_read_init(verbose, segyfile, &mbsegyioptr, &asciiheader, &fileheader, &error) != MB_SUCCESS) {
 		char *message;
 		mb_error(verbose, error, &message);
-		fprintf(outfp, "\nMBIO Error returned from function <mb_segy_read_init>:\n%s\n", message);
-		fprintf(outfp, "\nSEGY File <%s> not initialized for reading\n", segyfile);
-		fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
-		Return(error);
+		GMT_Report(API, GMT_MSG_ERROR, "MBIO Error returned from function <mb_segy_read_init>: %s\n", message);
+		GMT_Report(API, GMT_MSG_ERROR, "SEGY File <%s> not initialized for reading\n", segyfile);
+		Return(GMT_RUNTIME_ERROR);
 	}
 
 
@@ -633,9 +540,8 @@ int GMT_mbsegypsd(void *V_API, int gmt_mode, void *args) {
 	status &= mb_mallocd(verbose, __FILE__, __LINE__, ngridy * sizeof(double), (void **)&wpsdtot, &error);
 
 	if (status != MB_SUCCESS) {
-		fprintf(outfp, "\nUnable to allocate grid/psd arrays\n");
-		fprintf(outfp, "\nProgram <%s> Terminated\n", program_name);
-		Return(MB_ERROR_MEMORY_FAIL);
+		GMT_Report(API, GMT_MSG_ERROR, "Unable to allocate grid/psd arrays\n");
+		Return(GMT_MEMORY_ERROR);
 	}
 
 	/* zero working psd array */
@@ -926,10 +832,13 @@ int GMT_mbsegypsd(void *V_API, int gmt_mode, void *args) {
 		strcpy(zlabel, "Intensity/Hz");
 	char title[MB_PATH_MAXLINE+50] = "";
 	snprintf(title, sizeof(title), "Power Spectral Density Grid from %s", segyfile);
+	char **hist_argv = NULL;
+	const int hist_argc = mb_gmt_history_args(API, options, program_name, &hist_argv);
 	status &= mb_write_gmt_grd(
 		verbose, gridfile, grid, NAN,
 		ngridx, ngridy, xmin, xmax, ymin, ymax, gridmintot, gridmaxtot, dx,
-		dy, xlabel, ylabel, zlabel, title, projection, argc, argv, &error);
+		dy, xlabel, ylabel, zlabel, title, projection, hist_argc, hist_argv, &error);
+	mb_gmt_history_free(API, hist_argc, hist_argv);
 
 	/* output average power spectra */
 	FILE *fp  = fopen(psdfile, "w");
@@ -988,6 +897,13 @@ int GMT_mbsegypsd(void *V_API, int gmt_mode, void *args) {
 		fprintf(outfp, "dbg2       status:  %d\n", status);
 	}
 
-	Return(error);
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one */
+	if (error != MB_ERROR_NO_ERROR) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

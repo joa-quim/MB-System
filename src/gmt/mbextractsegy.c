@@ -40,7 +40,7 @@
 #define THIS_MODULE_PURPOSE		"Extract subbottom/centerbeam/seismic data to SIOSEIS-style SEGY files and emit plotting scripts"
 #define THIS_MODULE_KEYS		">D}"
 #define THIS_MODULE_NEEDS		""
-#define THIS_MODULE_OPTIONS		"-:>Vh"
+#define THIS_MODULE_OPTIONS		"->V"
 
 #include "gmt_dev.h"
 
@@ -88,6 +88,7 @@ EXTERN_MSC int GMT_mbextractsegy(void *API, int mode, void *args);
 /* --- Control structure ---------------------------------------------- */
 
 struct MBEXTRACTSEGY_CTRL {
+	int verbose;	/* the program's -V/-v count */
 	struct mbes_B { bool active; int btime_i[7]; }                B;
 	struct mbes_E { bool active; int etime_i[7]; }                E;
 	struct mbes_F { bool active; int format; }                    F;
@@ -128,11 +129,33 @@ static void Free_mbextractsegy_Ctrl(struct GMT_CTRL *GMT, struct MBEXTRACTSEGY_C
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'B', "begin-time",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'M', "check-route-bearing", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'E', "end-time",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Z', "plot-max",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'J', "plot-scale",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'U', "range-threshold",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "route",               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "sample-format",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "start-line",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'Q', "time-list",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "time-shift",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "\n%s\n\n", help_message);
 	GMT_Message(API, GMT_TIME_NONE,
 		"\t-B Beginning time as yr/mo/dy/hr/mn/sc/us.\n"
@@ -149,9 +172,10 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 		"\t-T Time shift (seconds).\n"
 		"\t-U Range threshold for waypoint approach (m).\n"
 		"\t-Z Max amplitude for plot scaling.\n"
-		"\t-H Print description and exit.\n");
-	GMT_Option(API, "V,:");
-	return GMT_PARSE_ERROR;
+		"\t-H Print description and exit.\n"
+		"\tEvery option also has the program's lower-case and long forms.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
 static int parse(struct GMT_CTRL *GMT, struct MBEXTRACTSEGY_CTRL *Ctrl, struct GMT_OPTION *options) {
@@ -162,6 +186,7 @@ static int parse(struct GMT_CTRL *GMT, struct MBEXTRACTSEGY_CTRL *Ctrl, struct G
 	for (opt = options; opt; opt = opt->next) {
 		switch (opt->option) {
 		case 'B':
+		case 'b':
 			if (opt->arg && opt->arg[0]) {
 				sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &Ctrl->B.btime_i[0], &Ctrl->B.btime_i[1],
 				       &Ctrl->B.btime_i[2], &Ctrl->B.btime_i[3], &Ctrl->B.btime_i[4], &Ctrl->B.btime_i[5]);
@@ -170,6 +195,7 @@ static int parse(struct GMT_CTRL *GMT, struct MBEXTRACTSEGY_CTRL *Ctrl, struct G
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'E':
+		case 'e':
 			if (opt->arg && opt->arg[0]) {
 				sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &Ctrl->E.etime_i[0], &Ctrl->E.etime_i[1],
 				       &Ctrl->E.etime_i[2], &Ctrl->E.etime_i[3], &Ctrl->E.etime_i[4], &Ctrl->E.etime_i[5]);
@@ -178,14 +204,17 @@ static int parse(struct GMT_CTRL *GMT, struct MBEXTRACTSEGY_CTRL *Ctrl, struct G
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'F':
+		case 'f':
 			if (opt->arg && opt->arg[0] && sscanf(opt->arg, "%d", &Ctrl->F.format) == 1)
 				Ctrl->F.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax -F option: expected integer format id\n"); n_errors++; }
 			break;
 		case 'H':
+		case 'h':
 			Ctrl->H.active = true;
 			break;
 		case 'I':
+		case 'i':
 			if (opt->arg && opt->arg[0]) {
 				strncpy(Ctrl->I.file, opt->arg, MB_PATH_MAXLINE - 1);
 				Ctrl->I.file[MB_PATH_MAXLINE - 1] = '\0';
@@ -193,21 +222,25 @@ static int parse(struct GMT_CTRL *GMT, struct MBEXTRACTSEGY_CTRL *Ctrl, struct G
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'J':
+		case 'j':
 			if (opt->arg && opt->arg[0]) {
 				sscanf(opt->arg, "%lf/%lf/%lf", &Ctrl->J.xscale, &Ctrl->J.yscale, &Ctrl->J.maxwidth);
 				Ctrl->J.active = true;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'L':
+		case 'l':
 			if (opt->arg && opt->arg[0]) {
 				sscanf(opt->arg, "%d/%1023s", &Ctrl->L.startline, Ctrl->L.lineroot);
 				Ctrl->L.active = true;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'M':
+		case 'm':
 			Ctrl->M.active = true;
 			break;
 		case 'O':
+		case 'o':
 			if (opt->arg && opt->arg[0]) {
 				char tmpstr[MB_PATH_MAXLINE] = {0};
 				sscanf(opt->arg, "%1023s", tmpstr);
@@ -224,44 +257,54 @@ static int parse(struct GMT_CTRL *GMT, struct MBEXTRACTSEGY_CTRL *Ctrl, struct G
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'Q':
+		case 'q':
 			if (opt->arg && opt->arg[0]) {
 				sscanf(opt->arg, "%1023s", Ctrl->Q.file);
 				Ctrl->Q.active = true;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'R':
+		case 'r':
 			if (opt->arg && opt->arg[0]) {
 				sscanf(opt->arg, "%1023s", Ctrl->R.file);
 				Ctrl->R.active = true;
 			} else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'S':
+		case 's':
 			if (opt->arg && opt->arg[0] && sscanf(opt->arg, "%d", &Ctrl->S.sampleformat) == 1)
 				Ctrl->S.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax -S option: expected integer sample format\n"); n_errors++; }
 			break;
 		case 'T':
+		case 't':
 			if (opt->arg && opt->arg[0] && sscanf(opt->arg, "%lf", &Ctrl->T.timeshift) == 1)
 				Ctrl->T.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax -T option: expected timeshift (s)\n"); n_errors++; }
 			break;
 		case 'U':
+		case 'u':
 			if (opt->arg && opt->arg[0] && sscanf(opt->arg, "%lf", &Ctrl->U.rangethreshold) == 1)
 				Ctrl->U.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax -U option: expected range threshold (m)\n"); n_errors++; }
 			break;
+		case 'V':
+		case 'v':
+			Ctrl->verbose++;
+			break;
 		case 'Z':
+		case 'z':
 			if (opt->arg && opt->arg[0] && sscanf(opt->arg, "%lf", &Ctrl->Z.zmax) == 1)
 				Ctrl->Z.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax -Z option: expected zmax\n"); n_errors++; }
 			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 /*--------------------------------------------------------------------*/
@@ -612,21 +655,17 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
 	options = GMT_Create_Options(API, mode, args);
 	if (API->error) return API->error;
-	if (!options || options->option == GMT_OPT_USAGE)   bailout(usage(API, GMT_USAGE));
-	if (options->option == GMT_OPT_SYNOPSIS)            bailout(usage(API, GMT_SYNOPSIS));
+	/* 1: no options is a run of the program (on datalist.mb-1) */
+	{ int uerr = gmt_report_usage(API, options, 1, usage); if (uerr != GMT_NOERROR) bailout(uerr); }
 
-#if GMT_MAJOR_VERSION >= 6
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
-#else
-	GMT = gmt_begin_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, &GMT_cpy);
-#endif
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	Ctrl = New_mbextractsegy_Ctrl(GMT);
 	{ int perr = parse(GMT, Ctrl, options); if (perr) Return(perr); }
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
 
-	int verbose = GMT->common.V.active;
-	if (GMT->current.setting.verbose >= GMT_MSG_DEBUG) verbose = 2;
+	int verbose = Ctrl->verbose;
 
 	int format;
 	int pings;
@@ -856,7 +895,7 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 		if ((fp = fopen(timelist_file, "r")) == NULL) {
 			error = MB_ERROR_OPEN_FAIL;
 			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open time list file <%s> for reading\n", timelist_file);
-			Return(status);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		/* rawroutefile = false; */
 		while ((result = fgets(comment, MB_PATH_MAXLINE, fp)) == comment) {
@@ -885,7 +924,7 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 						mb_error(verbose, error, &message);
 						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -933,7 +972,7 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 			error = MB_ERROR_OPEN_FAIL;
 			status = MB_FAILURE;
 			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open route file <%s> for reading\n", route_file);
-			Return(status);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		bool rawroutefile = false;  /* TODO(schwehr): Explain how this flag works.  Suspicious */
 		while ((result = fgets(comment, MB_PATH_MAXLINE, fp)) == comment) {
@@ -971,7 +1010,7 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 						mb_error(verbose, error, &message);
 						GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -1033,7 +1072,7 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open data list file: %s\n", read_file);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		read_data = mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight, &error) == MB_SUCCESS;
 	} else {
@@ -1056,7 +1095,7 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 		error = MB_ERROR_OPEN_FAIL;
 		status = MB_FAILURE;
 		GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open plotting script file <%s> \n", scriptfile);
-		Return(status);
+		Return(GMT_ERROR_ON_FOPEN);
 	}
 
 	struct mb_segyasciiheader_struct segyasciiheader;
@@ -1108,7 +1147,7 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nMultibeam File <%s> not initialized for reading\n", file);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		/* allocate memory for data arrays */
@@ -1137,7 +1176,7 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 			mb_error(verbose, error, &message);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			Return(GMT_MEMORY_ERROR);
 		}
 
 		/* read and print data */
@@ -1352,7 +1391,7 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 						if ((fpc = fopen(output_file, "wb")) == NULL) {
 							GMT_Report(API, GMT_MSG_NORMAL, "\nError opening output segy file:\n%s\n", output_file);
 							GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-							Return(MB_ERROR_WRITE_FAIL);
+							Return(GMT_ERROR_ON_FOPEN);
 						}
 						else if (verbose > 0) {
 							/* output info on file output */
@@ -1363,7 +1402,7 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 						if ((fph = fopen(output_file, "wb")) == NULL) {
 							GMT_Report(API, GMT_MSG_NORMAL, "\nError opening output segy file:\n%s\n", output_file);
 							GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-							Return(MB_ERROR_WRITE_FAIL);
+							Return(GMT_ERROR_ON_FOPEN);
 						}
 						else if (verbose > 0) {
 							/* output info on file output */
@@ -1374,7 +1413,7 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 						if ((fpe = fopen(output_file, "wb")) == NULL) {
 							GMT_Report(API, GMT_MSG_NORMAL, "\nError opening output segy file:\n%s\n", output_file);
 							GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-							Return(MB_ERROR_WRITE_FAIL);
+							Return(GMT_ERROR_ON_FOPEN);
 						}
 						else if (verbose > 0) {
 							/* output info on file output */
@@ -1386,7 +1425,7 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 						if ((fpe = fopen(output_file, "wb")) == NULL) {
 							GMT_Report(API, GMT_MSG_NORMAL, "\nError opening output segy file:\n%s\n", output_file);
 							GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-							Return(MB_ERROR_WRITE_FAIL);
+							Return(GMT_ERROR_ON_FOPEN);
 						}
 						else if (verbose > 0) {
 							/* output info on file output */
@@ -1398,7 +1437,7 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 						if ((fpe = fopen(output_file, "wb")) == NULL) {
 							GMT_Report(API, GMT_MSG_NORMAL, "\nError opening output segy file:\n%s\n", output_file);
 							GMT_Report(API, GMT_MSG_NORMAL, "\nProgram <%s> Terminated\n", program_name);
-							Return(MB_ERROR_WRITE_FAIL);
+							Return(GMT_ERROR_ON_FOPEN);
 						}
 						else if (verbose > 0) {
 							/* output info on file output */
@@ -1913,6 +1952,14 @@ int GMT_mbextractsegy(void *V_API, int mode, void *args) {
 		GMT_Report(API, GMT_MSG_NORMAL, "Program %s completed but failed to deallocate all allocated memory - the code has a memory leak somewhere!\n", program_name);
 	}
 
-	Return(error);
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+	   The end of the data (EOF) is how every read finishes, not an error. */
+	if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

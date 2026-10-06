@@ -30,11 +30,9 @@
  *
  */
 /*
- * GMT-module port of src/utilities/mb7k2jstar.cc. The program's getopt_long() option loop
- * is kept as it is, running on the reentrant mb_getopt_long() (the state
- * lives in a local structure, so the module can run any number of times in
- * one GMT session), and main() becomes GMT_mb7k2jstar(), with every exit()
- * turned into Return().
+ * GMT-module port of src/utilities/mb7k2jstar.cc: options from GMT's option list (long options
+ * through module_kw, lower-case aliases kept), main() becomes GMT_mb7k2jstar() and every exit() a
+ * Return() with a GMT error code. Its results are the program's own files; its messages go to stderr.
  */
 
 #define THIS_MODULE_NAME "mb7k2jstar"
@@ -63,7 +61,7 @@
 #include "mbsys_jstar.h"
 #include "mbsys_reson7k.h"
 
-#include "mb_getopt.h"
+#include "mb_gmt_opts.h"
 
 typedef enum {
     MB7K2JSTAR_SSLOW = 1,
@@ -119,69 +117,61 @@ static const char usage_message[] =
 
 /* --- GMT front end ---------------------------------------------------- */
 
+/* Translation table from the program's long options to its short ones (each one has a short twin) */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'v', "verbose",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'B', "bottom-pick",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'M', "check-route-bearing", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "comments",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'A', "extract-mode",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'X', "flip-sidescan",       "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'G', "gain",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "input",               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "line-root",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "output",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "route-file",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "smooth",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "time-shift",          "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
-	return GMT_PARSE_ERROR;
+	GMT_Message(API, GMT_TIME_NONE, "Every option also has the program's lower-case and long forms.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
-/* The options GMT itself should see: -V (verbosity) and -I (the input the
- * module keys bind). Everything else, long options included, is parsed by
- * the program's own option loop below. */
-static char *mb_gmt_options_string(int argc, char **argv) {
-	size_t total = 1;
-	for (int i = 1; i < argc; i++)
-		total += strlen(argv[i]) + 1;
-	char *s = (char *)calloc(total + 8, 1);
-	if (s == NULL)
-		return NULL;
-	for (int i = 1; i < argc; i++) {
-		if (argv[i][0] == '-' && (argv[i][1] == 'V' || (argv[i][1] == 'I' && argv[i][2] != '\0'))) {
-			if (s[0] != '\0')
-				strcat(s, " ");
-			strcat(s, argv[i]);
-		}
-	}
-	return s;
-}
-
-/* gmt_M_free_options() hard-codes a variable named "options", which the
-   program's own option table shadows here, so destroy gmt_options directly */
-#define bailout(code) { mb_getopt_args_free(argc, argv); free(gmt_args); GMT_Destroy_Options(API, &gmt_options); return (code); }
+#define bailout(code) { gmt_M_free_options(mode); return code; }
 #define Return(code) { gmt_end_module(GMT, GMT_cpy); bailout(code); }
-EXTERN_MSC int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args);
+EXTERN_MSC int GMT_mb7k2jstar(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
 
-int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
+int GMT_mb7k2jstar(void *V_API, int mode, void *args) {
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
-	struct GMT_OPTION *gmt_options = NULL;
-	char *gmt_args = NULL;
-	char **argv = NULL;
-	int argc = 0;
-	struct mb_getopt_state getopt_state;
-	mb_getopt_init(&getopt_state);
+	struct GMT_OPTION *options = NULL;
+	int gmt_error;
 
-	if (!API) return GMT_NOT_A_SESSION;
-	if (gmt_mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-
-	/* the program's own argv[], whatever shape GMT handed us */
-	argc = mb_getopt_args_build(THIS_MODULE_NAME, gmt_mode, args, &argv);
-	if (argc == 2 && (strcmp(argv[1], "-") == 0 || strcmp(argv[1], "?") == 0))
-		bailout(usage(API, GMT_USAGE));
-	if (argc == 2 && strcmp(argv[1], "+") == 0)
-		bailout(usage(API, GMT_SYNOPSIS));
-
-	gmt_args = mb_gmt_options_string(argc, argv);
-	gmt_options = GMT_Create_Options(API, GMT_MODULE_CMD, (gmt_args != NULL && gmt_args[0] != '\0') ? gmt_args : NULL);
-	if (API->error) bailout(API->error);
+	if (API == NULL) return GMT_NOT_A_SESSION;
+	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a run of the program (on datalist.mb-1, as the program does) */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &gmt_options, &GMT_cpy)) == NULL) bailout(API->error);
-	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, gmt_options)) Return(API->error);
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	/* -X (flip sidescan) takes no argument: keep GMT from completing it as its -X from history */
+	mb_gmt_shorthand_guard(options, "X");
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
 	int verbose = 0;
 	int format = 0;
@@ -206,7 +196,7 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 	bool extract_sbp = false;
 	bool print_comments = false;
 
-	mb7k2jstar_mode mode;
+	mb7k2jstar_mode xmode;
 
 	bottompick_t bottompickmode = MB7K2JSTAR_BOTTOMPICK_ALTITUDE;
 	double bottompickthreshold = 0.4;
@@ -231,118 +221,13 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 
 	/* process argument list */
 	{
-		static struct mb_getopt_option options[] = {{"verbose", mb_no_argument, NULL, 0},
-		                                  {"help", mb_no_argument, NULL, 0},
-		                                  {"bottom-pick", mb_required_argument, NULL, 0},
-		                                  {"check-route-bearing", mb_no_argument, NULL, 0},
-		                                  {"comments", mb_no_argument, NULL, 0},
-		                                  {"extract-mode", mb_required_argument, NULL, 0},
-		                                  {"flip-sidescan", mb_no_argument, NULL, 0},
-		                                  {"format", mb_required_argument, NULL, 0},
-		                                  {"gain", mb_required_argument, NULL, 0},
-		                                  {"input", mb_required_argument, NULL, 0},
-		                                  {"line-root", mb_required_argument, NULL, 0},
-		                                  {"output", mb_required_argument, NULL, 0},
-		                                  {"route-file", mb_required_argument, NULL, 0},
-		                                  {"smooth", mb_required_argument, NULL, 0},
-		                                  {"time-shift", mb_required_argument, NULL, 0},
-		                                  {NULL, 0, NULL, 0}};
-
 		bool errflg = false;
 		bool help = false;
-		int c;
-		int option_index;
-		while ((c = mb_getopt_long(&getopt_state, argc, argv, "A:a:B:b:CcF:f:G:g:I:i:L:l:MmO:o:R:r:S:s:T:t:XxVvHh", options, &option_index)) != -1)
+		/* the program's options from GMT's option list (long options come in as their short twins
+		   through module_kw; lower-case aliases kept) */
+		for (struct GMT_OPTION *opt = options; opt; opt = opt->next)
 		{
-			switch (c) {
-			/* long options all return c=0 */
-			case 0:
-				if (strcmp("verbose", options[option_index].name) == 0) {
-					verbose++;
-				}
-				else if (strcmp("help", options[option_index].name) == 0) {
-					help = true;
-				}
-				else if (strcmp("bottom-pick", options[option_index].name) == 0) {
-					int tmp;
-					const int n = sscanf(getopt_state.optarg, "%d/%lf", &tmp, &bottompickthreshold);
-					bottompickmode = (bottompick_t)tmp;
-					if (n == 0)
-						bottompickmode = MB7K2JSTAR_BOTTOMPICK_ALTITUDE;
-					else if (n == 1 && bottompickmode == MB7K2JSTAR_BOTTOMPICK_ARRIVAL)
-						bottompickthreshold = 0.5;
-				}
-				else if (strcmp("check-route-bearing", options[option_index].name) == 0) {
-					checkroutebearing = true;
-				}
-				else if (strcmp("comments", options[option_index].name) == 0) {
-					print_comments = true;
-				}
-				else if (strcmp("extract-mode", options[option_index].name) == 0) {
-					if (strncmp(getopt_state.optarg, "SSLOW", 5) == 0 || strncmp(getopt_state.optarg, "sslow", 5) == 0) {
-						extract_sslow = true;
-					}
-					else if (strncmp(getopt_state.optarg, "SSHIGH", 6) == 0 || strncmp(getopt_state.optarg, "sshigh", 6) == 0) {
-						extract_sshigh = true;
-					}
-					else if (strncmp(getopt_state.optarg, "SBP", 3) == 0 || strncmp(getopt_state.optarg, "sbp", 3) == 0) {
-						extract_sbp = true;
-					}
-					else if (strncmp(getopt_state.optarg, "ALL", 3) == 0 || strncmp(getopt_state.optarg, "all", 3) == 0) {
-						extract_sshigh = true;
-						extract_sslow = true;
-						extract_sbp = true;
-					}
-					else {
-						int tmp;
-						sscanf(getopt_state.optarg, "%d", &tmp);
-						mode = (mb7k2jstar_mode)tmp;
-						if (mode == MB7K2JSTAR_SSLOW)
-							extract_sslow = true;
-						else if (mode == MB7K2JSTAR_SSHIGH)
-							extract_sshigh = true;
-						else if (mode == MB7K2JSTAR_SBP)
-							extract_sbp = true;
-						else if (mode == MB7K2JSTAR_ALL) {
-							extract_sshigh = true;
-							extract_sslow = true;
-							extract_sbp = true;
-						}
-					}
-				}
-				else if (strcmp("flip-sidescan", options[option_index].name) == 0) {
-					ssflip = true;
-				}
-				else if (strcmp("format", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d", &format);
-				}
-				else if (strcmp("gain", options[option_index].name) == 0) {
-					int tmp;
-					sscanf(getopt_state.optarg, "%d/%lf", &tmp, &gainfactor);
-					gainmode = (ssgain_t)tmp;
-				}
-				else if (strcmp("input", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", read_file);
-				}
-				else if (strcmp("line-root", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d/%1023s", &startline, lineroot);
-				}
-				else if (strcmp("output", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", output_file);
-					output_file_set = true;
-				}
-				else if (strcmp("route-file", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", route_file);
-					route_file_set = true;
-				}
-				else if (strcmp("smooth", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d", &smooth);
-				}
-				else if (strcmp("time-shift", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%lf", &timeshift);
-				}
-				break;
-
+			switch (opt->option) {
 			case 'H':
 			case 'h':
 				help = true;
@@ -353,31 +238,31 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 				break;
 			case 'A':
 			case 'a':
-				if (strncmp(getopt_state.optarg, "SSLOW", 5) == 0 || strncmp(getopt_state.optarg, "sslow", 5) == 0) {
+				if (strncmp(opt->arg, "SSLOW", 5) == 0 || strncmp(opt->arg, "sslow", 5) == 0) {
 					extract_sslow = true;
 				}
-				else if (strncmp(getopt_state.optarg, "SSHIGH", 6) == 0 || strncmp(getopt_state.optarg, "sshigh", 6) == 0) {
+				else if (strncmp(opt->arg, "SSHIGH", 6) == 0 || strncmp(opt->arg, "sshigh", 6) == 0) {
 					extract_sshigh = true;
 				}
-				else if (strncmp(getopt_state.optarg, "SBP", 3) == 0 || strncmp(getopt_state.optarg, "sbp", 3) == 0) {
+				else if (strncmp(opt->arg, "SBP", 3) == 0 || strncmp(opt->arg, "sbp", 3) == 0) {
 					extract_sbp = true;
 				}
-				else if (strncmp(getopt_state.optarg, "ALL", 3) == 0 || strncmp(getopt_state.optarg, "all", 3) == 0) {
+				else if (strncmp(opt->arg, "ALL", 3) == 0 || strncmp(opt->arg, "all", 3) == 0) {
 					extract_sshigh = true;
 					extract_sslow = true;
 					extract_sbp = true;
 				}
 				else {
 					int tmp;
-					sscanf(getopt_state.optarg, "%d", &tmp);
-					mode = (mb7k2jstar_mode)tmp;
-					if (mode == MB7K2JSTAR_SSLOW)
+					sscanf(opt->arg, "%d", &tmp);
+					xmode = (mb7k2jstar_mode)tmp;
+					if (xmode == MB7K2JSTAR_SSLOW)
 						extract_sslow = true;
-					else if (mode == MB7K2JSTAR_SSHIGH)
+					else if (xmode == MB7K2JSTAR_SSHIGH)
 						extract_sshigh = true;
-					else if (mode == MB7K2JSTAR_SBP)
+					else if (xmode == MB7K2JSTAR_SBP)
 						extract_sbp = true;
-					else if (mode == MB7K2JSTAR_ALL) {
+					else if (xmode == MB7K2JSTAR_ALL) {
 						extract_sshigh = true;
 						extract_sslow = true;
 						extract_sbp = true;
@@ -387,7 +272,7 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 			case 'B':
 			case 'b': {
 				int tmp;
-				const int n = sscanf(getopt_state.optarg, "%d/%lf", &tmp, &bottompickthreshold);
+				const int n = sscanf(opt->arg, "%d/%lf", &tmp, &bottompickthreshold);
 				bottompickmode = (bottompick_t)tmp;
 				if (n == 0)
 					bottompickmode = MB7K2JSTAR_BOTTOMPICK_ALTITUDE;
@@ -401,23 +286,23 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 				break;
 			case 'F':
 			case 'f':
-				sscanf(getopt_state.optarg, "%d", &format);
+				sscanf(opt->arg, "%d", &format);
 				break;
 			case 'G':
 			case 'g':
 			{
 				int tmp;
-				sscanf(getopt_state.optarg, "%d/%lf", &tmp, &gainfactor);
+				sscanf(opt->arg, "%d/%lf", &tmp, &gainfactor);
 				gainmode = (ssgain_t)tmp;
 				break;
 			}
 			case 'I':
 			case 'i':
-				sscanf(getopt_state.optarg, "%1023s", read_file);
+				sscanf(opt->arg, "%1023s", read_file);
 				break;
 			case 'L':
 			case 'l':
-				sscanf(getopt_state.optarg, "%d/%1023s", &startline, lineroot);
+				sscanf(opt->arg, "%d/%1023s", &startline, lineroot);
 				break;
 			case 'M':
 			case 'm':
@@ -425,38 +310,36 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 				break;
 			case 'O':
 			case 'o':
-				sscanf(getopt_state.optarg, "%1023s", output_file);
+				sscanf(opt->arg, "%1023s", output_file);
 				output_file_set = true;
 				break;
 			case 'R':
 			case 'r':
-				sscanf(getopt_state.optarg, "%1023s", route_file);
+				sscanf(opt->arg, "%1023s", route_file);
 				route_file_set = true;
 				break;
 			case 'S':
 			case 's':
-				sscanf(getopt_state.optarg, "%d", &smooth);
+				sscanf(opt->arg, "%d", &smooth);
 				break;
 			case 'T':
 			case 't':
-				sscanf(getopt_state.optarg, "%lf", &timeshift);
+				sscanf(opt->arg, "%lf", &timeshift);
 				break;
 			case 'X':
 			case 'x':
 				ssflip = true;
 				break;
-			case '?':
-				errflg = true;
+			default:
+				errflg |= (gmt_default_option_error(GMT, opt) != 0);
+				break;
 			}
 		}
 
-		if (errflg) {
-			fprintf(stderr, "usage: %s\n", usage_message);
-			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_BAD_USAGE);
-		}
+		if (errflg)
+			Return(GMT_PARSE_ERROR);
 
-		if (verbose == 1 || help) {
+		if (verbose == 1) {
 			fprintf(stderr, "\nProgram %s\n", program_name);
 			fprintf(stderr, "MB-system Version %s\n", MB_VERSION);
 		}
@@ -508,11 +391,8 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 			fprintf(stderr, "dbg2       print_comments:      %d\n", print_comments);
 		}
 
-		if (help) {
-			fprintf(stderr, "\n%s\n", help_message);
-			fprintf(stderr, "\nusage: %s\n", usage_message);
-			Return(error);
-		}
+		if (help)
+			Return(usage(API, GMT_USAGE));
 	}
 
 	/* set output types if needed */
@@ -523,15 +403,15 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 	}
 
 	/* output output types */
-	fprintf(stdout, "\nData records to extract:\n");
+	fprintf(stderr, "\nData records to extract:\n");
 	if (extract_sbp)
-		fprintf(stdout, "     Subbottom\n");
+		fprintf(stderr, "     Subbottom\n");
 	if (extract_sslow)
-		fprintf(stdout, "     Low Sidescan\n");
+		fprintf(stderr, "     Low Sidescan\n");
 	if (extract_sshigh)
-		fprintf(stdout, "     High Sidescan\n");
+		fprintf(stderr, "     High Sidescan\n");
 	if (ssflip)
-		fprintf(stdout, "     Sidescan port and starboard exchanged\n");
+		fprintf(stderr, "     Sidescan port and starboard exchanged\n");
 
 	/* set starting line number and output file if route read */
 	int linenumber = 0;
@@ -561,7 +441,7 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 		FILE *fp = fopen(route_file, "r");
 		if (fp == NULL) {
 			fprintf(stderr, "\nUnable to open route file <%s> for reading\n", route_file);
-			Return(MB_FAILURE);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		bool rawroutefile = false;
 		int nroutepointalloc = 0;
@@ -608,7 +488,7 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 						mb_error(verbose, error, &message);
 						fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 						fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-						Return(error);
+						Return(GMT_MEMORY_ERROR);
 					}
 				}
 
@@ -658,7 +538,7 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 		if (mb_datalist_open(verbose, &datalist, read_file, look_processed, &error) != MB_SUCCESS) {
 			fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(MB_ERROR_OPEN_FAIL);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		read_data = mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight, &error) == MB_SUCCESS;
 	}
@@ -754,7 +634,7 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 			fprintf(stderr, "\nMBIO Error returned from function <mb_read_init>:\n%s\n", message);
 			fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", file);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			Return(GMT_RUNTIME_ERROR);
 		}
 
 		/* get pointers to data storage */
@@ -811,7 +691,7 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 			mb_error(verbose, error, &message);
 			fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
 			fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-			Return(error);
+			Return(GMT_MEMORY_ERROR);
 		}
 
 		/* set up output file name if needed */
@@ -975,10 +855,10 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 					}
 
 					/* output counts */
-					fprintf(stdout, "\nData records written to: %s\n", current_output_file);
-					fprintf(stdout, "     Subbottom:     %d\n", nwritesbp);
-					fprintf(stdout, "     Low Sidescan:  %d\n", nwritesslo);
-					fprintf(stdout, "     High Sidescan: %d\n", nwritesshi);
+					fprintf(stderr, "\nData records written to: %s\n", current_output_file);
+					fprintf(stderr, "     Subbottom:     %d\n", nwritesbp);
+					fprintf(stderr, "     Low Sidescan:  %d\n", nwritesslo);
+					fprintf(stderr, "     High Sidescan: %d\n", nwritesshi);
 					nwritesbptot += nwritesbp;
 					nwritesslotot += nwritesslo;
 					nwritesshitot += nwritesshi;
@@ -995,7 +875,7 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 					fprintf(stderr, "\nMBIO Error returned from function <mb_write_init>:\n%s\n", message);
 					fprintf(stderr, "\nMultibeam File <%s> not initialized for writing\n", file);
 					fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-					Return(error);
+					Return(GMT_RUNTIME_ERROR);
 				}
 
 				/* save current_output_file */
@@ -2425,14 +2305,14 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 
 		status = mb_close(verbose, &imbio_ptr, &error);
 
-		fprintf(stdout, "\nData records read from: %s\n", file);
-		fprintf(stdout, "     Survey:        %d\n", nreaddata);
-		fprintf(stdout, "     File Header:   %d\n", nreadheader);
-		fprintf(stdout, "     Bluefin CTD:   %d\n", nreadssv);
-		fprintf(stdout, "     Bluefin Nav:   %d\n", nreadnav1);
-		fprintf(stdout, "     Subbottom:     %d\n", nreadsbp);
-		fprintf(stdout, "     Low Sidescan:  %d\n", nreadsslo);
-		fprintf(stdout, "     High Sidescan: %d\n", nreadsshi);
+		fprintf(stderr, "\nData records read from: %s\n", file);
+		fprintf(stderr, "     Survey:        %d\n", nreaddata);
+		fprintf(stderr, "     File Header:   %d\n", nreadheader);
+		fprintf(stderr, "     Bluefin CTD:   %d\n", nreadssv);
+		fprintf(stderr, "     Bluefin Nav:   %d\n", nreadnav1);
+		fprintf(stderr, "     Subbottom:     %d\n", nreadsbp);
+		fprintf(stderr, "     Low Sidescan:  %d\n", nreadsslo);
+		fprintf(stderr, "     High Sidescan: %d\n", nreadsshi);
 		nreaddatatot += nreaddata;
 		nreadheadertot += nreadheader;
 		nreadssvtot += nreadssv;
@@ -2465,18 +2345,18 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 	}
 
 	/* output counts */
-	fprintf(stdout, "\nTotal data records read from: %s\n", file);
-	fprintf(stdout, "     Survey:        %d\n", nreaddatatot);
-	fprintf(stdout, "     File Header:   %d\n", nreadheadertot);
-	fprintf(stdout, "     Bluefin CTD:   %d\n", nreadssvtot);
-	fprintf(stdout, "     Bluefin Nav:   %d\n", nreadnav1tot);
-	fprintf(stdout, "     Subbottom:     %d\n", nreadsbptot);
-	fprintf(stdout, "     Low Sidescan:  %d\n", nreadsslotot);
-	fprintf(stdout, "     High Sidescan: %d\n", nreadsshitot);
-	fprintf(stdout, "Total data records written to: %s\n", output_file);
-	fprintf(stdout, "     Subbottom:     %d\n", nwritesbptot);
-	fprintf(stdout, "     Low Sidescan:  %d\n", nwritesslotot);
-	fprintf(stdout, "     High Sidescan: %d\n", nwritesshitot);
+	fprintf(stderr, "\nTotal data records read from: %s\n", file);
+	fprintf(stderr, "     Survey:        %d\n", nreaddatatot);
+	fprintf(stderr, "     File Header:   %d\n", nreadheadertot);
+	fprintf(stderr, "     Bluefin CTD:   %d\n", nreadssvtot);
+	fprintf(stderr, "     Bluefin Nav:   %d\n", nreadnav1tot);
+	fprintf(stderr, "     Subbottom:     %d\n", nreadsbptot);
+	fprintf(stderr, "     Low Sidescan:  %d\n", nreadsslotot);
+	fprintf(stderr, "     High Sidescan: %d\n", nreadsshitot);
+	fprintf(stderr, "Total data records written to: %s\n", output_file);
+	fprintf(stderr, "     Subbottom:     %d\n", nwritesbptot);
+	fprintf(stderr, "     Low Sidescan:  %d\n", nwritesslotot);
+	fprintf(stderr, "     High Sidescan: %d\n", nwritesshitot);
 
 	/* deallocate route arrays */
 	if (route_file_set) {
@@ -2496,6 +2376,14 @@ int GMT_mb7k2jstar(void *V_API, int gmt_mode, void *args) {
 		fprintf(stderr, "dbg2       status:  %d\n", status);
 	}
 
-	Return(error);
+	/* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+	   The end of the data (EOF) is how every read finishes, not an error. */
+	if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+		char *message;
+		mb_error(verbose, error, &message);
+		GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+		Return(GMT_RUNTIME_ERROR);
+	}
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

@@ -41,6 +41,7 @@
 
 #ifndef MB_SEGY_H_
 #define MB_SEGY_H_
+#include "mbio_export.h"
 
 /* Standard SEGY format sizes */
 #define MB_SEGY_ASCIIHEADER_LENGTH 3200
@@ -200,12 +201,12 @@ extern "C" {
 #endif
 
 /* function prototypes */
-int mb_segy_read_init(int verbose, char *segyfile, void **mbsegyio_ptr, struct mb_segyasciiheader_struct *segyasciiheader,
+MBIO_API int mb_segy_read_init(int verbose, char *segyfile, void **mbsegyio_ptr, struct mb_segyasciiheader_struct *segyasciiheader,
                       struct mb_segyfileheader_struct *segyfileheader, int *error);
 int mb_segy_write_init(int verbose, char *segyfile, struct mb_segyasciiheader_struct *asciiheader,
                        struct mb_segyfileheader_struct *fileheader, void **mbsegyio_ptr, int *error);
-int mb_segy_close(int verbose, void **mbsegyio_ptr, int *error);
-int mb_segy_read_trace(int verbose, void *mbsegyio_ptr, struct mb_segytraceheader_struct *traceheaderptr, float **traceptr,
+MBIO_API int mb_segy_close(int verbose, void **mbsegyio_ptr, int *error);
+MBIO_API int mb_segy_read_trace(int verbose, void *mbsegyio_ptr, struct mb_segytraceheader_struct *traceheaderptr, float **traceptr,
                        int *error);
 int mb_segy_write_trace(int verbose, void *mbsegyio_ptr, struct mb_segytraceheader_struct *traceheader, float *trace, int *error);
 void hilbert(int n, double delta[], double kappa[]);

@@ -99,6 +99,7 @@
 
 #ifndef MBSYS_SIMRAD_H_
 #define MBSYS_SIMRAD_H_
+#include "mbio_export.h"
 
 /* sonar types */
 #define MBSYS_SIMRAD_UNKNOWN 0
@@ -411,7 +412,7 @@ int mbsys_simrad_makess(int verbose, void *mbio_ptr, void *store_ptr, int pixel_
 #ifdef __cplusplus
 extern "C" {
 #endif
-int mbsys_simrad_beamangles(int verbose, void *store_ptr, bool *interleave,
+MBIO_API int mbsys_simrad_beamangles(int verbose, void *store_ptr, bool *interleave,
                         int *nbeams, double **angles_simrad, int *error);
 #ifdef __cplusplus
 }

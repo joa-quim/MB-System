@@ -5,7 +5,7 @@
  *    David W. Caress (caress@mbari.org)
  *      Monterey Bay Aquarium Research Institute
  *      Moss Landing, California, USA
- *    Dale N. Chayes 
+ *    Dale N. Chayes
  *      Center for Coastal and Ocean Mapping
  *      University of New Hampshire
  *      Durham, New Hampshire, USA
@@ -13,7 +13,7 @@
  *      MARUM
  *      University of Bremen
  *      Bremen Germany
- *     
+ *
  *    MB-System was created by Caress and Chayes in 1992 at the
  *      Lamont-Doherty Earth Observatory
  *      Columbia University
@@ -31,17 +31,19 @@
  * Date:	January 23, 1993
  */
 /*
- * GMT-module port of src/utilities/mbdefaults.cc. The program's getopt_long() option loop
- * is kept as it is, running on the reentrant mb_getopt_long() (the state
- * lives in a local structure, so the module can run any number of times in
- * one GMT session), and main() becomes GMT_mbdefaults(), with every exit()
- * turned into Return().
+ * GMT-module port of src/utilities/mbdefaults.cc, built like GMT's own gmtdefaults: the options
+ * come from GMT's option list (parse()), the program's long options are GMT long options (the
+ * module_kw table: --lonflip=0 is -L0), and the listing is written as text records through the
+ * GMT API, so a GMT.jl/Python/MATLAB caller gets it back as a dataset and the command line gets
+ * it on stdout. The program's lower-case option aliases are kept: they are GMT common-option
+ * letters (-b, -f, -i, -t, ...), but GMT_Parse_Common only parses the common options named in
+ * THIS_MODULE_OPTIONS, so the others reach parse() untouched.
  */
 
 #define THIS_MODULE_NAME "mbdefaults"
 #define THIS_MODULE_LIB "mbsystem"
 #define THIS_MODULE_PURPOSE "Set and list the default MBIO control parameters in ~/.mbio_defaults"
-/* No data input; the current or new defaults are listed on stdout. */
+/* No data input; the current or new defaults are written as text records. */
 #define THIS_MODULE_KEYS ">D}"
 #define THIS_MODULE_NEEDS ""
 #define THIS_MODULE_OPTIONS "->V"
@@ -49,6 +51,7 @@
 #include "gmt_dev.h"
 
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -59,8 +62,7 @@
 #endif
 #include "mb_define.h"
 #include "mb_status.h"
-
-#include "mb_getopt.h"
+#include "mb_gmt_text.h"
 
 /* colortable view mode defines */
 enum { MBV_COLORTABLE_HAXBY = 0 };
@@ -73,8 +75,8 @@ enum { MBV_COLORTABLE_SEALEVEL2 = 6 };
 
 /* colortable view mode defines */
 typedef enum {
-    MBV_COLORTABLE_NORMAL = 0,
-    MBV_COLORTABLE_REVERSED = 1,
+	MBV_COLORTABLE_NORMAL = 0,
+	MBV_COLORTABLE_REVERSED = 1,
 } colortable_mode_t;
 
 /* shade view mode defines */
@@ -90,90 +92,237 @@ static const char help_message[] =
     "Only the parameters specified by command line\n"
     "arguments will be changed; if no ~/.mbio_defaults\n"
     "file exists one will be created.";
-static const char usage_message[] =
-    "mbdefaults\n"
-    "\t--fbt-version=fbtversion {-Ffbtversion}\n"
-    "\t--file-io-buffer=fileiobuffer {-Bfileiobuffer}\n"
-    "\t--help {-H}\n"
-    "\t--image-display=imagedisplay {-Iimagedisplay}\n"
-    "\t--lonflip=lonflip {-Llonflip}\n"
-    "\t--mbview-settings=mbviewsettings {-Mmbviewsettings}\n"
-    "\t--project=mbproject {-Wmbproject}\n"
-    "\t--ps-display=psdisplay {-Dpsdisplay}\n"
-    "\t--time-gap=timegap {-Ttimegap}\n"
-    "\t--use-lock-files=yes|no {-Uyes|no}\n"
-    "\t--verbose {-V}\n\n";
 
-/*--------------------------------------------------------------------*/
+/* Translation table from the program's long options to the module's short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'B', "file-io-buffer",  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "ps-display",      "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "fbt-version",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'I', "image-display",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'L', "lonflip",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'M', "mbview-settings", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "time-gap",        "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'U', "use-lock-files",  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'W', "project",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
 
+#define MBDEFAULTS_N_M 16	/* -M may be given once per mbview setting */
 
-/* --- GMT front end ---------------------------------------------------- */
+struct MBDEFAULTS_CTRL {
+	struct MBDEFAULTS_B { bool active; int fileiobuffer; } B;
+	struct MBDEFAULTS_D { bool active; char *psdisplay; } D;
+	struct MBDEFAULTS_F { bool active; int fbtversion; } F;
+	struct MBDEFAULTS_H { bool active; } H;
+	struct MBDEFAULTS_I { bool active; char *imgdisplay; } I;
+	struct MBDEFAULTS_L { bool active; int lonflip; } L;
+	struct MBDEFAULTS_M { unsigned int n; char *arg[MBDEFAULTS_N_M]; } M;
+	struct MBDEFAULTS_T { bool active; double timegap; } T;
+	struct MBDEFAULTS_U { bool active; bool uselockfiles; } U;
+	struct MBDEFAULTS_W { bool active; char *mbproject; } W;
+};
+
+static void *New_Ctrl(struct GMT_CTRL *GMT) {
+	struct MBDEFAULTS_CTRL *C = gmt_M_memory(GMT, NULL, 1, struct MBDEFAULTS_CTRL);
+	return C;
+}
+
+static void Free_Ctrl(struct GMT_CTRL *GMT, struct MBDEFAULTS_CTRL *C) {
+	if (!C) return;
+	gmt_M_str_free(C->D.psdisplay);
+	gmt_M_str_free(C->I.imgdisplay);
+	gmt_M_str_free(C->W.mbproject);
+	for (unsigned int k = 0; k < C->M.n; k++) gmt_M_str_free(C->M.arg[k]);
+	gmt_M_free(GMT, C);
+}
 
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
-	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
-	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
-	return GMT_PARSE_ERROR;
+	GMT_Usage(API, 0, "usage: %s [-B<fileiobuffer>] [-D<psdisplay>] [-F<fbtversion>] [-H] [-I<imgdisplay>] "
+	          "[-L<lonflip>] [-M<P|G|O|I|S><values>] [-T<timegap>] [-U<yes|no>] [-W<project>] [%s]\n",
+	          THIS_MODULE_NAME, GMT_V_OPT);
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
+	GMT_Message(API, GMT_TIME_NONE, "%s\n\n", help_message);
+	GMT_Message(API, GMT_TIME_NONE, "  OPTIONAL ARGUMENTS:\n");
+	GMT_Usage(API, 1, "\n-B<fileiobuffer> (--file-io-buffer=)");
+	GMT_Usage(API, -2, "File i/o buffering: 0 = standard fread()/fwrite() buffering, >0 = buffer size in kB, <0 = mmap.");
+	GMT_Usage(API, 1, "\n-D<psdisplay> (--ps-display=)");
+	GMT_Usage(API, -2, "Program used to display PostScript.");
+	GMT_Usage(API, 1, "\n-F<fbtversion> (--fbt-version=)");
+	GMT_Usage(API, -2, "Fbt file version: 2 or old, 3 or new.");
+	GMT_Usage(API, 1, "\n-H (--help)");
+	GMT_Usage(API, -2, "Print this help.");
+	GMT_Usage(API, 1, "\n-I<imgdisplay> (--image-display=)");
+	GMT_Usage(API, -2, "Program used to display images.");
+	GMT_Usage(API, 1, "\n-L<lonflip> (--lonflip=)");
+	GMT_Usage(API, -2, "Longitude range: -1 = [-360,0], 0 = [-180,180], 1 = [0,360].");
+	GMT_Usage(API, 1, "\n-M<setting> (--mbview-settings=)");
+	GMT_Usage(API, -2, "mbview defaults, repeatable: P<colortable>/<mode>/<shademode> primary, G<colortable>/<mode> slope, "
+	          "O<colortable>/<mode> overlay, I<magnitude>/<elevation>/<azimuth> illumination, S<magnitude> slope shading.");
+	GMT_Usage(API, 1, "\n-T<timegap> (--time-gap=)");
+	GMT_Usage(API, -2, "Time gap in minutes.");
+	GMT_Usage(API, 1, "\n-U<yes|no> (--use-lock-files=)");
+	GMT_Usage(API, -2, "Use lock files.");
+	GMT_Usage(API, 1, "\n-W<project> (--project=)");
+	GMT_Usage(API, -2, "Default project name.");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
-/* The options GMT itself should see: -V (verbosity) and -I (the input the
- * module keys bind). Everything else, long options included, is parsed by
- * the program's own option loop below. */
-static char *mb_gmt_options_string(int argc, char **argv) {
-	size_t total = 1;
-	for (int i = 1; i < argc; i++)
-		total += strlen(argv[i]) + 1;
-	char *s = (char *)calloc(total + 8, 1);
-	if (s == NULL)
-		return NULL;
-	for (int i = 1; i < argc; i++) {
-		if (argv[i][0] == '-' && (argv[i][1] == 'V' || (argv[i][1] == 'I' && argv[i][2] != '\0'))) {
-			if (s[0] != '\0')
-				strcat(s, " ");
-			strcat(s, argv[i]);
+/* The program's -F and -U argument rules, unchanged */
+static int mbdefaults_fbtversion(const char *arg) {
+	if (strncmp(arg, "new", 3) == 0 || strncmp(arg, "NEW", 3) == 0) return 3;
+	if (strncmp(arg, "old", 2) == 0 || strncmp(arg, "OLD", 2) == 0) return 2;
+	if (strncmp(arg, "2", 1) == 0) return 2;
+	if (strncmp(arg, "3", 1) == 0) return 3;
+	return 0;
+}
+
+static int mbdefaults_yesno(const char *arg) {
+	if (strncmp(arg, "yes", 3) == 0 || strncmp(arg, "YES", 3) == 0) return 1;
+	if (strncmp(arg, "no", 2) == 0 || strncmp(arg, "NO", 2) == 0) return 0;
+	if (strncmp(arg, "1", 1) == 0) return 1;
+	if (strncmp(arg, "0", 1) == 0) return 0;
+	return -1;
+}
+
+static int parse(struct GMT_CTRL *GMT, struct MBDEFAULTS_CTRL *Ctrl, struct GMT_OPTION *options) {
+	unsigned int n_errors = 0, n_files = 0;
+	struct GMT_OPTION *opt = NULL;
+	struct GMTAPI_CTRL *API = GMT->parent;
+
+	for (opt = options; opt; opt = opt->next) {
+		switch (opt->option) {
+			case '<':	/* No input files */
+				n_files++;
+				break;
+			/* Every option keeps the program's lower-case alias. GMT_Parse_Common only touches the
+			   common options named in THIS_MODULE_OPTIONS (-V), so -b, -d, -f, -h, -i, -l, -m, -t,
+			   -u, -v and -w arrive here untouched and mean what they mean in MB-System. */
+			case 'B': case 'b':
+				n_errors += gmt_M_repeated_module_option(API, Ctrl->B.active);
+				n_errors += gmt_M_check_condition(GMT, sscanf(opt->arg, "%d", &Ctrl->B.fileiobuffer) != 1,
+				                                  "Option -B: Expected -B<fileiobuffer>\n");
+				break;
+			case 'D': case 'd':
+				n_errors += gmt_M_repeated_module_option(API, Ctrl->D.active);
+				n_errors += gmt_get_required_string(GMT, opt->arg, opt->option, 0, &Ctrl->D.psdisplay);
+				break;
+			case 'F': case 'f':
+				n_errors += gmt_M_repeated_module_option(API, Ctrl->F.active);
+				Ctrl->F.fbtversion = mbdefaults_fbtversion(opt->arg);
+				n_errors += gmt_M_check_condition(GMT, Ctrl->F.fbtversion == 0, "Option -F: Expected 2, 3, old or new\n");
+				break;
+			case 'H': case 'h':
+				Ctrl->H.active = true;
+				break;
+			case 'I': case 'i':
+				n_errors += gmt_M_repeated_module_option(API, Ctrl->I.active);
+				n_errors += gmt_get_required_string(GMT, opt->arg, opt->option, 0, &Ctrl->I.imgdisplay);
+				break;
+			case 'L': case 'l':
+				n_errors += gmt_M_repeated_module_option(API, Ctrl->L.active);
+				n_errors += gmt_M_check_condition(GMT, sscanf(opt->arg, "%d", &Ctrl->L.lonflip) != 1,
+				                                  "Option -L: Expected -L<lonflip>\n");
+				break;
+			case 'M': case 'm':
+				if (Ctrl->M.n == MBDEFAULTS_N_M || strchr("PpGgOoIiSs", opt->arg[0]) == NULL || opt->arg[0] == '\0') {
+					GMT_Report(API, GMT_MSG_ERROR, "Option -M: Expected -MP|G|O|I|S<values>\n");
+					n_errors++;
+				}
+				else
+					Ctrl->M.arg[Ctrl->M.n++] = strdup(opt->arg);
+				break;
+			case 'T': case 't':
+				n_errors += gmt_M_repeated_module_option(API, Ctrl->T.active);
+				n_errors += gmt_get_required_double(GMT, opt->arg, opt->option, 0, &Ctrl->T.timegap);
+				break;
+			case 'U': case 'u':
+			{
+				n_errors += gmt_M_repeated_module_option(API, Ctrl->U.active);
+				const int yn = mbdefaults_yesno(opt->arg);
+				n_errors += gmt_M_check_condition(GMT, yn < 0, "Option -U: Expected yes or no\n");
+				Ctrl->U.uselockfiles = (yn == 1);
+				break;
+			}
+			case 'W': case 'w':
+				n_errors += gmt_M_repeated_module_option(API, Ctrl->W.active);
+				n_errors += gmt_get_required_string(GMT, opt->arg, opt->option, 0, &Ctrl->W.mbproject);
+				break;
+			case 'v':	/* the program's -v: verbosity, as -V */
+				GMT->current.setting.verbose = GMT_MSG_INFORMATION;
+				break;
+			default:
+				n_errors += gmt_default_option_error(GMT, opt);
+				break;
 		}
 	}
-	return s;
+
+	n_errors += gmt_M_check_condition(GMT, n_files, "No input files are expected\n");
+
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
-/* gmt_M_free_options() hard-codes a variable named "options", which the
-   program's own option table shadows here, so destroy gmt_options directly */
-#define bailout(code) { mb_getopt_args_free(argc, argv); free(gmt_args); GMT_Destroy_Options(API, &gmt_options); return (code); }
-#define Return(code) { gmt_end_module(GMT, GMT_cpy); bailout(code); }
-EXTERN_MSC int GMT_mbdefaults(void *V_API, int gmt_mode, void *args);
+static const char *mbdefaults_colortable_name(int colortable) {
+	switch (colortable) {
+		case MBV_COLORTABLE_HAXBY: return "Haxby";
+		case MBV_COLORTABLE_BRIGHT: return "Bright";
+		case MBV_COLORTABLE_MUTED: return "Muted";
+		case MBV_COLORTABLE_GRAY: return "Grayscale";
+		case MBV_COLORTABLE_FLAT: return "Flat  gray";
+		case MBV_COLORTABLE_SEALEVEL1: return "Sealevel 1";
+		case MBV_COLORTABLE_SEALEVEL2: return "Sealevel 2";
+		default: return NULL;
+	}
+}
 
-/*--------------------------------------------------------------------*/
+static const char *mbdefaults_shade_name(int shade_mode) {
+	switch (shade_mode) {
+		case MBV_SHADE_VIEW_NONE: return "No shading";
+		case MBV_SHADE_VIEW_ILLUMINATION: return "Shading by illumination";
+		case MBV_SHADE_VIEW_SLOPE: return "Shading by slope magnitude";
+		case MBV_SHADE_VIEW_OVERLAY: return "Shading by overlay";
+		default: return NULL;
+	}
+}
 
-int GMT_mbdefaults(void *V_API, int gmt_mode, void *args) {
-	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
+#define bailout(code) { gmt_M_free_options(mode); return code; }
+#define Return(code) { Free_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+
+EXTERN_MSC int GMT_mbdefaults(void *V_API, int mode, void *args);
+
+int GMT_mbdefaults(void *V_API, int mode, void *args) {
+	int error = 0;
+	struct MBDEFAULTS_CTRL *Ctrl = NULL;
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
-	struct GMT_OPTION *gmt_options = NULL;
-	char *gmt_args = NULL;
-	char **argv = NULL;
-	int argc = 0;
-	struct mb_getopt_state getopt_state;
-	mb_getopt_init(&getopt_state);
+	struct GMT_OPTION *options = NULL;
+	struct MB_GMT_TEXT *T = NULL;
+	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
 
-	if (!API) return GMT_NOT_A_SESSION;
-	if (gmt_mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	/*----------------------- Standard module initialization and parsing ----------------------*/
 
-	/* the program's own argv[], whatever shape GMT handed us */
-	argc = mb_getopt_args_build(THIS_MODULE_NAME, gmt_mode, args, &argv);
-	if (argc == 2 && (strcmp(argv[1], "-") == 0 || strcmp(argv[1], "?") == 0))
-		bailout(usage(API, GMT_USAGE));
-	if (argc == 2 && strcmp(argv[1], "+") == 0)
-		bailout(usage(API, GMT_SYNOPSIS));
+	if (API == NULL) return GMT_NOT_A_SESSION;
+	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
 
-	gmt_args = mb_gmt_options_string(argc, argv);
-	gmt_options = GMT_Create_Options(API, GMT_MODULE_CMD, (gmt_args != NULL && gmt_args[0] != '\0') ? gmt_args : NULL);
-	if (API->error) bailout(API->error);
-	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &gmt_options, &GMT_cpy)) == NULL) bailout(API->error);
-	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, gmt_options)) Return(API->error);
+	/* 1: like gmtdefaults, no options at all is a normal run (list the defaults), not a usage request */
+	if ((error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(error);
 
-	int verbose = 0;
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS,
+	                           module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
+	Ctrl = New_Ctrl(GMT);
+	if ((error = parse(GMT, Ctrl, options)) != 0) Return(error);
+	if (Ctrl->H.active) Return(usage(API, GMT_USAGE));
+
+	/*---------------------------- This is the mbdefaults main code ----------------------------*/
+
+	const int verbose = (GMT->current.setting.verbose >= GMT_MSG_DEBUG) ? 2 : 0;
+
 	int format;
 	int pings;
 	int lonflip;
@@ -205,8 +354,8 @@ int GMT_mbdefaults(void *V_API, int gmt_mode, void *args) {
 		int secondary_colortable_mode_tmp;
 		status = mb_mbview_defaults(
 			verbose, &primary_colortable, &primary_colortable_mode_tmp, &primary_shade_mode, &slope_colortable,
-	                &slope_colortable_mode, &secondary_colortable, &secondary_colortable_mode_tmp, &illuminate_magnitude,
-	                &illuminate_elevation, &illuminate_azimuth, &slope_magnitude);
+		        &slope_colortable_mode, &secondary_colortable, &secondary_colortable_mode_tmp, &illuminate_magnitude,
+		        &illuminate_elevation, &illuminate_azimuth, &slope_magnitude);
 		primary_colortable_mode = (colortable_mode_t)primary_colortable_mode_tmp;
 		secondary_colortable_mode = (colortable_mode_t)secondary_colortable_mode_tmp;
 	}
@@ -220,279 +369,51 @@ int GMT_mbdefaults(void *V_API, int gmt_mode, void *args) {
 	int fileiobuffer = 0;
 	status &= mb_fileiobuffer(verbose, &fileiobuffer);
 
+	/* The options override the current defaults; any of them means a new ~/.mbio_defaults */
 	bool flag = false;
-
-	{
-		static struct mb_getopt_option options[] = {
-			{"file-io-buffer", mb_required_argument, NULL, 0},
-			{"ps-display", mb_required_argument, NULL, 0},
-			{"fbt-version", mb_required_argument, NULL, 0},
-			{"help", mb_no_argument, NULL, 0},
-			{"image-display", mb_required_argument, NULL, 0},
-			{"lonflip", mb_required_argument, NULL, 0},
-			{"mbview-settings", mb_required_argument, NULL, 0},
-			{"time-gap", mb_required_argument, NULL, 0},
-			{"use-lock-files", mb_required_argument, NULL, 0},
-			{"verbose", mb_no_argument, NULL, 0},
-			{"project", mb_required_argument, NULL, 0},
-			{NULL, 0, NULL, 0}
-		};
-
-		bool errflg = false;
-		bool help = false;
-		int c;
-		int option_index;
-		while ((c = mb_getopt_long(&getopt_state, argc, argv, "B:b:D:d:F:f:HhI:i:L:l:M:m:T:t:U:u:VvW:w:", options, &option_index)) != -1)
-		{
-			switch (c) {
-			case 0:
-				if (strcmp("file-io-buffer", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d", &fileiobuffer);
-					flag = true;
-				}
-				else if (strcmp("ps-display", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", psdisplay);
-					flag = true;
-				}
-				else if (strcmp("fbt-version", options[option_index].name) == 0) {
-					char argstring[MB_PATH_MAXLINE];
-					sscanf(getopt_state.optarg, "%1023s", argstring);
-					if (strncmp(argstring, "new", 3) == 0 || strncmp(argstring, "NEW", 3) == 0)
-						fbtversion = 3;
-					else if (strncmp(argstring, "old", 2) == 0 || strncmp(argstring, "OLD", 2) == 0)
-						fbtversion = 2;
-					else if (strncmp(argstring, "2", 1) == 0)
-						fbtversion = 2;
-					else if (strncmp(argstring, "3", 1) == 0)
-						fbtversion = 3;
-					flag = true;
-				}
-				else if (strcmp("help", options[option_index].name) == 0) {
-					help = true;
-				}
-				else if (strcmp("image-display", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", imgdisplay);
-					flag = true;
-				}
-				else if (strcmp("lonflip", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%d", &lonflip);
-					flag = true;
-				}
-				else if (strcmp("mbview-settings", options[option_index].name) == 0) {
-					/* default primary colortable and modes */
-					if (getopt_state.optarg[0] == 'P' || getopt_state.optarg[0] == 'p') {
-						int tmp;
-						/* n = */ sscanf(&getopt_state.optarg[1], "%d/%d/%d", &primary_colortable, &tmp, &primary_shade_mode);
-						primary_colortable_mode = (colortable_mode_t)tmp;
-					} else if (getopt_state.optarg[0] == 'G' || getopt_state.optarg[0] == 'g') {
-						/* default slope colortable and mode */
-						/* n = */ sscanf(&getopt_state.optarg[1], "%d/%d", &slope_colortable, &slope_colortable_mode);
-					} else if (getopt_state.optarg[0] == 'O' || getopt_state.optarg[0] == 'o') {
-						/* default overlay colortable and mode */
-						int tmp;
-						/* n = */ sscanf(&getopt_state.optarg[1], "%d/%d", &secondary_colortable, &tmp);
-						secondary_colortable_mode = (colortable_mode_t)tmp;
-					} else if (getopt_state.optarg[0] == 'I' || getopt_state.optarg[0] == 'i') {
-						/* default illumination parameters */
-						/* n = */ sscanf(&getopt_state.optarg[1], "%lf/%lf/%lf", &illuminate_magnitude, &illuminate_elevation, &illuminate_azimuth);
-					} else if (getopt_state.optarg[0] == 'S' || getopt_state.optarg[0] == 's') {
-						/* default slope shading magnitude */
-						/* n = */ sscanf(&getopt_state.optarg[1], "%lf", &slope_magnitude);
-					}
-
-					flag = true;
-				}
-				else if (strcmp("time-gap", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%lf", &timegap);
-					flag = true;
-				}
-				else if (strcmp("use-lock-files", options[option_index].name) == 0) {
-					char argstring[MB_PATH_MAXLINE];
-					sscanf(getopt_state.optarg, "%1023s", argstring);
-					if (strncmp(argstring, "yes", 3) == 0 || strncmp(argstring, "YES", 3) == 0)
-						uselockfiles = true;
-					else if (strncmp(argstring, "no", 2) == 0 || strncmp(argstring, "NO", 2) == 0)
-						uselockfiles = false;
-					else if (strncmp(argstring, "1", 1) == 0)
-						uselockfiles = true;
-					else if (strncmp(argstring, "0", 1) == 0)
-						uselockfiles = false;
-					flag = true;
-				}
-				else if (strcmp("verbose", options[option_index].name) == 0) {
-					verbose++;
-				}
-				else if (strcmp("project", options[option_index].name) == 0) {
-					sscanf(getopt_state.optarg, "%1023s", mbproject);
-					flag = true;
-				}
-				break;
-			case 'B':
-			case 'b':
-				sscanf(getopt_state.optarg, "%d", &fileiobuffer);
-				flag = true;
-				break;
-			case 'D':
-			case 'd':
-				sscanf(getopt_state.optarg, "%1023s", psdisplay);
-				flag = true;
-				break;
-			case 'F':
-			case 'f':
-			{
-				char argstring[MB_PATH_MAXLINE];
-				sscanf(getopt_state.optarg, "%1023s", argstring);
-				if (strncmp(argstring, "new", 3) == 0 || strncmp(argstring, "NEW", 3) == 0)
-					fbtversion = 3;
-				else if (strncmp(argstring, "old", 2) == 0 || strncmp(argstring, "OLD", 2) == 0)
-					fbtversion = 2;
-				else if (strncmp(argstring, "2", 1) == 0)
-					fbtversion = 2;
-				else if (strncmp(argstring, "3", 1) == 0)
-					fbtversion = 3;
-				flag = true;
-				break;
-			}
-			case 'I':
-			case 'i':
-				sscanf(getopt_state.optarg, "%1023s", imgdisplay);
-				flag = true;
-				break;
-			case 'H':
-			case 'h':
-				help = true;
-				break;
-			case 'L':
-			case 'l':
-				sscanf(getopt_state.optarg, "%d", &lonflip);
-				flag = true;
-				break;
-			case 'M':
-			case 'm':
-			{
-				/* default primary colortable and modes */
-				if (getopt_state.optarg[0] == 'P' || getopt_state.optarg[0] == 'p') {
-					int tmp;
-					/* n = */ sscanf(&getopt_state.optarg[1], "%d/%d/%d", &primary_colortable, &tmp, &primary_shade_mode);
-					primary_colortable_mode = (colortable_mode_t)tmp;
-				} else if (getopt_state.optarg[0] == 'G' || getopt_state.optarg[0] == 'g') {
-					/* default slope colortable and mode */
-					/* n = */ sscanf(&getopt_state.optarg[1], "%d/%d", &slope_colortable, &slope_colortable_mode);
-				} else if (getopt_state.optarg[0] == 'O' || getopt_state.optarg[0] == 'o') {
-					/* default overlay colortable and mode */
-					int tmp;
-					/* n = */ sscanf(&getopt_state.optarg[1], "%d/%d", &secondary_colortable, &tmp);
-					secondary_colortable_mode = (colortable_mode_t)tmp;
-				} else if (getopt_state.optarg[0] == 'I' || getopt_state.optarg[0] == 'i') {
-					/* default illumination parameters */
-					/* n = */ sscanf(&getopt_state.optarg[1], "%lf/%lf/%lf", &illuminate_magnitude, &illuminate_elevation, &illuminate_azimuth);
-				} else if (getopt_state.optarg[0] == 'S' || getopt_state.optarg[0] == 's') {
-					/* default slope shading magnitude */
-					/* n = */ sscanf(&getopt_state.optarg[1], "%lf", &slope_magnitude);
-				}
-
-				flag = true;
-				break;
-			}
-			case 'T':
-			case 't':
-				sscanf(getopt_state.optarg, "%lf", &timegap);
-				flag = true;
-				break;
-			case 'U':
-			case 'u':
-			{
-				char argstring[MB_PATH_MAXLINE];
-				sscanf(getopt_state.optarg, "%1023s", argstring);
-				if (strncmp(argstring, "yes", 3) == 0 || strncmp(argstring, "YES", 3) == 0)
-					uselockfiles = true;
-				else if (strncmp(argstring, "no", 2) == 0 || strncmp(argstring, "NO", 2) == 0)
-					uselockfiles = false;
-				else if (strncmp(argstring, "1", 1) == 0)
-					uselockfiles = true;
-				else if (strncmp(argstring, "0", 1) == 0)
-					uselockfiles = false;
-				flag = true;
-				break;
-			}
-			case 'V':
-			case 'v':
-				verbose++;
-				break;
-			case 'W':
-			case 'w':
-				sscanf(getopt_state.optarg, "%1023s", mbproject);
-				flag = true;
-				break;
-			case '?':
-				errflg = true;
-			}
+	if (Ctrl->B.active) { fileiobuffer = Ctrl->B.fileiobuffer; flag = true; }
+	if (Ctrl->D.active) { snprintf(psdisplay, sizeof (psdisplay), "%s", Ctrl->D.psdisplay); flag = true; }
+	if (Ctrl->F.active) { fbtversion = Ctrl->F.fbtversion; flag = true; }
+	if (Ctrl->I.active) { snprintf(imgdisplay, sizeof (imgdisplay), "%s", Ctrl->I.imgdisplay); flag = true; }
+	if (Ctrl->L.active) { lonflip = Ctrl->L.lonflip; flag = true; }
+	if (Ctrl->T.active) { timegap = Ctrl->T.timegap; flag = true; }
+	if (Ctrl->U.active) { uselockfiles = Ctrl->U.uselockfiles; flag = true; }
+	if (Ctrl->W.active) { snprintf(mbproject, sizeof (mbproject), "%s", Ctrl->W.mbproject); flag = true; }
+	for (unsigned int k = 0; k < Ctrl->M.n; k++) {
+		const char *arg = Ctrl->M.arg[k];
+		if (arg[0] == 'P' || arg[0] == 'p') {	/* default primary colortable and modes */
+			int tmp = primary_colortable_mode;
+			/* n = */ sscanf(&arg[1], "%d/%d/%d", &primary_colortable, &tmp, &primary_shade_mode);
+			primary_colortable_mode = (colortable_mode_t)tmp;
 		}
-
-		if (errflg) {
-			fprintf(stderr, "usage: %s\n", usage_message);
-			Return(MB_ERROR_BAD_USAGE);
+		else if (arg[0] == 'G' || arg[0] == 'g') {	/* default slope colortable and mode */
+			/* n = */ sscanf(&arg[1], "%d/%d", &slope_colortable, &slope_colortable_mode);
 		}
-
-		if (verbose == 1 || help) {
-			fprintf(stderr, "\nProgram %s\n", program_name);
-			fprintf(stderr, "MB-system Version %s\n", MB_VERSION);
+		else if (arg[0] == 'O' || arg[0] == 'o') {	/* default overlay colortable and mode */
+			int tmp = secondary_colortable_mode;
+			/* n = */ sscanf(&arg[1], "%d/%d", &secondary_colortable, &tmp);
+			secondary_colortable_mode = (colortable_mode_t)tmp;
 		}
-
-		if (verbose >= 2) {
-			fprintf(stderr, "\ndbg2  Program <%s>\n", program_name);
-			fprintf(stderr, "dbg2  MB-system Version %s\n", MB_VERSION);
-			fprintf(stderr, "dbg2  Control Parameters:\n");
-			fprintf(stderr, "dbg2       verbose:                    %d\n", verbose);
-			fprintf(stderr, "dbg2       help:                       %d\n", help);
-			fprintf(stderr, "dbg2       format:                     %d\n", format);
-			fprintf(stderr, "dbg2       pings:                      %d\n", pings);
-			fprintf(stderr, "dbg2       lonflip:                    %d\n", lonflip);
-			fprintf(stderr, "dbg2       bounds[0]:                  %f\n", bounds[0]);
-			fprintf(stderr, "dbg2       bounds[1]:                  %f\n", bounds[1]);
-			fprintf(stderr, "dbg2       bounds[2]:                  %f\n", bounds[2]);
-			fprintf(stderr, "dbg2       bounds[3]:                  %f\n", bounds[3]);
-			fprintf(stderr, "dbg2       btime_i[0]:                 %d\n", btime_i[0]);
-			fprintf(stderr, "dbg2       btime_i[1]:                 %d\n", btime_i[1]);
-			fprintf(stderr, "dbg2       btime_i[2]:                 %d\n", btime_i[2]);
-			fprintf(stderr, "dbg2       btime_i[3]:                 %d\n", btime_i[3]);
-			fprintf(stderr, "dbg2       btime_i[4]:                 %d\n", btime_i[4]);
-			fprintf(stderr, "dbg2       btime_i[5]:                 %d\n", btime_i[5]);
-			fprintf(stderr, "dbg2       btime_i[6]:                 %d\n", btime_i[6]);
-			fprintf(stderr, "dbg2       etime_i[0]:                 %d\n", etime_i[0]);
-			fprintf(stderr, "dbg2       etime_i[1]:                 %d\n", etime_i[1]);
-			fprintf(stderr, "dbg2       etime_i[2]:                 %d\n", etime_i[2]);
-			fprintf(stderr, "dbg2       etime_i[3]:                 %d\n", etime_i[3]);
-			fprintf(stderr, "dbg2       etime_i[4]:                 %d\n", etime_i[4]);
-			fprintf(stderr, "dbg2       etime_i[5]:                 %d\n", etime_i[5]);
-			fprintf(stderr, "dbg2       etime_i[6]:                 %d\n", etime_i[6]);
-			fprintf(stderr, "dbg2       speedmin:                   %f\n", speedmin);
-			fprintf(stderr, "dbg2       timegap:                    %f\n", timegap);
-			fprintf(stderr, "dbg2       psdisplay:                  %s\n", psdisplay);
-			fprintf(stderr, "dbg2       imgdisplay:                 %s\n", imgdisplay);
-			fprintf(stderr, "dbg2       mbproject:                  %s\n", mbproject);
-			fprintf(stderr, "dbg2       fbtversion:                 %d\n", fbtversion);
-			fprintf(stderr, "dbg2       uselockfiles:               %d\n", uselockfiles);
-			fprintf(stderr, "dbg2       fileiobuffer:               %d\n", fileiobuffer);
-			fprintf(stderr, "dbg2       primary_colortable:         %d\n", primary_colortable);
-			fprintf(stderr, "dbg2       primary_colortable_mode:    %d\n", primary_colortable_mode);
-			fprintf(stderr, "dbg2       primary_shade_mode:         %d\n", primary_shade_mode);
-			fprintf(stderr, "dbg2       slope_colortable:           %d\n", slope_colortable);
-			fprintf(stderr, "dbg2       slope_colortable_mode:      %d\n", slope_colortable_mode);
-			fprintf(stderr, "dbg2       secondary_colortable:       %d\n", secondary_colortable);
-			fprintf(stderr, "dbg2       secondary_colortable_mode:  %d\n", secondary_colortable_mode);
-			fprintf(stderr, "dbg2       illuminate_magnitude:       %f\n", illuminate_magnitude);
-			fprintf(stderr, "dbg2       illuminate_elevation:       %f\n", illuminate_elevation);
-			fprintf(stderr, "dbg2       illuminate_azimuth:         %f\n", illuminate_azimuth);
-			fprintf(stderr, "dbg2       slope_magnitude:            %f\n", slope_magnitude);
+		else if (arg[0] == 'I' || arg[0] == 'i') {	/* default illumination parameters */
+			/* n = */ sscanf(&arg[1], "%lf/%lf/%lf", &illuminate_magnitude, &illuminate_elevation, &illuminate_azimuth);
 		}
-
-		if (help) {
-			fprintf(stderr, "\n%s\n", help_message);
-			fprintf(stderr, "\nusage: %s\n", usage_message);
-			Return(MB_ERROR_NO_ERROR);
+		else if (arg[0] == 'S' || arg[0] == 's') {	/* default slope shading magnitude */
+			/* n = */ sscanf(&arg[1], "%lf", &slope_magnitude);
 		}
+		flag = true;
 	}
+
+	GMT_Report(API, GMT_MSG_INFORMATION, "Program %s\n", program_name);
+	GMT_Report(API, GMT_MSG_INFORMATION, "MB-system Version %s\n", MB_VERSION);
+	GMT_Report(API, GMT_MSG_DEBUG, "Control Parameters:\n");
+	GMT_Report(API, GMT_MSG_DEBUG, "     lonflip:                    %d\n", lonflip);
+	GMT_Report(API, GMT_MSG_DEBUG, "     timegap:                    %f\n", timegap);
+	GMT_Report(API, GMT_MSG_DEBUG, "     psdisplay:                  %s\n", psdisplay);
+	GMT_Report(API, GMT_MSG_DEBUG, "     imgdisplay:                 %s\n", imgdisplay);
+	GMT_Report(API, GMT_MSG_DEBUG, "     mbproject:                  %s\n", mbproject);
+	GMT_Report(API, GMT_MSG_DEBUG, "     fbtversion:                 %d\n", fbtversion);
+	GMT_Report(API, GMT_MSG_DEBUG, "     uselockfiles:               %d\n", uselockfiles);
+	GMT_Report(API, GMT_MSG_DEBUG, "     fileiobuffer:               %d\n", fileiobuffer);
 
 	/* write out new ~/.mbio_defaults file if needed */
 	if (flag) {
@@ -504,15 +425,15 @@ int GMT_mbdefaults(void *V_API, int gmt_mode, void *args) {
 			home = getenv("USERPROFILE");
 #endif
 		if (home == NULL) {
-			fprintf(stderr, "Could not determine home directory (HOME environment variable not set)\n");
-			Return(MB_ERROR_OPEN_FAIL);
+			GMT_Report(API, GMT_MSG_ERROR, "Could not determine home directory (HOME environment variable not set)\n");
+			Return(GMT_RUNTIME_ERROR);
 		}
 		char file[MB_PATH_MAXLINE];
-		snprintf(file, sizeof(file), "%s/.mbio_defaults", home);
+		snprintf(file, sizeof (file), "%s/.mbio_defaults", home);
 		FILE *fp = fopen(file, "w");
 		if (fp == NULL) {
-			fprintf(stderr, "Could not open file %s\n", file);
-			Return(MB_ERROR_OPEN_FAIL);
+			GMT_Report(API, GMT_MSG_ERROR, "Could not open file %s\n", file);
+			Return(GMT_ERROR_ON_FOPEN);
 		}
 		fprintf(fp, "MBIO Default Control Parameters\n");
 		fprintf(fp, "lonflip:    %d\n", lonflip);
@@ -535,192 +456,63 @@ int GMT_mbdefaults(void *V_API, int gmt_mode, void *args) {
 		fprintf(fp, "mbview_illuminate_azimuth:        %f\n", illuminate_azimuth);
 		fprintf(fp, "mbview_slope_magnitude:           %f\n", slope_magnitude);
 		fclose(fp);
-
-		printf("\nNew MBIO Default Control Parameters:\n");
-		printf("lonflip:    %d\n", lonflip);
-		printf("timegap:    %f\n", timegap);
-		printf("ps viewer:  %s\n", psdisplay);
-		printf("img viewer: %s\n", imgdisplay);
-		printf("project:    %s\n", mbproject);
-		if (fbtversion == 2)
-			printf("fbtversion: 2 (old)\n");
-		else if (fbtversion == 3)
-			printf("fbtversion: 3 (new)\n");
-		else
-			printf("fbtversion: %d\n", fbtversion);
-		printf("uselockfiles: %d\n", uselockfiles);
-		if (fileiobuffer == 0)
-			printf("fileiobuffer: %d (use standard fread() & fwrite() buffering)\n", fileiobuffer);
-		else if (fileiobuffer > 0)
-			printf("fileiobuffer: %d (use %d kB buffer for fread() & fwrite())\n", fileiobuffer, fileiobuffer);
-		else
-			printf("fileiobuffer: %d (use mmap for file i/o)\n", fileiobuffer);
-		if (primary_colortable == MBV_COLORTABLE_HAXBY)
-			printf("mbview primary colortable:    %d  (Haxby)\n", primary_colortable);
-		else if (primary_colortable == MBV_COLORTABLE_BRIGHT)
-			printf("mbview primary colortable:    %d  (Bright)\n", primary_colortable);
-		else if (primary_colortable == MBV_COLORTABLE_MUTED)
-			printf("mbview primary colortable:    %d  (Muted)\n", primary_colortable);
-		else if (primary_colortable == MBV_COLORTABLE_GRAY)
-			printf("mbview primary colortable:    %d  (Grayscale)\n", primary_colortable);
-		else if (primary_colortable == MBV_COLORTABLE_FLAT)
-			printf("mbview primary colortable:    %d  (Flat  gray)\n", primary_colortable);
-		else if (primary_colortable == MBV_COLORTABLE_SEALEVEL1)
-			printf("mbview primary colortable:    %d  (Sealevel 1)\n", primary_colortable);
-		else if (primary_colortable == MBV_COLORTABLE_SEALEVEL2)
-			printf("mbview primary colortable:    %d  (Sealevel 2)\n", primary_colortable);
-		if (primary_colortable_mode == MBV_COLORTABLE_NORMAL)
-			printf("mbview primary colortable mode:    %d  (Normal: Cold to Hot)\n", primary_colortable_mode);
-		else
-			printf("mbview primary colortable mode:    %d  (Reversed: Hot to Cold)\n", primary_colortable_mode);
-		if (primary_shade_mode == MBV_SHADE_VIEW_NONE)
-			printf("mbview primary shade mode:    %d  (No shading)\n", primary_shade_mode);
-		else if (primary_shade_mode == MBV_SHADE_VIEW_ILLUMINATION)
-			printf("mbview primary shade mode:    %d  (Shading by illumination)\n", primary_shade_mode);
-		else if (primary_shade_mode == MBV_SHADE_VIEW_SLOPE)
-			printf("mbview primary shade mode:    %d  (Shading by slope magnitude)\n", primary_shade_mode);
-		else if (primary_shade_mode == MBV_SHADE_VIEW_OVERLAY)
-			printf("mbview primary shade mode:    %d  (Shading by overlay)\n", primary_shade_mode);
-
-		if (slope_colortable == MBV_COLORTABLE_HAXBY)
-			printf("mbview slope colortable:    %d  (Haxby)\n", slope_colortable);
-		else if (slope_colortable == MBV_COLORTABLE_BRIGHT)
-			printf("mbview slope colortable:    %d  (Bright)\n", slope_colortable);
-		else if (slope_colortable == MBV_COLORTABLE_MUTED)
-			printf("mbview slope colortable:    %d  (Muted)\n", slope_colortable);
-		else if (slope_colortable == MBV_COLORTABLE_GRAY)
-			printf("mbview slope colortable:    %d  (Grayscale)\n", slope_colortable);
-		else if (slope_colortable == MBV_COLORTABLE_FLAT)
-			printf("mbview slope colortable:    %d  (Flat  gray)\n", slope_colortable);
-		else if (slope_colortable == MBV_COLORTABLE_SEALEVEL1)
-			printf("mbview slope colortable:    %d  (Sealevel 1)\n", slope_colortable);
-		else if (slope_colortable == MBV_COLORTABLE_SEALEVEL2)
-			printf("mbview slope colortable:    %d  (Sealevel 2)\n", slope_colortable);
-		if (slope_colortable_mode == MBV_COLORTABLE_NORMAL)
-			printf("mbview slope colortable mode:    %d  (Normal: Cold to Hot)\n", slope_colortable_mode);
-		else
-			printf("mbview slope colortable mode:    %d  (Reversed: Hot to Cold)\n", slope_colortable_mode);
-
-		if (secondary_colortable == MBV_COLORTABLE_HAXBY)
-			printf("mbview overlay colortable:    %d  (Haxby)\n", secondary_colortable);
-		else if (secondary_colortable == MBV_COLORTABLE_BRIGHT)
-			printf("mbview overlay colortable:    %d  (Bright)\n", secondary_colortable);
-		else if (secondary_colortable == MBV_COLORTABLE_MUTED)
-			printf("mbview overlay colortable:    %d  (Muted)\n", secondary_colortable);
-		else if (secondary_colortable == MBV_COLORTABLE_GRAY)
-			printf("mbview overlay colortable:    %d  (Grayscale)\n", secondary_colortable);
-		else if (secondary_colortable == MBV_COLORTABLE_FLAT)
-			printf("mbview overlay colortable:    %d  (Flat  gray)\n", secondary_colortable);
-		else if (secondary_colortable == MBV_COLORTABLE_SEALEVEL1)
-			printf("mbview overlay colortable:    %d  (Sealevel 1)\n", secondary_colortable);
-		else if (secondary_colortable == MBV_COLORTABLE_SEALEVEL2)
-			printf("mbview overlay colortable:    %d  (Sealevel 2)\n", secondary_colortable);
-		if (secondary_colortable_mode == MBV_COLORTABLE_NORMAL)
-			printf("mbview overlay colortable mode:    %d  (Normal: Cold to Hot)\n", secondary_colortable_mode);
-		else
-			printf("mbview overlay colortable mode:    %d  (Reversed: Hot to Cold)\n", secondary_colortable_mode);
-		printf("mbview illumination magnitude:    %f\n", illuminate_magnitude);
-		printf("mbview illumination elevation:    %f degrees\n", illuminate_elevation);
-		printf("mbview illumination azimuth:      %f degrees\n", illuminate_azimuth);
-		printf("mbview slope magnitude:           %f\n", slope_magnitude);
-	} else {
-		/* else just list the current defaults */
-
-		printf("\nCurrent MBIO Default Control Parameters:\n");
-		printf("lonflip:    %d\n", lonflip);
-		printf("timegap:    %f\n", timegap);
-		printf("ps viewer:  %s\n", psdisplay);
-		printf("img viewer: %s\n", imgdisplay);
-		printf("project:    %s\n", mbproject);
-		if (fbtversion == 2)
-			printf("fbtversion: 2 (old)\n");
-		else if (fbtversion == 3)
-			printf("fbtversion: 3 (new)\n");
-		else
-			printf("fbtversion: %d\n", fbtversion);
-		printf("uselockfiles: %d\n", uselockfiles);
-		if (fileiobuffer == 0)
-			printf("fileiobuffer: %d (use standard fread() & fwrite() buffering)\n", fileiobuffer);
-		else if (fileiobuffer > 0)
-			printf("fileiobuffer: %d (use %d kB buffer for fread() & fwrite())\n", fileiobuffer, fileiobuffer);
-		else
-			printf("fileiobuffer: %d (use mmap for file i/o)\n", fileiobuffer);
-		if (primary_colortable == MBV_COLORTABLE_HAXBY)
-			printf("mbview primary colortable:         %d  (Haxby)\n", primary_colortable);
-		else if (primary_colortable == MBV_COLORTABLE_BRIGHT)
-			printf("mbview primary colortable:         %d  (Bright)\n", primary_colortable);
-		else if (primary_colortable == MBV_COLORTABLE_MUTED)
-			printf("mbview primary colortable:         %d  (Muted)\n", primary_colortable);
-		else if (primary_colortable == MBV_COLORTABLE_GRAY)
-			printf("mbview primary colortable:         %d  (Grayscale)\n", primary_colortable);
-		else if (primary_colortable == MBV_COLORTABLE_FLAT)
-			printf("mbview primary colortable:         %d  (Flat  gray)\n", primary_colortable);
-		else if (primary_colortable == MBV_COLORTABLE_SEALEVEL1)
-			printf("mbview primary colortable:         %d  (Sealevel 1)\n", primary_colortable);
-		else if (primary_colortable == MBV_COLORTABLE_SEALEVEL2)
-			printf("mbview primary colortable:         %d  (Sealevel 2)\n", primary_colortable);
-		if (primary_colortable_mode == MBV_COLORTABLE_NORMAL)
-			printf("mbview primary colortable mode:    %d  (Normal: Cold to Hot)\n", primary_colortable_mode);
-		else
-			printf("mbview primary colortable mode:    %d  (Reversed: Hot to Cold)\n", primary_colortable_mode);
-		if (primary_shade_mode == MBV_SHADE_VIEW_NONE)
-			printf("mbview primary shade mode:         %d  (No shading)\n", primary_shade_mode);
-		else if (primary_shade_mode == MBV_SHADE_VIEW_ILLUMINATION)
-			printf("mbview primary shade mode:         %d  (Shading by illumination)\n", primary_shade_mode);
-		else if (primary_shade_mode == MBV_SHADE_VIEW_SLOPE)
-			printf("mbview primary shade mode:         %d  (Shading by slope magnitude)\n", primary_shade_mode);
-		else if (primary_shade_mode == MBV_SHADE_VIEW_OVERLAY)
-			printf("mbview primary shade mode:         %d  (Shading by overlay)\n", primary_shade_mode);
-
-		if (slope_colortable == MBV_COLORTABLE_HAXBY)
-			printf("mbview slope colortable:           %d  (Haxby)\n", slope_colortable);
-		else if (slope_colortable == MBV_COLORTABLE_BRIGHT)
-			printf("mbview slope colortable:           %d  (Bright)\n", slope_colortable);
-		else if (slope_colortable == MBV_COLORTABLE_MUTED)
-			printf("mbview slope colortable:           %d  (Muted)\n", slope_colortable);
-		else if (slope_colortable == MBV_COLORTABLE_GRAY)
-			printf("mbview slope colortable:           %d  (Grayscale)\n", slope_colortable);
-		else if (slope_colortable == MBV_COLORTABLE_FLAT)
-			printf("mbview slope colortable:           %d  (Flat  gray)\n", slope_colortable);
-		else if (slope_colortable == MBV_COLORTABLE_SEALEVEL1)
-			printf("mbview slope colortable:           %d  (Sealevel 1)\n", slope_colortable);
-		else if (slope_colortable == MBV_COLORTABLE_SEALEVEL2)
-			printf("mbview slope colortable:           %d  (Sealevel 2)\n", slope_colortable);
-		if (slope_colortable_mode == MBV_COLORTABLE_NORMAL)
-			printf("mbview slope colortable mode:      %d  (Normal: Cold to Hot)\n", slope_colortable_mode);
-		else
-			printf("mbview slope colortable mode:      %d  (Reversed: Hot to Cold)\n", slope_colortable_mode);
-
-		if (secondary_colortable == MBV_COLORTABLE_HAXBY)
-			printf("mbview overlay colortable:         %d  (Haxby)\n", secondary_colortable);
-		else if (secondary_colortable == MBV_COLORTABLE_BRIGHT)
-			printf("mbview overlay colortable:         %d  (Bright)\n", secondary_colortable);
-		else if (secondary_colortable == MBV_COLORTABLE_MUTED)
-			printf("mbview overlay colortable:         %d  (Muted)\n", secondary_colortable);
-		else if (secondary_colortable == MBV_COLORTABLE_GRAY)
-			printf("mbview overlay colortable:         %d  (Grayscale)\n", secondary_colortable);
-		else if (secondary_colortable == MBV_COLORTABLE_FLAT)
-			printf("mbview overlay colortable:         %d  (Flat  gray)\n", secondary_colortable);
-		else if (secondary_colortable == MBV_COLORTABLE_SEALEVEL1)
-			printf("mbview overlay colortable:         %d  (Sealevel 1)\n", secondary_colortable);
-		else if (secondary_colortable == MBV_COLORTABLE_SEALEVEL2)
-			printf("mbview overlay colortable:         %d  (Sealevel 2)\n", secondary_colortable);
-		if (secondary_colortable_mode == MBV_COLORTABLE_NORMAL)
-			printf("mbview overlay colortable mode:    %d  (Normal: Cold to Hot)\n", secondary_colortable_mode);
-		else
-			printf("mbview overlay colortable mode:    %d  (Reversed: Hot to Cold)\n", secondary_colortable_mode);
-		printf("mbview illumination magnitude:     %f\n", illuminate_magnitude);
-		printf("mbview illumination elevation:     %f degrees\n", illuminate_elevation);
-		printf("mbview illumination azimuth:       %f degrees\n", illuminate_azimuth);
-		printf("mbview slope magnitude:            %f\n", slope_magnitude);
 	}
 
-	if (verbose >= 2) {
-		fprintf(stderr, "\ndbg2  Program <%s> completed\n", program_name);
-		fprintf(stderr, "dbg2  Ending status:\n");
-		fprintf(stderr, "dbg2       status:  %d\n", status);
-	}
+	/* The listing: the new defaults when any was set, else the current ones. Text records through
+	   the GMT API (like gmtinfo/grdinfo), so the caller receives them, whatever it is. */
+	if ((T = mb_gmt_text_begin(GMT, options)) == NULL)
+		Return(API->error);
 
-	Return(MB_ERROR_NO_ERROR);
+	const char *name;
+	mb_gmt_text_put(T, "%s MBIO Default Control Parameters:\n", flag ? "New" : "Current");
+	mb_gmt_text_put(T, "lonflip:    %d\n", lonflip);
+	mb_gmt_text_put(T, "timegap:    %f\n", timegap);
+	mb_gmt_text_put(T, "ps viewer:  %s\n", psdisplay);
+	mb_gmt_text_put(T, "img viewer: %s\n", imgdisplay);
+	mb_gmt_text_put(T, "project:    %s\n", mbproject);
+	if (fbtversion == 2)
+		mb_gmt_text_put(T, "fbtversion: 2 (old)\n");
+	else if (fbtversion == 3)
+		mb_gmt_text_put(T, "fbtversion: 3 (new)\n");
+	else
+		mb_gmt_text_put(T, "fbtversion: %d\n", fbtversion);
+	mb_gmt_text_put(T, "uselockfiles: %d\n", uselockfiles);
+	if (fileiobuffer == 0)
+		mb_gmt_text_put(T, "fileiobuffer: %d (use standard fread() & fwrite() buffering)\n", fileiobuffer);
+	else if (fileiobuffer > 0)
+		mb_gmt_text_put(T, "fileiobuffer: %d (use %d kB buffer for fread() & fwrite())\n", fileiobuffer, fileiobuffer);
+	else
+		mb_gmt_text_put(T, "fileiobuffer: %d (use mmap for file i/o)\n", fileiobuffer);
+	if ((name = mbdefaults_colortable_name(primary_colortable)) != NULL)
+		mb_gmt_text_put(T, "mbview primary colortable:         %d  (%s)\n", primary_colortable, name);
+	if (primary_colortable_mode == MBV_COLORTABLE_NORMAL)
+		mb_gmt_text_put(T, "mbview primary colortable mode:    %d  (Normal: Cold to Hot)\n", primary_colortable_mode);
+	else
+		mb_gmt_text_put(T, "mbview primary colortable mode:    %d  (Reversed: Hot to Cold)\n", primary_colortable_mode);
+	if ((name = mbdefaults_shade_name(primary_shade_mode)) != NULL)
+		mb_gmt_text_put(T, "mbview primary shade mode:         %d  (%s)\n", primary_shade_mode, name);
+	if ((name = mbdefaults_colortable_name(slope_colortable)) != NULL)
+		mb_gmt_text_put(T, "mbview slope colortable:           %d  (%s)\n", slope_colortable, name);
+	if (slope_colortable_mode == MBV_COLORTABLE_NORMAL)
+		mb_gmt_text_put(T, "mbview slope colortable mode:      %d  (Normal: Cold to Hot)\n", slope_colortable_mode);
+	else
+		mb_gmt_text_put(T, "mbview slope colortable mode:      %d  (Reversed: Hot to Cold)\n", slope_colortable_mode);
+	if ((name = mbdefaults_colortable_name(secondary_colortable)) != NULL)
+		mb_gmt_text_put(T, "mbview overlay colortable:         %d  (%s)\n", secondary_colortable, name);
+	if (secondary_colortable_mode == MBV_COLORTABLE_NORMAL)
+		mb_gmt_text_put(T, "mbview overlay colortable mode:    %d  (Normal: Cold to Hot)\n", secondary_colortable_mode);
+	else
+		mb_gmt_text_put(T, "mbview overlay colortable mode:    %d  (Reversed: Hot to Cold)\n", secondary_colortable_mode);
+	mb_gmt_text_put(T, "mbview illumination magnitude:     %f\n", illuminate_magnitude);
+	mb_gmt_text_put(T, "mbview illumination elevation:     %f degrees\n", illuminate_elevation);
+	mb_gmt_text_put(T, "mbview illumination azimuth:       %f degrees\n", illuminate_azimuth);
+	mb_gmt_text_put(T, "mbview slope magnitude:            %f\n", slope_magnitude);
+
+	if (mb_gmt_text_end(T))
+		Return(API->error);
+
+	GMT_Report(API, GMT_MSG_DEBUG, "Program <%s> completed, status %d\n", program_name, status);
+
+	Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

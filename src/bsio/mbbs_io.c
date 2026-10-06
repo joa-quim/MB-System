@@ -46,6 +46,7 @@
 #include <math.h>
 #include <stdlib.h>
 
+#include "mbbs.h"          /* the library's prototypes, with the MBBSIO_API export marks */
 #include "mbbs_defines.h"
 #include "mbbs_mem.h"
 

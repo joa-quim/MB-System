@@ -108,5 +108,5 @@ if(buildTests)
     ${CMAKE_SOURCE_DIR}/src/mbgrd2gltf)
   add_test(NAME mbmesh_normal_estimation COMMAND mbmesh_test_normal_estimation)
 
-  add_test(NAME mbmesh_test COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/mbmesh_test.py")
+  mb_julia_test(mbmesh_test tests)
 endif()

@@ -462,8 +462,15 @@ int mb_preprocess_generic(int verbose, void *mbio_ptr, void *store_ptr, void *pl
   }
 
   assert(mbio_ptr != NULL);
-  assert(store_ptr != NULL);
   assert(preprocess_pars_ptr != NULL);
+
+  /* the pre-reading call (store_ptr == NULL, before any data is read) sets
+     special read behavior for formats that have their own preprocess
+     function; the generic preprocessing has nothing to set */
+  if (store_ptr == NULL) {
+    *error = MB_ERROR_NO_ERROR;
+    return (MB_SUCCESS);
+  }
 
   struct mb_io_struct *mb_io_ptr = (struct mb_io_struct *)mbio_ptr;
   struct mb_preprocess_struct *pars = (struct mb_preprocess_struct *)preprocess_pars_ptr;

@@ -30,11 +30,10 @@
  * Date:  April 14, 2014
  */
 /*
- * GMT-module port of src/mbnavadjust/mbnavadjustmerge.c. The program's getopt_long() option loop
- * is kept as it is, running on the reentrant mb_getopt_long() (the state
- * lives in a local structure, so the module can run any number of times in
- * one GMT session), and main() becomes GMT_mbnavadjustmerge(), with every exit()
- * turned into Return().
+ * GMT-module port of src/mbnavadjust/mbnavadjustmerge.c: the program's long options (it has no short
+ * ones) come from GMT's option list in command-line order through mb_gmt_mark_long_options() /
+ * mb_gmt_long_option(); main() becomes GMT_mbnavadjustmerge() and every exit() a Return() with a
+ * GMT error code. Its result is the project it writes; its messages go to stderr.
  */
 
 #define THIS_MODULE_NAME "mbnavadjustmerge"
@@ -66,8 +65,7 @@
 #include "mb_status.h"
 #include "mbnavadjust_io.h"
 #include "mbnavadjust_core.h"
-
-#include "mb_getopt.h"
+#include "mb_gmt_opts.h"
 
 #define MBNAVADJUSTMERGE_MODE_NONE 0
 #define MBNAVADJUSTMERGE_MODE_ADD 1
@@ -274,71 +272,138 @@ static char usage_message[] =
 /*--------------------------------------------------------------------*/
 
 
+/* The program's long options (it has no short ones) */
+static const struct MB_GMT_LONGOPT_DEF long_options[] = {
+	{"verbose", false},
+	{"help", false},
+	{"input", true},
+	{"output", true},
+	{"create-project", true},
+	{"section-length", true},
+	{"section-soundings", true},
+	{"contour-interval", true},
+	{"color-interval", true},
+	{"tick-interval", true},
+	{"label-interval", true},
+	{"decimation", true},
+	{"smoothing", true},
+	{"zoffsetwidth", true},
+	{"import", true},
+	{"import-as-survey", true},
+	{"find-crossings", false},
+	{"autopick", false},
+	{"autopick-horizontal", false},
+	{"autopick-crossing-type", true},
+	{"autopick-scope", true},
+	{"autopick-survey", true},
+	{"autopick-survey2", true},
+	{"autopick-file", true},
+	{"autopick-section", true},
+	{"autopick-overlap-threshold", true},
+	{"invert-navigation", false},
+	{"update-grids", false},
+	{"apply-navigation", false},
+	{"set-global-tie", true},
+	{"set-global-tie-relative", true},
+	{"set-global-tie-xyz", true},
+	{"set-global-tie-xyonly", true},
+	{"set-global-tie-zonly", true},
+	{"set-all-global-ties-xyz", false},
+	{"set-all-global-ties-xyonly", false},
+	{"set-all-global-ties-zonly", false},
+	{"unset-global-tie", true},
+	{"unset-all-global-ties", false},
+	{"shift-global-tie", true},
+	{"shift-all-global-ties", true},
+	{"add-crossing", true},
+	{"set-tie", true},
+	{"set-tie-xyz", true},
+	{"set-tie-xyonly", true},
+	{"set-tie-zonly", true},
+	{"set-ties-xyz-all", false},
+	{"set-ties-xyonly-all", false},
+	{"set-ties-zonly-all", false},
+	{"set-ties-xyz-with-file", true},
+	{"set-ties-xyonly-with-file", true},
+	{"set-ties-zonly-with-file", true},
+	{"set-ties-xyz-with-survey", true},
+	{"set-ties-xyonly-with-survey", true},
+	{"set-ties-zonly-with-survey", true},
+	{"set-ties-xyz-by-survey", true},
+	{"set-ties-xyonly-by-survey", true},
+	{"set-ties-zonly-by-survey", true},
+	{"set-ties-xyz-by-block", true},
+	{"set-ties-xyonly-by-block", true},
+	{"set-ties-zonly-by-block", true},
+	{"set-ties-zoffset-by-block", true},
+	{"set-ties-xyonly-by-time", true},
+	{"unset-tie", true},
+	{"unset-ties-with-file", true},
+	{"unset-ties-with-survey", true},
+	{"unset-ties-by-survey", true},
+	{"unset-ties-by-block", true},
+	{"unset-ties-all", true},
+	{"unset-all-ties", true},
+	{"skip-unset-crossings", false},
+	{"unset-skipped-crossings", false},
+	{"unset-skipped-crossings-by-block", true},
+	{"unset-skipped-crossings-between-surveys", false},
+	{"insert-discontinuity", true},
+	{"remove-discontinuity", true},
+	{"merge-surveys", true},
+	{"update-file", true},
+	{"update-survey", true},
+	{"update-all-files", false},
+	{"import-tie-list", true},
+	{"export-tie-list", true},
+	{"triangulate", false},
+	{"triangulate-all", false},
+	{"triangulate-section", true},
+	{"triangulate-scale", true},
+	{"unset-short-section-ties", true},
+	{"skip-short-section-crossings", true},
+	{"remove-short-sections", true},
+	{"remove-file", true},
+	{"remake-mb166-files", false},
+	{"fix-sensordepth", false},
+	{NULL, false}};
+
 /* --- GMT front end ---------------------------------------------------- */
 
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
 	GMT_Message(API, GMT_TIME_NONE, "usage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return GMT_PARSE_ERROR;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 	GMT_Message(API, GMT_TIME_NONE, "%s\n", help_message);
-	return GMT_PARSE_ERROR;
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
-/* The options GMT itself should see: -V (verbosity) and -I (the input the
- * module keys bind). Everything else, long options included, is parsed by
- * the program's own option loop below. */
-static char *mb_gmt_options_string(int argc, char **argv) {
-	size_t total = 1;
-	for (int i = 1; i < argc; i++)
-		total += strlen(argv[i]) + 1;
-	char *s = (char *)calloc(total + 8, 1);
-	if (s == NULL)
-		return NULL;
-	for (int i = 1; i < argc; i++) {
-		if (argv[i][0] == '-' && (argv[i][1] == 'V' || (argv[i][1] == 'I' && argv[i][2] != '\0'))) {
-			if (s[0] != '\0')
-				strcat(s, " ");
-			strcat(s, argv[i]);
-		}
-	}
-	return s;
-}
-
-/* gmt_M_free_options() hard-codes a variable named "options", which the
-   program's own option table shadows here, so destroy gmt_options directly */
-#define bailout(code) { mb_getopt_args_free(argc, argv); free(gmt_args); GMT_Destroy_Options(API, &gmt_options); return (code); }
-#define Return(code) { gmt_end_module(GMT, GMT_cpy); bailout(code); }
-EXTERN_MSC int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args);
+#define bailout(code) { gmt_M_free_options(mode); return code; }
+#define Return(code) { free(mods); gmt_end_module(GMT, GMT_cpy); bailout(code); }
+EXTERN_MSC int GMT_mbnavadjustmerge(void *V_API, int mode, void *args);
 
 /*--------------------------------------------------------------------*/
 
-int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
+int GMT_mbnavadjustmerge(void *V_API, int mode, void *args) {
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
-	struct GMT_OPTION *gmt_options = NULL;
-	char *gmt_args = NULL;
-	char **argv = NULL;
-	int argc = 0;
-	struct mb_getopt_state getopt_state;
-	mb_getopt_init(&getopt_state);
+	struct GMT_OPTION *options = NULL;
+	struct mbnavadjust_mod *mods = NULL;
+	int gmt_error;
 
-	if (!API) return GMT_NOT_A_SESSION;
-	if (gmt_mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
-
-	/* the program's own argv[], whatever shape GMT handed us */
-	argc = mb_getopt_args_build(THIS_MODULE_NAME, gmt_mode, args, &argv);
-	if (argc == 2 && (strcmp(argv[1], "-") == 0 || strcmp(argv[1], "?") == 0))
-		bailout(usage(API, GMT_USAGE));
-	if (argc == 2 && strcmp(argv[1], "+") == 0)
-		bailout(usage(API, GMT_SYNOPSIS));
-
-	gmt_args = mb_gmt_options_string(argc, argv);
-	gmt_options = GMT_Create_Options(API, GMT_MODULE_CMD, (gmt_args != NULL && gmt_args[0] != '\0') ? gmt_args : NULL);
-	if (API->error) bailout(API->error);
+	if (API == NULL) return GMT_NOT_A_SESSION;
+	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a run of the program, which reports the missing project itself */
+	if ((gmt_error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(gmt_error);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-	                           THIS_MODULE_NEEDS, NULL, &gmt_options, &GMT_cpy)) == NULL) bailout(API->error);
-	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, gmt_options)) Return(API->error);
+	                           THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	/* the program's long options (it has no short ones) kept out of GMT's --PAR=value handling */
+	mb_gmt_mark_long_options(API, &options, long_options);
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
   int verbose = 0;
   int error = MB_ERROR_NO_ERROR;
@@ -355,10 +420,10 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
   int num_mods = 0;
   /* NUMBER_MODS_MAX modification records take about 1.4 MB - more than the
      whole default Windows stack - so they live on the heap (zeroed) */
-  struct mbnavadjust_mod *mods = (struct mbnavadjust_mod *)calloc(NUMBER_MODS_MAX, sizeof(struct mbnavadjust_mod));
+  mods = (struct mbnavadjust_mod *)calloc(NUMBER_MODS_MAX, sizeof(struct mbnavadjust_mod));
   if (mods == NULL) {
-    fprintf(stderr, "\nUnable to allocate the modification list\n");
-    Return(MB_ERROR_MEMORY_FAIL);
+    GMT_Report(API, GMT_MSG_ERROR, "Unable to allocate the modification list\n");
+    Return(GMT_MEMORY_ERROR);
   }
 
   bool import_tie_list_set = false;
@@ -396,117 +461,40 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
   int ifile_remove = 0;
 
   {
-  static struct mb_getopt_option options[] = {{"verbose", mb_no_argument, NULL, 0},
-                                    {"help", mb_no_argument, NULL, 0},
-                                    {"input", mb_required_argument, NULL, 0},
-                                    {"output", mb_required_argument, NULL, 0},
-                                    {"create-project", mb_required_argument, NULL, 0},
-                                    {"section-length", mb_required_argument, NULL, 0},
-                                    {"section-soundings", mb_required_argument, NULL, 0},
-                                    {"contour-interval", mb_required_argument, NULL, 0},
-                                    {"color-interval", mb_required_argument, NULL, 0},
-                                    {"tick-interval", mb_required_argument, NULL, 0},
-                                    {"label-interval", mb_required_argument, NULL, 0},
-                                    {"decimation", mb_required_argument, NULL, 0},
-                                    {"smoothing", mb_required_argument, NULL, 0},
-                                    {"zoffsetwidth", mb_required_argument, NULL, 0},
-                                    {"import", mb_required_argument, NULL, 0},
-                                    {"import-as-survey", mb_required_argument, NULL, 0},
-                                    {"find-crossings", mb_no_argument, NULL, 0},
-                                    {"autopick", mb_no_argument, NULL, 0},
-                                    {"autopick-horizontal", mb_no_argument, NULL, 0},
-                                    {"autopick-crossing-type", mb_required_argument, NULL, 0},
-                                    {"autopick-scope", mb_required_argument, NULL, 0},
-                                    {"autopick-survey", mb_required_argument, NULL, 0},
-                                    {"autopick-survey2", mb_required_argument, NULL, 0},
-                                    {"autopick-file", mb_required_argument, NULL, 0},
-                                    {"autopick-section", mb_required_argument, NULL, 0},
-                                    {"autopick-overlap-threshold", mb_required_argument, NULL, 0},
-                                    {"invert-navigation", mb_no_argument, NULL, 0},
-                                    {"update-grids", mb_no_argument, NULL, 0},
-                                    {"apply-navigation", mb_no_argument, NULL, 0},
-                                    {"set-global-tie", mb_required_argument, NULL, 0},
-                                    {"set-global-tie-relative", mb_required_argument, NULL, 0},
-                                    {"set-global-tie-xyz", mb_required_argument, NULL, 0},
-                                    {"set-global-tie-xyonly", mb_required_argument, NULL, 0},
-                                    {"set-global-tie-zonly", mb_required_argument, NULL, 0},
-                                    {"set-all-global-ties-xyz", mb_no_argument, NULL, 0},
-                                    {"set-all-global-ties-xyonly", mb_no_argument, NULL, 0},
-                                    {"set-all-global-ties-zonly", mb_no_argument, NULL, 0},
-                                    {"unset-global-tie", mb_required_argument, NULL, 0},
-                                    {"unset-all-global-ties", mb_no_argument, NULL, 0},
-                                    {"shift-global-tie", mb_required_argument, NULL, 0},
-                                    {"shift-all-global-ties", mb_required_argument, NULL, 0},
-                                    {"add-crossing", mb_required_argument, NULL, 0},
-                                    {"set-tie", mb_required_argument, NULL, 0},
-                                    {"set-tie-xyz", mb_required_argument, NULL, 0},
-                                    {"set-tie-xyonly", mb_required_argument, NULL, 0},
-                                    {"set-tie-zonly", mb_required_argument, NULL, 0},
-                                    {"set-ties-xyz-all", mb_no_argument, NULL, 0},
-                                    {"set-ties-xyonly-all", mb_no_argument, NULL, 0},
-                                    {"set-ties-zonly-all", mb_no_argument, NULL, 0},
-                                    {"set-ties-xyz-with-file", mb_required_argument, NULL, 0},
-                                    {"set-ties-xyonly-with-file", mb_required_argument, NULL, 0},
-                                    {"set-ties-zonly-with-file", mb_required_argument, NULL, 0},
-                                    {"set-ties-xyz-with-survey", mb_required_argument, NULL, 0},
-                                    {"set-ties-xyonly-with-survey", mb_required_argument, NULL, 0},
-                                    {"set-ties-zonly-with-survey", mb_required_argument, NULL, 0},
-                                    {"set-ties-xyz-by-survey", mb_required_argument, NULL, 0},
-                                    {"set-ties-xyonly-by-survey", mb_required_argument, NULL, 0},
-                                    {"set-ties-zonly-by-survey", mb_required_argument, NULL, 0},
-                                    {"set-ties-xyz-by-block", mb_required_argument, NULL, 0},
-                                    {"set-ties-xyonly-by-block", mb_required_argument, NULL, 0},
-                                    {"set-ties-zonly-by-block", mb_required_argument, NULL, 0},
-                                    {"set-ties-zoffset-by-block", mb_required_argument, NULL, 0},
-                                    {"set-ties-xyonly-by-time", mb_required_argument, NULL, 0},
-                                    {"unset-tie", mb_required_argument, NULL, 0},
-                                    {"unset-ties-with-file", mb_required_argument, NULL, 0},
-                                    {"unset-ties-with-survey", mb_required_argument, NULL, 0},
-                                    {"unset-ties-by-survey", mb_required_argument, NULL, 0},
-                                    {"unset-ties-by-block", mb_required_argument, NULL, 0},
-                                    {"unset-ties-all", mb_required_argument, NULL, 0},
-                                    {"unset-all-ties", mb_required_argument, NULL, 0},
-                                    {"skip-unset-crossings", mb_no_argument, NULL, 0},
-                                    {"unset-skipped-crossings", mb_no_argument, NULL, 0},
-                                    {"unset-skipped-crossings-by-block", mb_required_argument, NULL, 0},
-                                    {"unset-skipped-crossings-between-surveys", mb_no_argument, NULL, 0},
-                                    {"insert-discontinuity", mb_required_argument, NULL, 0},
-                                    {"remove-discontinuity", mb_required_argument, NULL, 0},
-                                    {"merge-surveys", mb_required_argument, NULL, 0},
-                                    {"update-file", mb_required_argument, NULL, 0},
-                                    {"update-survey", mb_required_argument, NULL, 0},
-                                    {"update-all-files", mb_no_argument, NULL, 0},
-                                    {"import-tie-list", mb_required_argument, NULL, 0},
-                                    {"export-tie-list", mb_required_argument, NULL, 0},
-                                    {"triangulate", mb_no_argument, NULL, 0},
-                                    {"triangulate-all", mb_no_argument, NULL, 0},
-                                    {"triangulate-section", mb_required_argument, NULL, 0},
-                                    {"triangulate-scale", mb_required_argument, NULL, 0},
-                                    {"unset-short-section-ties", mb_required_argument, NULL, 0},
-                                    {"skip-short-section-crossings", mb_required_argument, NULL, 0},
-                                    {"remove-short-sections", mb_required_argument, NULL, 0},
-                                    {"remove-file", mb_required_argument, NULL, 0},
-                                    {"remake-mb166-files", mb_no_argument, NULL, 0},
-                                    {"fix-sensordepth", mb_no_argument, NULL, 0},
-                                    {NULL, 0, NULL, 0}};
 
   int option_index;
   int errflg = 0;
   int c;
   bool help = 0;
 
-  /* process argument list */
-  while ((c = mb_getopt_long(&getopt_state, argc, argv, "", options, &option_index)) != -1)
+  /* process argument list: the program's long options from GMT's option list, in their command-line
+     order (each is "case 0", as getopt_long returned them); GMT's own -V counts as --verbose */
+  for (struct GMT_OPTION *opt = options; opt; opt = opt->next) {
+    const char *optarg_value = "";
+    if (opt->option == MB_GMT_LONGOPT) {
+      if ((option_index = mb_gmt_long_option(opt, long_options, &optarg_value)) == -2) {
+        GMT_Report(API, GMT_MSG_ERROR, "Option --%s requires an argument\n", opt->arg);
+        errflg++;
+        continue;
+      }
+    }
+    else if (opt->option == 'V')
+      option_index = 0;	/* "verbose" */
+    else {
+      errflg += (gmt_default_option_error(GMT, opt) != 0);
+      continue;
+    }
+    c = 0;
     switch (c) {
     /* long options all return c=0 */
     case 0:
       /* verbose */
-      if (strcmp("verbose", options[option_index].name) == 0) {
+      if (strcmp("verbose", long_options[option_index].name) == 0) {
         verbose++;
       }
 
       /* help */
-      else if (strcmp("help", options[option_index].name) == 0) {
+      else if (strcmp("help", long_options[option_index].name) == 0) {
         help = true;
       }
 
@@ -514,95 +502,95 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
        * Define input and output projects */
 
       /* input */
-      else if (strcmp("input", options[option_index].name) == 0) {
+      else if (strcmp("input", long_options[option_index].name) == 0) {
         if (!project_inputbase_set) {
-          snprintf(project_inputbase_path, sizeof(mb_path), "%s", getopt_state.optarg);
+          snprintf(project_inputbase_path, sizeof(mb_path), "%s", optarg_value);
           project_inputbase_set = true;
         }
         else if (!project_inputadd_set) {
-          snprintf(project_inputadd_path, sizeof(mb_path), "%s", getopt_state.optarg);
+          snprintf(project_inputadd_path, sizeof(mb_path), "%s", optarg_value);
           project_inputadd_set = true;
          }
         else {
           fprintf(stderr, "Input projects already set:\n\t%s\n\t%s\nProject %s ignored...\n\n", project_inputbase_path,
-                  project_inputadd_path, getopt_state.optarg);
+                  project_inputadd_path, optarg_value);
         }
       }
 
       /* output */
-      else if (strcmp("output", options[option_index].name) == 0) {
+      else if (strcmp("output", long_options[option_index].name) == 0) {
         if (!project_output_set) {
-          snprintf(project_output_path, sizeof(mb_path), "%s", getopt_state.optarg);
+          snprintf(project_output_path, sizeof(mb_path), "%s", optarg_value);
           project_output_set = true;
         }
         else {
-          fprintf(stderr, "Output project already set:\n\t%s\nProject %s ignored\n\n", project_output_path, getopt_state.optarg);
+          fprintf(stderr, "Output project already set:\n\t%s\nProject %s ignored\n\n", project_output_path, optarg_value);
         }
       }
 
       /* create-project */
-      else if (strcmp("create-project", options[option_index].name) == 0) {
+      else if (strcmp("create-project", long_options[option_index].name) == 0) {
         if (!project_create_set) {
-          snprintf(project_create_path, sizeof(mb_path), "%s", getopt_state.optarg);
+          snprintf(project_create_path, sizeof(mb_path), "%s", optarg_value);
           project_create_set = true;
         }
         else {
-          fprintf(stderr, "Project to create already set:\n\t%s\nProject %s ignored\n\n", project_create_path, getopt_state.optarg);
+          fprintf(stderr, "Project to create already set:\n\t%s\nProject %s ignored\n\n", project_create_path, optarg_value);
         }
       }
 
       /*-------------------------------------------------------
        * project settings - applied to the output project once loaded/created */
-      else if (strcmp("section-length", options[option_index].name) == 0) {
-        if (sscanf(getopt_state.optarg, "%lf", &set_section_length) == 1)
+      else if (strcmp("section-length", long_options[option_index].name) == 0) {
+        if (sscanf(optarg_value, "%lf", &set_section_length) == 1)
           settings_mask |= MBNA_SETTINGS_SECTION_LENGTH;
         else
-          fprintf(stderr, "Failure to parse --section-length=%s\n\n", getopt_state.optarg);
+          fprintf(stderr, "Failure to parse --section-length=%s\n\n", optarg_value);
       }
-      else if (strcmp("section-soundings", options[option_index].name) == 0) {
-        if (sscanf(getopt_state.optarg, "%d", &set_section_soundings) == 1)
+      else if (strcmp("section-soundings", long_options[option_index].name) == 0) {
+        if (sscanf(optarg_value, "%d", &set_section_soundings) == 1)
           settings_mask |= MBNA_SETTINGS_SECTION_SOUNDINGS;
         else
-          fprintf(stderr, "Failure to parse --section-soundings=%s\n\n", getopt_state.optarg);
+          fprintf(stderr, "Failure to parse --section-soundings=%s\n\n", optarg_value);
       }
-      else if (strcmp("contour-interval", options[option_index].name) == 0) {
-        if (sscanf(getopt_state.optarg, "%lf", &set_cont_int) == 1)
+      else if (strcmp("contour-interval", long_options[option_index].name) == 0) {
+        if (sscanf(optarg_value, "%lf", &set_cont_int) == 1)
           settings_mask |= MBNA_SETTINGS_CONT_INT;
         else
-          fprintf(stderr, "Failure to parse --contour-interval=%s\n\n", getopt_state.optarg);
+          fprintf(stderr, "Failure to parse --contour-interval=%s\n\n", optarg_value);
       }
-      else if (strcmp("color-interval", options[option_index].name) == 0) {
-        if (sscanf(getopt_state.optarg, "%lf", &set_col_int) == 1)
+      else if (strcmp("color-interval", long_options[option_index].name) == 0) {
+        if (sscanf(optarg_value, "%lf", &set_col_int) == 1)
           settings_mask |= MBNA_SETTINGS_COL_INT;
         else
-          fprintf(stderr, "Failure to parse --color-interval=%s\n\n", getopt_state.optarg);
+          fprintf(stderr, "Failure to parse --color-interval=%s\n\n", optarg_value);
       }
-      else if (strcmp("tick-interval", options[option_index].name) == 0) {
-        if (sscanf(getopt_state.optarg, "%lf", &set_tick_int) == 1)
+      else if (strcmp("tick-interval", long_options[option_index].name) == 0) {
+        if (sscanf(optarg_value, "%lf", &set_tick_int) == 1)
           settings_mask |= MBNA_SETTINGS_TICK_INT;
         else
-          fprintf(stderr, "Failure to parse --tick-interval=%s\n\n", getopt_state.optarg);
+          fprintf(stderr, "Failure to parse --tick-interval=%s\n\n", optarg_value);
       }
-      else if (strcmp("label-interval", options[option_index].name) == 0) {
-        if (sscanf(getopt_state.optarg, "%lf", &set_label_int) == 1)
+      else if (strcmp("label-interval", long_options[option_index].name) == 0) {
+        if (sscanf(optarg_value, "%lf", &set_label_int) == 1)
           settings_mask |= MBNA_SETTINGS_LABEL_INT;
         else
-          fprintf(stderr, "Failure to parse --label-interval=%s\n\n", getopt_state.optarg);
+          fprintf(stderr, "Failure to parse --label-interval=%s\n\n", optarg_value);
       }
-      else if (strcmp("decimation", options[option_index].name) == 0) {
-        if (sscanf(getopt_state.optarg, "%d", &set_decimation) == 1)
+      else if (strcmp("decimation", long_options[option_index].name) == 0) {
+        if (sscanf(optarg_value, "%d", &set_decimation) == 1)
           settings_mask |= MBNA_SETTINGS_DECIMATION;
         else
-          fprintf(stderr, "Failure to parse --decimation=%s\n\n", getopt_state.optarg);
+          fprintf(stderr, "Failure to parse --decimation=%s\n\n", optarg_value);
       }
-      else if (strcmp("smoothing", options[option_index].name) == 0) {
-        if (sscanf(getopt_state.optarg, "%lf", &set_smoothing) == 1)
+      else if (strcmp("smoothing", long_options[option_index].name) == 0) {
+        if (sscanf(optarg_value, "%lf", &set_smoothing) == 1)
           settings_mask |= MBNA_SETTINGS_SMOOTHING;
         else
-          fprintf(stderr, "Failure to parse --smoothing=%s\n\n", getopt_state.optarg);
+          fprintf(stderr, "Failure to parse --smoothing=%s\n\n", optarg_value);
       }
-      else if (strcmp("zoffsetwidth", options[option_index].name) == 0) {
-        if (sscanf(getopt_state.optarg, "%lf", &set_zoffsetwidth) == 1) {
+      else if (strcmp("zoffsetwidth", long_options[option_index].name) == 0) {
+        if (sscanf(optarg_value, "%lf", &set_zoffsetwidth) == 1) {
           /* zoffsetwidth is later used as a divisor (zoff_dz = zoffsetwidth /
               (nzmisfitcalc - 1)) when calculating misfit - a zero or negative
               value would cause a divide-by-zero or nonsensical z search range,
@@ -611,12 +599,12 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
             settings_mask |= MBNA_SETTINGS_ZOFFSETWIDTH;
           }
           else {
-            fprintf(stderr, "Invalid --zoffsetwidth=%s : value must be > 0 - option ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Invalid --zoffsetwidth=%s : value must be > 0 - option ignored\n\n", optarg_value);
             set_zoffsetwidth = 1.0;
           }
         }
         else
-          fprintf(stderr, "Failure to parse --zoffsetwidth=%s\n\n", getopt_state.optarg);
+          fprintf(stderr, "Failure to parse --zoffsetwidth=%s\n\n", optarg_value);
       }
 
       /*-------------------------------------------------------
@@ -624,29 +612,29 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --import=path              (path treated as a datalist)
           --import=path:format       (path treated as a single file of the given mbio format)
           --import-as-survey=...     (same, but forces all imported files into one new survey) */
-      else if (strcmp("import", options[option_index].name) == 0
-                || strcmp("import-as-survey", options[option_index].name) == 0) {
+      else if (strcmp("import", long_options[option_index].name) == 0
+                || strcmp("import-as-survey", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_IMPORT_DATA;
-          mods[num_mods].flag1 = (strcmp("import-as-survey", options[option_index].name) == 0);
-          char *colon = strrchr(getopt_state.optarg, ':');
+          mods[num_mods].flag1 = (strcmp("import-as-survey", long_options[option_index].name) == 0);
+          char *colon = strrchr(optarg_value, ':');
           if (colon != NULL && sscanf(colon + 1, "%d", &mods[num_mods].format1) == 1) {
-            snprintf(mods[num_mods].path1, sizeof(mb_path), "%.*s", (int)(colon - getopt_state.optarg), getopt_state.optarg);
+            snprintf(mods[num_mods].path1, sizeof(mb_path), "%.*s", (int)(colon - optarg_value), optarg_value);
           }
           else {
-            snprintf(mods[num_mods].path1, sizeof(mb_path), "%s", getopt_state.optarg);
+            snprintf(mods[num_mods].path1, sizeof(mb_path), "%s", optarg_value);
             mods[num_mods].format1 = -1;
           }
           num_mods++;
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--import=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--import=%s command ignored\n\n", optarg_value);
         }
       }
 
       /*-------------------------------------------------------
        * detect new crossings between previously loaded/imported files */
-      else if (strcmp("find-crossings", options[option_index].name) == 0) {
+      else if (strcmp("find-crossings", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_FIND_CROSSINGS;
           num_mods++;
@@ -663,78 +651,78 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --autopick-file/--autopick-section/--autopick-overlap-threshold
           flags narrow which crossings are considered and may appear in
           any order relative to --autopick[-horizontal] */
-      else if (strcmp("autopick", options[option_index].name) == 0
-                || strcmp("autopick-horizontal", options[option_index].name) == 0) {
+      else if (strcmp("autopick", long_options[option_index].name) == 0
+                || strcmp("autopick-horizontal", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_AUTOPICK;
-          mods[num_mods].flag1 = (strcmp("autopick", options[option_index].name) == 0);
+          mods[num_mods].flag1 = (strcmp("autopick", long_options[option_index].name) == 0);
           num_mods++;
         }
         else {
           fprintf(stderr, "Maximum number of mod commands reached:\n\t--%s command ignored\n\n",
-                  options[option_index].name);
+                  long_options[option_index].name);
         }
       }
-      else if (strcmp("autopick-crossing-type", options[option_index].name) == 0) {
-        if (strcmp(getopt_state.optarg, "all") == 0)
+      else if (strcmp("autopick-crossing-type", long_options[option_index].name) == 0) {
+        if (strcmp(optarg_value, "all") == 0)
           autopick_crossing_type = MBNA_VIEW_LIST_CROSSINGS;
-        else if (strcmp(getopt_state.optarg, "mediocre") == 0)
+        else if (strcmp(optarg_value, "mediocre") == 0)
           autopick_crossing_type = MBNA_VIEW_LIST_MEDIOCRECROSSINGS;
-        else if (strcmp(getopt_state.optarg, "good") == 0)
+        else if (strcmp(optarg_value, "good") == 0)
           autopick_crossing_type = MBNA_VIEW_LIST_GOODCROSSINGS;
-        else if (strcmp(getopt_state.optarg, "better") == 0)
+        else if (strcmp(optarg_value, "better") == 0)
           autopick_crossing_type = MBNA_VIEW_LIST_BETTERCROSSINGS;
-        else if (strcmp(getopt_state.optarg, "true") == 0)
+        else if (strcmp(optarg_value, "true") == 0)
           autopick_crossing_type = MBNA_VIEW_LIST_TRUECROSSINGS;
         else
-          fprintf(stderr, "Unrecognized --autopick-crossing-type=%s (expect all|mediocre|good|better|true)\n\n", getopt_state.optarg);
+          fprintf(stderr, "Unrecognized --autopick-crossing-type=%s (expect all|mediocre|good|better|true)\n\n", optarg_value);
       }
-      else if (strcmp("autopick-scope", options[option_index].name) == 0) {
-        if (strcmp(getopt_state.optarg, "all") == 0)
+      else if (strcmp("autopick-scope", long_options[option_index].name) == 0) {
+        if (strcmp(optarg_value, "all") == 0)
           autopick_scope_mode = MBNA_VIEW_MODE_ALL;
-        else if (strcmp(getopt_state.optarg, "survey") == 0)
+        else if (strcmp(optarg_value, "survey") == 0)
           autopick_scope_mode = MBNA_VIEW_MODE_SURVEY;
-        else if (strcmp(getopt_state.optarg, "withsurvey") == 0)
+        else if (strcmp(optarg_value, "withsurvey") == 0)
           autopick_scope_mode = MBNA_VIEW_MODE_WITHSURVEY;
-        else if (strcmp(getopt_state.optarg, "block") == 0)
+        else if (strcmp(optarg_value, "block") == 0)
           autopick_scope_mode = MBNA_VIEW_MODE_BLOCK;
-        else if (strcmp(getopt_state.optarg, "file") == 0)
+        else if (strcmp(optarg_value, "file") == 0)
           autopick_scope_mode = MBNA_VIEW_MODE_FILE;
-        else if (strcmp(getopt_state.optarg, "withfile") == 0)
+        else if (strcmp(optarg_value, "withfile") == 0)
           autopick_scope_mode = MBNA_VIEW_MODE_WITHFILE;
-        else if (strcmp(getopt_state.optarg, "withsection") == 0)
+        else if (strcmp(optarg_value, "withsection") == 0)
           autopick_scope_mode = MBNA_VIEW_MODE_WITHSECTION;
         else
           fprintf(stderr,
                   "Unrecognized --autopick-scope=%s (expect all|survey|withsurvey|block|file|withfile|withsection)\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
       }
-      else if (strcmp("autopick-survey", options[option_index].name) == 0) {
-        if (sscanf(getopt_state.optarg, "%d", &autopick_survey_select) == 1)
+      else if (strcmp("autopick-survey", long_options[option_index].name) == 0) {
+        if (sscanf(optarg_value, "%d", &autopick_survey_select) == 1)
           autopick_survey_select1 = autopick_survey_select;
         else
-          fprintf(stderr, "Failure to parse --autopick-survey=%s\n\n", getopt_state.optarg);
+          fprintf(stderr, "Failure to parse --autopick-survey=%s\n\n", optarg_value);
       }
-      else if (strcmp("autopick-survey2", options[option_index].name) == 0) {
-        if (sscanf(getopt_state.optarg, "%d", &autopick_survey_select2) != 1)
-          fprintf(stderr, "Failure to parse --autopick-survey2=%s\n\n", getopt_state.optarg);
+      else if (strcmp("autopick-survey2", long_options[option_index].name) == 0) {
+        if (sscanf(optarg_value, "%d", &autopick_survey_select2) != 1)
+          fprintf(stderr, "Failure to parse --autopick-survey2=%s\n\n", optarg_value);
       }
-      else if (strcmp("autopick-file", options[option_index].name) == 0) {
-        if (sscanf(getopt_state.optarg, "%d", &autopick_file_select) != 1)
-          fprintf(stderr, "Failure to parse --autopick-file=%s\n\n", getopt_state.optarg);
+      else if (strcmp("autopick-file", long_options[option_index].name) == 0) {
+        if (sscanf(optarg_value, "%d", &autopick_file_select) != 1)
+          fprintf(stderr, "Failure to parse --autopick-file=%s\n\n", optarg_value);
       }
-      else if (strcmp("autopick-section", options[option_index].name) == 0) {
-        if (sscanf(getopt_state.optarg, "%d", &autopick_section_select) != 1)
-          fprintf(stderr, "Failure to parse --autopick-section=%s\n\n", getopt_state.optarg);
+      else if (strcmp("autopick-section", long_options[option_index].name) == 0) {
+        if (sscanf(optarg_value, "%d", &autopick_section_select) != 1)
+          fprintf(stderr, "Failure to parse --autopick-section=%s\n\n", optarg_value);
       }
-      else if (strcmp("autopick-overlap-threshold", options[option_index].name) == 0) {
-        if (sscanf(getopt_state.optarg, "%lf", &autopick_overlap_threshold) != 1)
-          fprintf(stderr, "Failure to parse --autopick-overlap-threshold=%s\n\n", getopt_state.optarg);
+      else if (strcmp("autopick-overlap-threshold", long_options[option_index].name) == 0) {
+        if (sscanf(optarg_value, "%lf", &autopick_overlap_threshold) != 1)
+          fprintf(stderr, "Failure to parse --autopick-overlap-threshold=%s\n\n", optarg_value);
       }
 
       /*-------------------------------------------------------
        * invert the tie/crossing network for a corrected navigation model */
-      else if (strcmp("invert-navigation", options[option_index].name) == 0) {
+      else if (strcmp("invert-navigation", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_INVERT_NAVIGATION;
           num_mods++;
@@ -746,7 +734,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
 
       /*-------------------------------------------------------
        * regenerate the project's reference bathymetry grids */
-      else if (strcmp("update-grids", options[option_index].name) == 0) {
+      else if (strcmp("update-grids", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_UPDATE_GRIDS;
           num_mods++;
@@ -758,7 +746,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
 
       /*-------------------------------------------------------
        * apply the current navigation solution to the swath data files */
-      else if (strcmp("apply-navigation", options[option_index].name) == 0) {
+      else if (strcmp("apply-navigation", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_APPLY_NAVIGATION;
           num_mods++;
@@ -774,10 +762,10 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --set-global-tie=file:section/xoffset/yoffset/zoffset/xsigma/ysigma/zsigma
           --set-global-tie=file:section:snav/xoffset/yoffset/zoffset
           --set-global-tie=file:section/xoffset/yoffset/zoffset */
-      else if (strcmp("set-global-tie", options[option_index].name) == 0) {
+      else if (strcmp("set-global-tie", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d:%d/%lf/%lf/%lf/%lf/%lf/%lf", &mods[num_mods].file1,
+          if ((nscan = sscanf(optarg_value, "%d:%d:%d/%lf/%lf/%lf/%lf/%lf/%lf", &mods[num_mods].file1,
                               &mods[num_mods].section1, &mods[num_mods].snav1, &mods[num_mods].xoffset,
                               &mods[num_mods].yoffset, &mods[num_mods].zoffset, &mods[num_mods].xsigma,
                               &mods[num_mods].ysigma, &mods[num_mods].zsigma)) == 9) {
@@ -785,14 +773,14 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
             num_mods++;
           }
           else if ((nscan =
-                        sscanf(getopt_state.optarg, "%d:%d/%lf/%lf/%lf/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].section1,
+                        sscanf(optarg_value, "%d:%d/%lf/%lf/%lf/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].section1,
                                &mods[num_mods].xoffset, &mods[num_mods].yoffset, &mods[num_mods].zoffset,
                                &mods[num_mods].xsigma, &mods[num_mods].ysigma, &mods[num_mods].zsigma)) == 8) {
             mods[num_mods].mode = MOD_MODE_SET_GLOBAL_TIE;
             mods[num_mods].snav1 = 0;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d:%d:%d/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].section1,
+          else if ((nscan = sscanf(optarg_value, "%d:%d:%d/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].section1,
                                    &mods[num_mods].snav1, &mods[num_mods].xoffset, &mods[num_mods].yoffset,
                                    &mods[num_mods].zoffset)) == 6) {
             mods[num_mods].mode = MOD_MODE_SET_GLOBAL_TIE;
@@ -801,7 +789,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
             mods[num_mods].zsigma = 0.5;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d:%d/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].section1,
+          else if ((nscan = sscanf(optarg_value, "%d:%d/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].section1,
                                    &mods[num_mods].xoffset, &mods[num_mods].yoffset, &mods[num_mods].zoffset)) == 5) {
             mods[num_mods].mode = MOD_MODE_SET_GLOBAL_TIE;
             mods[num_mods].snav1 = 0;
@@ -811,11 +799,11 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-global-tie=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-global-tie=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-global-tie=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-global-tie=%s command ignored\n\n", optarg_value);
         }
       }
 
@@ -825,10 +813,10 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --set-global-tie-relative=file:section/xoffset/yoffset/zoffset/xsigma/ysigma/zsigma
           --set-global-tie-relative=file:section:snav/xoffset/yoffset/zoffset
           --set-global-tie-relative=file:section/xoffset/yoffset/zoffset */
-      else if (strcmp("set-global-tie-relative", options[option_index].name) == 0) {
+      else if (strcmp("set-global-tie-relative", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d:%d/%lf/%lf/%lf/%lf/%lf/%lf", &mods[num_mods].file1,
+          if ((nscan = sscanf(optarg_value, "%d:%d:%d/%lf/%lf/%lf/%lf/%lf/%lf", &mods[num_mods].file1,
                               &mods[num_mods].section1, &mods[num_mods].snav1, &mods[num_mods].xoffset,
                               &mods[num_mods].yoffset, &mods[num_mods].zoffset, &mods[num_mods].xsigma,
                               &mods[num_mods].ysigma, &mods[num_mods].zsigma)) == 9) {
@@ -836,14 +824,14 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
             num_mods++;
           }
           else if ((nscan =
-                        sscanf(getopt_state.optarg, "%d:%d/%lf/%lf/%lf/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].section1,
+                        sscanf(optarg_value, "%d:%d/%lf/%lf/%lf/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].section1,
                                &mods[num_mods].xoffset, &mods[num_mods].yoffset, &mods[num_mods].zoffset,
                                &mods[num_mods].xsigma, &mods[num_mods].ysigma, &mods[num_mods].zsigma)) == 8) {
             mods[num_mods].mode = MOD_MODE_SET_GLOBAL_TIE_RELATIVE;
             mods[num_mods].snav1 = 0;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d:%d:%d/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].section1,
+          else if ((nscan = sscanf(optarg_value, "%d:%d:%d/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].section1,
                                    &mods[num_mods].snav1, &mods[num_mods].xoffset, &mods[num_mods].yoffset,
                                    &mods[num_mods].zoffset)) == 6) {
             mods[num_mods].mode = MOD_MODE_SET_GLOBAL_TIE_RELATIVE;
@@ -852,7 +840,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
             mods[num_mods].zsigma = 0.5;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d:%d/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].section1,
+          else if ((nscan = sscanf(optarg_value, "%d:%d/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].section1,
                                    &mods[num_mods].xoffset, &mods[num_mods].yoffset, &mods[num_mods].zoffset)) == 5) {
             mods[num_mods].mode = MOD_MODE_SET_GLOBAL_TIE_RELATIVE;
             mods[num_mods].snav1 = 0;
@@ -862,11 +850,11 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-global-tie-relative=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-global-tie-relative=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-global-tie-relative=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-global-tie-relative=%s command ignored\n\n", optarg_value);
         }
       }
 
@@ -875,67 +863,67 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --set-global-tie-xyz=file:section:snav
           --set-global-tie-xyonly=file:section:snav
           --set-global-tie-zonly=file:section:snav */
-      else if (strcmp("set-global-tie-xyz", options[option_index].name) == 0) {
+      else if (strcmp("set-global-tie-xyz", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
+          if ((nscan = sscanf(optarg_value, "%d:%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
                               &mods[num_mods].snav1)) == 3) {
             mods[num_mods].mode = MOD_MODE_SET_GLOBAL_TIE_XYZ;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d:%d", &mods[num_mods].file1, &mods[num_mods].section1)) == 2) {
+          else if ((nscan = sscanf(optarg_value, "%d:%d", &mods[num_mods].file1, &mods[num_mods].section1)) == 2) {
             mods[num_mods].snav1 = 0;
             mods[num_mods].mode = MOD_MODE_SET_GLOBAL_TIE_XYZ;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-global-tie-xyz=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-global-tie-xyz=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-global-tie-xyz=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-global-tie-xyz=%s command ignored\n\n", optarg_value);
         }
       }
-      else if (strcmp("set-global-tie-xyonly", options[option_index].name) == 0) {
+      else if (strcmp("set-global-tie-xyonly", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
+          if ((nscan = sscanf(optarg_value, "%d:%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
                               &mods[num_mods].snav1)) == 3) {
             mods[num_mods].mode = MOD_MODE_SET_GLOBAL_TIE_XY;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d:%d", &mods[num_mods].file1, &mods[num_mods].section1)) == 2) {
+          else if ((nscan = sscanf(optarg_value, "%d:%d", &mods[num_mods].file1, &mods[num_mods].section1)) == 2) {
             mods[num_mods].snav1 = 0;
             mods[num_mods].mode = MOD_MODE_SET_GLOBAL_TIE_XY;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-global-tie-xy=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-global-tie-xy=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-global-tie-xy=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-global-tie-xy=%s command ignored\n\n", optarg_value);
         }
       }
-      else if (strcmp("set-global-tie-zonly", options[option_index].name) == 0) {
+      else if (strcmp("set-global-tie-zonly", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
+          if ((nscan = sscanf(optarg_value, "%d:%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
                               &mods[num_mods].snav1)) == 3) {
             mods[num_mods].mode = MOD_MODE_SET_GLOBAL_TIE_Z;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d:%d", &mods[num_mods].file1, &mods[num_mods].section1)) == 2) {
+          else if ((nscan = sscanf(optarg_value, "%d:%d", &mods[num_mods].file1, &mods[num_mods].section1)) == 2) {
             mods[num_mods].snav1 = 0;
             mods[num_mods].mode = MOD_MODE_SET_GLOBAL_TIE_Z;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-global-tie-z=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-global-tie-z=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-global-tie-z=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-global-tie-z=%s command ignored\n\n", optarg_value);
         }
       }
 
@@ -944,7 +932,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --set-all-global-ties-xyz
           --set-all-global-ties-xyonly
           --set-all-global-ties-zonly */
-      else if (strcmp("set-all-global-ties-xyz", options[option_index].name) == 0) {
+      else if (strcmp("set-all-global-ties-xyz", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_SET_ALL_GLOBAL_TIES_XYZ;
           num_mods++;
@@ -953,7 +941,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-all-global-ties-xyz command ignored\n\n");
         }
       }
-      else if (strcmp("set-all-global-ties-xyonly", options[option_index].name) == 0) {
+      else if (strcmp("set-all-global-ties-xyonly", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_SET_ALL_GLOBAL_TIES_XY;
           num_mods++;
@@ -962,7 +950,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-all-global-ties-xyonly command ignored\n\n");
         }
       }
-      else if (strcmp("set-all-global-ties-zonly", options[option_index].name) == 0) {
+      else if (strcmp("set-all-global-ties-zonly", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_SET_ALL_GLOBAL_TIES_Z;
           num_mods++;
@@ -976,22 +964,22 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
        * unset global ties
           --unset-global-tie=file:section
           --unset-all-global-ties  */
-      else if (strcmp("unset-global-tie", options[option_index].name) == 0) {
+      else if (strcmp("unset-global-tie", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d", &mods[num_mods].file1, &mods[num_mods].section1)) == 2) {
+          if ((nscan = sscanf(optarg_value, "%d:%d", &mods[num_mods].file1, &mods[num_mods].section1)) == 2) {
             mods[num_mods].mode = MOD_MODE_UNSET_GLOBAL_TIE;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --unset-global-tie-z=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --unset-global-tie-z=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-global-tie=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-global-tie=%s command ignored\n\n", optarg_value);
         }
       }
-      else if (strcmp("unset-all-global-ties", options[option_index].name) == 0) {
+      else if (strcmp("unset-all-global-ties", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_UNSET_ALL_GLOBAL_TIES;
           num_mods++;
@@ -1005,10 +993,10 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
        * shift global ties
           --shift-global-tie=file:section/shiftx/shifty/shiftz
           --shift-all-global-ties=section/shiftx/shifty/shiftz  */
-      else if (strcmp("shift-global-tie", options[option_index].name) == 0) {
+      else if (strcmp("shift-global-tie", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d/%lf/%lf/%lf", 
+          if ((nscan = sscanf(optarg_value, "%d:%d/%lf/%lf/%lf", 
                               &mods[num_mods].file1, &mods[num_mods].section1, 
                               &mods[num_mods].xoffset, &mods[num_mods].yoffset, 
                               &mods[num_mods].zoffset)) == 5) {
@@ -1016,24 +1004,24 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --shift-global-tie=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --shift-global-tie=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-global-tie=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-global-tie=%s command ignored\n\n", optarg_value);
         }
       }
-      else if (strcmp("shift-all-global-ties", options[option_index].name) == 0) {
+      else if (strcmp("shift-all-global-ties", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%lf/%lf/%lf", 
+          if ((nscan = sscanf(optarg_value, "%lf/%lf/%lf", 
                               &mods[num_mods].xoffset, &mods[num_mods].yoffset, 
                               &mods[num_mods].zoffset)) == 3) {
             mods[num_mods].mode = MOD_MODE_SHIFT_ALL_GLOBAL_TIES;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --shift-all-global-ties=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --shift-all-global-ties=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
@@ -1044,43 +1032,43 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
       /*-------------------------------------------------------
        * add crossing
           --add-crossing=file1:section1/file2:section2 */
-      else if (strcmp("add-crossing", options[option_index].name) == 0) {
+      else if (strcmp("add-crossing", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d/%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
+          if ((nscan = sscanf(optarg_value, "%d:%d/%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
                               &mods[num_mods].file2, &mods[num_mods].section2)) == 4) {
             mods[num_mods].mode = MOD_MODE_ADD_CROSSING;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d/%d", &mods[num_mods].file1, &mods[num_mods].file2)) == 2) {
+          else if ((nscan = sscanf(optarg_value, "%d/%d", &mods[num_mods].file1, &mods[num_mods].file2)) == 2) {
             mods[num_mods].section1 = 0;
             mods[num_mods].section2 = 0;
             mods[num_mods].mode = MOD_MODE_ADD_CROSSING;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --add-crossing=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --add-crossing=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--add-crossing=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--add-crossing=%s command ignored\n\n", optarg_value);
         }
       }
 
       /*-------------------------------------------------------
        * set tie offset values - add tie if needed
           --set-tie=file1:section1/file2:section2/xoffset/yoffset/zoffset */
-      else if (strcmp("set-tie", options[option_index].name) == 0) {
+      else if (strcmp("set-tie", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d/%d:%d/%lf/%lf/%lf/%lf/%lf/%lf", &mods[num_mods].file1,
+          if ((nscan = sscanf(optarg_value, "%d:%d/%d:%d/%lf/%lf/%lf/%lf/%lf/%lf", &mods[num_mods].file1,
                               &mods[num_mods].section1, &mods[num_mods].file2, &mods[num_mods].section2,
                               &mods[num_mods].xoffset, &mods[num_mods].yoffset, &mods[num_mods].zoffset,
                               &mods[num_mods].xsigma, &mods[num_mods].ysigma, &mods[num_mods].zsigma)) == 10) {
             mods[num_mods].mode = MOD_MODE_SET_TIE_VALUES_ALL;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d/%d/%lf/%lf/%lf/%lf/%lf/%lf", &mods[num_mods].file1,
+          else if ((nscan = sscanf(optarg_value, "%d/%d/%lf/%lf/%lf/%lf/%lf/%lf", &mods[num_mods].file1,
                               &mods[num_mods].file2,
                               &mods[num_mods].xoffset, &mods[num_mods].yoffset, &mods[num_mods].zoffset,
                               &mods[num_mods].xsigma, &mods[num_mods].ysigma, &mods[num_mods].zsigma)) == 8) {
@@ -1089,7 +1077,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
             mods[num_mods].section2 = 0;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d:%d/%d:%d/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].section1,
+          else if ((nscan = sscanf(optarg_value, "%d:%d/%d:%d/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].section1,
                                    &mods[num_mods].file2, &mods[num_mods].section2, &mods[num_mods].xoffset,
                                    &mods[num_mods].yoffset, &mods[num_mods].zoffset)) == 7) {
             mods[num_mods].xsigma = 10.0;
@@ -1098,7 +1086,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
             mods[num_mods].mode = MOD_MODE_SET_TIE_VALUES_XYZ;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d/%d/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].file2,
+          else if ((nscan = sscanf(optarg_value, "%d/%d/%lf/%lf/%lf", &mods[num_mods].file1, &mods[num_mods].file2,
                                    &mods[num_mods].xoffset, &mods[num_mods].yoffset, &mods[num_mods].zoffset)) == 5) {
             mods[num_mods].section1 = 0;
             mods[num_mods].section2 = 0;
@@ -1108,7 +1096,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
             mods[num_mods].mode = MOD_MODE_SET_TIE_VALUES_XYZ;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d:%d/%d:%d///%lf", &mods[num_mods].file1, &mods[num_mods].section1,
+          else if ((nscan = sscanf(optarg_value, "%d:%d/%d:%d///%lf", &mods[num_mods].file1, &mods[num_mods].section1,
                                    &mods[num_mods].file2, &mods[num_mods].section2, &mods[num_mods].zoffset)) == 5) {
             mods[num_mods].xsigma = 10.0;
             mods[num_mods].ysigma = 10.0;
@@ -1116,7 +1104,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
             mods[num_mods].mode = MOD_MODE_SET_TIE_VALUES_Z;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d/%d///%lf", &mods[num_mods].file1, &mods[num_mods].file2,
+          else if ((nscan = sscanf(optarg_value, "%d/%d///%lf", &mods[num_mods].file1, &mods[num_mods].file2,
                                    &mods[num_mods].zoffset)) == 3) {
             mods[num_mods].section1 = 0;
             mods[num_mods].section2 = 0;
@@ -1129,11 +1117,11 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-tie=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-tie=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-tie=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-tie=%s command ignored\n\n", optarg_value);
         }
       }
 
@@ -1142,70 +1130,70 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --set-tie-xyz=file1:section1/file2:section2
           --set-tie-xyonly=file1:section1/file2:section2
           --set-tie-zonly=file1:section1/file2:section2 */
-      else if (strcmp("set-tie-xyz", options[option_index].name) == 0) {
+      else if (strcmp("set-tie-xyz", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d/%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
+          if ((nscan = sscanf(optarg_value, "%d:%d/%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
                               &mods[num_mods].file2, &mods[num_mods].section2)) == 4) {
             mods[num_mods].mode = MOD_MODE_SET_TIE_XYZ;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d/%d", &mods[num_mods].file1, &mods[num_mods].file2)) == 2) {
+          else if ((nscan = sscanf(optarg_value, "%d/%d", &mods[num_mods].file1, &mods[num_mods].file2)) == 2) {
             mods[num_mods].section1 = 0;
             mods[num_mods].section2 = 0;
             mods[num_mods].mode = MOD_MODE_SET_TIE_XYZ;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-tie-xyz=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-tie-xyz=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-tie-xyz=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-tie-xyz=%s command ignored\n\n", optarg_value);
         }
       }
-      else if (strcmp("set-tie-xyonly", options[option_index].name) == 0) {
+      else if (strcmp("set-tie-xyonly", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d/%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
+          if ((nscan = sscanf(optarg_value, "%d:%d/%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
                               &mods[num_mods].file2, &mods[num_mods].section2)) == 4) {
             mods[num_mods].mode = MOD_MODE_SET_TIE_XY;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d/%d", &mods[num_mods].file1, &mods[num_mods].file2)) == 2) {
+          else if ((nscan = sscanf(optarg_value, "%d/%d", &mods[num_mods].file1, &mods[num_mods].file2)) == 2) {
             mods[num_mods].section1 = 0;
             mods[num_mods].section2 = 0;
             mods[num_mods].mode = MOD_MODE_SET_TIE_XY;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-tie-xy=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-tie-xy=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-tie-xy=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-tie-xy=%s command ignored\n\n", optarg_value);
         }
       }
-      else if (strcmp("set-tie-zonly", options[option_index].name) == 0) {
+      else if (strcmp("set-tie-zonly", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d/%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
+          if ((nscan = sscanf(optarg_value, "%d:%d/%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
                               &mods[num_mods].file2, &mods[num_mods].section2)) == 4) {
             mods[num_mods].mode = MOD_MODE_SET_TIE_Z;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%d/%d", &mods[num_mods].file1, &mods[num_mods].file2)) == 2) {
+          else if ((nscan = sscanf(optarg_value, "%d/%d", &mods[num_mods].file1, &mods[num_mods].file2)) == 2) {
             mods[num_mods].section1 = 0;
             mods[num_mods].section2 = 0;
             mods[num_mods].mode = MOD_MODE_SET_TIE_Z;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-tie-z=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-tie-z=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-tie-z=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-tie-z=%s command ignored\n\n", optarg_value);
         }
       }
 
@@ -1214,34 +1202,34 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --set-ties-xyz-all
           --set-ties-xyonly-all
           --set-ties-zonly-all */
-      else if (strcmp("set-ties-xyz-all", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-xyz-all", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_SET_TIES_XYZ_ALL;
           num_mods++;
         }
         else {
           fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-ties-xyz-all=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
-      else if (strcmp("set-ties-xyonly-all", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-xyonly-all", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_SET_TIES_XY_ALL;
           num_mods++;
         }
         else {
           fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-ties-xyonly-all=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
-      else if (strcmp("set-ties-xyz-all", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-xyz-all", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_SET_TIES_Z_ALL;
           num_mods++;
         }
         else {
           fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-ties-xyz-all=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
 
@@ -1250,53 +1238,53 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --set-ties-xyz-with-file=file
           --set-ties-xyonly-with-file=file
           --set-ties-zonly-with-file=file */
-      else if (strcmp("set-ties-xyz-with-file", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-xyz-with-file", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &mods[num_mods].file1)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &mods[num_mods].file1)) == 1) {
             mods[num_mods].mode = MOD_MODE_SET_TIES_XYZ_FILE;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-ties-xyz-with-file=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-ties-xyz-with-file=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-ties-xyz-with-file=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
-      else if (strcmp("set-ties-xyonly-with-file", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-xyonly-with-file", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &mods[num_mods].file1)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &mods[num_mods].file1)) == 1) {
             mods[num_mods].mode = MOD_MODE_SET_TIES_XY_FILE;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-ties-xyonly-with-file=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-ties-xyonly-with-file=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr,
                   "Maximum number of mod commands reached:\n\t--set-ties-xyonly-with-file=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
-      else if (strcmp("set-ties-xyz-with-file", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-xyz-with-file", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &mods[num_mods].file1)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &mods[num_mods].file1)) == 1) {
             mods[num_mods].mode = MOD_MODE_SET_TIES_Z_FILE;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-ties-xyz-with-file=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-ties-xyz-with-file=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-ties-xyz-with-file=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
 
@@ -1305,55 +1293,55 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --set-ties-xyz-with-survey=survey
           --set-ties-xyonly-with-survey=survey
           --set-ties-zonly-with-survey=survey */
-      else if (strcmp("set-ties-xyz-with-survey", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-xyz-with-survey", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &mods[num_mods].survey1)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &mods[num_mods].survey1)) == 1) {
             mods[num_mods].mode = MOD_MODE_SET_TIES_XYZ_SURVEY;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-ties-xyz-with-survey=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-ties-xyz-with-survey=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr,
                   "Maximum number of mod commands reached:\n\t--set-ties-xyz-with-survey=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
-      else if (strcmp("set-ties-xyonly-with-survey", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-xyonly-with-survey", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &mods[num_mods].survey1)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &mods[num_mods].survey1)) == 1) {
             mods[num_mods].mode = MOD_MODE_SET_TIES_XY_SURVEY;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-ties-xyonly-with-survey=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-ties-xyonly-with-survey=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr,
                   "Maximum number of mod commands reached:\n\t--set-ties-xyonly-with-survey=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
-      else if (strcmp("set-ties-zonly-with-survey", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-zonly-with-survey", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &mods[num_mods].survey1)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &mods[num_mods].survey1)) == 1) {
             mods[num_mods].mode = MOD_MODE_SET_TIES_Z_SURVEY;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-ties-zonly-with-survey=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-ties-zonly-with-survey=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr,
                   "Maximum number of mod commands reached:\n\t--set-ties-zonly-with-survey=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
 
@@ -1362,55 +1350,55 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --set-ties-xyz-by-survey=survey
           --set-ties-xyonly-by-survey=survey
           --set-ties-zonly-by-survey=survey */
-      else if (strcmp("set-ties-xyz-by-survey", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-xyz-by-survey", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &mods[num_mods].survey1)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &mods[num_mods].survey1)) == 1) {
             mods[num_mods].mode = MOD_MODE_SET_TIES_XYZ_BYSURVEY;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-ties-xyz-by-survey=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-ties-xyz-by-survey=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr,
                   "Maximum number of mod commands reached:\n\t--set-ties-xyz-by-survey=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
-      else if (strcmp("set-ties-xyonly-by-survey", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-xyonly-by-survey", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &mods[num_mods].survey1)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &mods[num_mods].survey1)) == 1) {
             mods[num_mods].mode = MOD_MODE_SET_TIES_XY_BYSURVEY;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-ties-xyonly-by-survey=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-ties-xyonly-by-survey=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr,
                   "Maximum number of mod commands reached:\n\t--set-ties-xyonly-by-survey=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
-      else if (strcmp("set-ties-zonly-by-survey", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-zonly-by-survey", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &mods[num_mods].survey1)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &mods[num_mods].survey1)) == 1) {
             mods[num_mods].mode = MOD_MODE_SET_TIES_Z_BYSURVEY;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-ties-zonly-by-survey=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-ties-zonly-by-survey=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr,
                   "Maximum number of mod commands reached:\n\t--set-ties-zonly-by-survey=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
 
@@ -1419,114 +1407,114 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --set-ties-xyz-by-block=survey1/survey2
           --set-ties-xyonly-by-block=survey1/survey2
           --set-ties-zonly-by-block=survey1/survey2 */
-      else if (strcmp("set-ties-xyz-by-block", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-xyz-by-block", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d/%d", &mods[num_mods].survey1, &mods[num_mods].survey2)) == 2) {
+          if ((nscan = sscanf(optarg_value, "%d/%d", &mods[num_mods].survey1, &mods[num_mods].survey2)) == 2) {
             mods[num_mods].mode = MOD_MODE_SET_TIES_XYZ_BLOCK;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-ties-xyz-with-block=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-ties-xyz-with-block=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-ties-xyz-with-block=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
-      else if (strcmp("set-ties-xyonly-by-block", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-xyonly-by-block", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d/%d", &mods[num_mods].survey1, &mods[num_mods].survey2)) == 2) {
+          if ((nscan = sscanf(optarg_value, "%d/%d", &mods[num_mods].survey1, &mods[num_mods].survey2)) == 2) {
             mods[num_mods].mode = MOD_MODE_SET_TIES_XY_BLOCK;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-ties-xyonly-with-block=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-ties-xyonly-with-block=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr,
                   "Maximum number of mod commands reached:\n\t--set-ties-xyonly-with-block=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
-      else if (strcmp("set-ties-xyz-by-block", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-xyz-by-block", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d/%d", &mods[num_mods].survey1, &mods[num_mods].survey2)) == 2) {
+          if ((nscan = sscanf(optarg_value, "%d/%d", &mods[num_mods].survey1, &mods[num_mods].survey2)) == 2) {
             mods[num_mods].mode = MOD_MODE_SET_TIES_Z_BLOCK;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-ties-xyz-with-block=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-ties-xyz-with-block=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-ties-xyz-with-block=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
 
       /*-------------------------------------------------------
        * set zoffset of all ties between two surveys
           --set-ties-zoffset-by-block=survey1/survey2/zoffset */
-      else if (strcmp("set-ties-zoffset-by-block", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-zoffset-by-block", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d/%d/%lf", &mods[num_mods].survey1, &mods[num_mods].survey2,
+          if ((nscan = sscanf(optarg_value, "%d/%d/%lf", &mods[num_mods].survey1, &mods[num_mods].survey2,
                               &mods[num_mods].zoffset)) == 3) {
             mods[num_mods].mode = MOD_MODE_SET_TIES_ZOFFSET_BLOCK;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-ties-zoffset-with-block=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-ties-zoffset-with-block=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-ties-xyz-with-block=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
 
       /*-------------------------------------------------------
        * set all ties between nav points separated by more time than timethreshold to xyonly
           --set-ties-xyonly-by-time=timethreshold[y | d | h | m] */
-      else if (strcmp("set-ties-xyonly-by-time", options[option_index].name) == 0) {
+      else if (strcmp("set-ties-xyonly-by-time", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%lfy", &mods[num_mods].dt)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%lfy", &mods[num_mods].dt)) == 1) {
             mods[num_mods].dt *= MB_SECINYEAR;
             mods[num_mods].mode = MOD_MODE_SET_TIES_XY_BY_TIME;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%lfd", &mods[num_mods].dt)) == 1) {
+          else if ((nscan = sscanf(optarg_value, "%lfd", &mods[num_mods].dt)) == 1) {
             mods[num_mods].dt *= MB_SECINDAY;
             mods[num_mods].mode = MOD_MODE_SET_TIES_XY_BY_TIME;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%lfh", &mods[num_mods].dt)) == 1) {
+          else if ((nscan = sscanf(optarg_value, "%lfh", &mods[num_mods].dt)) == 1) {
             mods[num_mods].dt *= MB_SECINHOUR;
             mods[num_mods].mode = MOD_MODE_SET_TIES_XY_BY_TIME;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%lfm", &mods[num_mods].dt)) == 1) {
+          else if ((nscan = sscanf(optarg_value, "%lfm", &mods[num_mods].dt)) == 1) {
             mods[num_mods].dt *= MB_SECINMINUTE;
             mods[num_mods].mode = MOD_MODE_SET_TIES_XY_BY_TIME;
             num_mods++;
           }
-          else if ((nscan = sscanf(getopt_state.optarg, "%lf", &mods[num_mods].dt)) == 1) {
+          else if ((nscan = sscanf(optarg_value, "%lf", &mods[num_mods].dt)) == 1) {
             mods[num_mods].mode = MOD_MODE_SET_TIES_XY_BY_TIME;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --set-ties-xyonly-by-time=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --set-ties-xyonly-by-time=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr, "Maximum number of mod commands reached:\n\t--set-ties-xyonly-by-time=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
 
@@ -1538,98 +1526,98 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --unset-ties-by-survey=survey
           --unset-ties-by-block=survey1/survey2
           --unset-ties-all */
-      else if (strcmp("unset-tie", options[option_index].name) == 0) {
+      else if (strcmp("unset-tie", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d/%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
+          if ((nscan = sscanf(optarg_value, "%d:%d/%d:%d", &mods[num_mods].file1, &mods[num_mods].section1,
                               &mods[num_mods].file2, &mods[num_mods].section2)) == 4) {
             mods[num_mods].mode = MOD_MODE_UNSET_TIE;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --unset-tie=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --unset-tie=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--unset-tie=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--unset-tie=%s command ignored\n\n", optarg_value);
         }
       }
-      else if (strcmp("unset-ties-with-file", options[option_index].name) == 0) {
+      else if (strcmp("unset-ties-with-file", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &mods[num_mods].file1)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &mods[num_mods].file1)) == 1) {
             mods[num_mods].mode = MOD_MODE_UNSET_TIES_FILE;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --unset-ties-with-file=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --unset-ties-with-file=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--unset-ties-with-file=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--unset-ties-with-file=%s command ignored\n\n", optarg_value);
         }
       }
-      else if (strcmp("unset-ties-with-survey", options[option_index].name) == 0) {
+      else if (strcmp("unset-ties-with-survey", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &mods[num_mods].survey1)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &mods[num_mods].survey1)) == 1) {
             mods[num_mods].mode = MOD_MODE_UNSET_TIES_SURVEY;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --unset-ties-with-survey=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --unset-ties-with-survey=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--unset-ties-with-survey=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--unset-ties-with-survey=%s command ignored\n\n", optarg_value);
         }
       }
-      else if (strcmp("unset-ties-by-survey", options[option_index].name) == 0) {
+      else if (strcmp("unset-ties-by-survey", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &mods[num_mods].survey1)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &mods[num_mods].survey1)) == 1) {
             mods[num_mods].mode = MOD_MODE_UNSET_TIES_BYSURVEY;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --unset-ties-by-survey=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --unset-ties-by-survey=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--unset-ties-by-survey=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--unset-ties-by-survey=%s command ignored\n\n", optarg_value);
         }
       }
-      else if (strcmp("unset-ties-by-block", options[option_index].name) == 0) {
+      else if (strcmp("unset-ties-by-block", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d/%d",
+          if ((nscan = sscanf(optarg_value, "%d/%d",
             &mods[num_mods].survey1, &mods[num_mods].survey2)) == 2) {
             mods[num_mods].mode = MOD_MODE_UNSET_TIES_BLOCK;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --unset-ties-by-block=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --unset-ties-by-block=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--unset-ties-by-block=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--unset-ties-by-block=%s command ignored\n\n", optarg_value);
         }
       }
-      else if (strcmp("unset-ties-all", options[option_index].name) == 0
-        || strcmp("unset-all-ties", options[option_index].name) == 0) {
+      else if (strcmp("unset-ties-all", long_options[option_index].name) == 0
+        || strcmp("unset-all-ties", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_UNSET_TIES_ALL;
           num_mods++;
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--unset-ties-all=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--unset-ties-all=%s command ignored\n\n", optarg_value);
         }
       }
 
       /*-------------------------------------------------------
        * set all crossings without ties in the input project(s) to be skipped
           --skip-unset-crossings */
-      else if (strcmp("skip-unset-crossings", options[option_index].name) == 0) {
+      else if (strcmp("skip-unset-crossings", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_SKIP_UNSET_CROSSINGS;
           num_mods++;
@@ -1644,7 +1632,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --unset-skipped-crossings
           --unset-skipped-crossings-by-block
           --unset-skipped-crossings-betweeen-surveys */
-      else if (strcmp("unset-skipped-crossings", options[option_index].name) == 0) {
+      else if (strcmp("unset-skipped-crossings", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_UNSET_SKIPPED_CROSSINGS;
           num_mods++;
@@ -1654,11 +1642,11 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
                   "Maximum number of mod commands reached:\n\tunset-skipped-crossings command ignored\n\n");
         }
       }
-      else if (strcmp("unset-skipped-crossings-by-block", options[option_index].name) == 0) {
+      else if (strcmp("unset-skipped-crossings-by-block", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d", &mods[num_mods].survey1, &mods[num_mods].survey2)) == 2
-              || (nscan = sscanf(getopt_state.optarg, "%d/%d", &mods[num_mods].survey1, &mods[num_mods].survey2)) == 2) {
+          if ((nscan = sscanf(optarg_value, "%d:%d", &mods[num_mods].survey1, &mods[num_mods].survey2)) == 2
+              || (nscan = sscanf(optarg_value, "%d/%d", &mods[num_mods].survey1, &mods[num_mods].survey2)) == 2) {
             mods[num_mods].mode = MOD_MODE_UNSET_SKIPPED_CROSSINGS_BLOCK;
             num_mods++;
           }
@@ -1668,7 +1656,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
                   "Maximum number of mod commands reached:\n\tunset-skipped-crossings-by-block command ignored\n\n");
         }
       }
-      else if (strcmp("unset-skipped-crossings-between-surveys", options[option_index].name) == 0) {
+      else if (strcmp("unset-skipped-crossings-between-surveys", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_UNSET_SKIPPED_CROSSINGS_BETWEEN_SURVEYS;
           num_mods++;
@@ -1682,10 +1670,10 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
       /*-------------------------------------------------------
        * Insert discontinuity immediately before the file and section specified
           --insert-discontinuity */
-      else if (strcmp("insert-discontinuity", options[option_index].name) == 0) {
+      else if (strcmp("insert-discontinuity", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d", &mods[num_mods].file1, &mods[num_mods].section1)) == 2) {
+          if ((nscan = sscanf(optarg_value, "%d:%d", &mods[num_mods].file1, &mods[num_mods].section1)) == 2) {
             mods[num_mods].mode = MOD_MODE_INSERT_DISCONTINUITY;
             num_mods++;
           }
@@ -1698,10 +1686,10 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
       /*-------------------------------------------------------
        * Remove discontinuity immediately before the file and section specified
           --remove-discontinuity */
-      else if (strcmp("remove-discontinuity", options[option_index].name) == 0) {
+      else if (strcmp("remove-discontinuity", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d", &mods[num_mods].file1, &mods[num_mods].section1)) == 2) {
+          if ((nscan = sscanf(optarg_value, "%d:%d", &mods[num_mods].file1, &mods[num_mods].section1)) == 2) {
             mods[num_mods].mode = MOD_MODE_REMOVE_DISCONTINUITY;
             num_mods++;
           }
@@ -1714,21 +1702,21 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
       /*-------------------------------------------------------
        * Merge two adjacent surveys into a single survey with a discontinuity
           --merge-surveys */
-      else if (strcmp("merge-surveys", options[option_index].name) == 0) {
+      else if (strcmp("merge-surveys", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d/%d", &mods[num_mods].survey1, &mods[num_mods].survey2)) == 2
+          if ((nscan = sscanf(optarg_value, "%d/%d", &mods[num_mods].survey1, &mods[num_mods].survey2)) == 2
               && mods[num_mods].survey2 == mods[num_mods].survey1 + 1) {
             mods[num_mods].mode = MOD_MODE_MERGE_SURVEYS;
             num_mods++;
           }
           else {
-            fprintf(stderr, "Failure to parse --merge-surveys=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --merge-surveys=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
           fprintf(stderr, "Maximum number of mod commands reached:\n\t--merge-surveys=%s command ignored\n\n",
-                  getopt_state.optarg);
+                  optarg_value);
         }
       }
 
@@ -1738,10 +1726,10 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --update-file=file
           --update-survey=survey
           --update-all-files */
-      else if (strcmp("update-file", options[option_index].name) == 0) {
+      else if (strcmp("update-file", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &mods[num_mods].file1)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &mods[num_mods].file1)) == 1) {
             mods[num_mods].mode = MOD_MODE_UPDATE_FILE;
             num_mods++;
           }
@@ -1750,10 +1738,10 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           fprintf(stderr, "Maximum number of mod commands reached:\n\tupdate-file command ignored\n\n");
         }
       }
-      else if (strcmp("update-survey", options[option_index].name) == 0) {
+      else if (strcmp("update-survey", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &mods[num_mods].file1)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &mods[num_mods].file1)) == 1) {
             mods[num_mods].mode = MOD_MODE_UPDATE_SURVEY;
             num_mods++;
           }
@@ -1762,7 +1750,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           fprintf(stderr, "Maximum number of mod commands reached:\n\tupdate-survey command ignored\n\n");
         }
       }
-      else if (strcmp("update-all-files", options[option_index].name) == 0) {
+      else if (strcmp("update-all-files", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_UPDATE_ALL_FILES;
           num_mods++;
@@ -1776,12 +1764,12 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
        * Import or export list of ties
           --import-tie-list=file
           --export-tie-list=file */
-      else if (strcmp("import-tie-list", options[option_index].name) == 0) {
-        snprintf(import_tie_list_path, sizeof(mb_path), "%s", getopt_state.optarg);
+      else if (strcmp("import-tie-list", long_options[option_index].name) == 0) {
+        snprintf(import_tie_list_path, sizeof(mb_path), "%s", optarg_value);
         import_tie_list_set = true;
       }
-      else if (strcmp("export-tie-list", options[option_index].name) == 0) {
-        snprintf(export_tie_list_path, sizeof(mb_path), "%s", getopt_state.optarg);
+      else if (strcmp("export-tie-list", long_options[option_index].name) == 0) {
+        snprintf(export_tie_list_path, sizeof(mb_path), "%s", optarg_value);
         export_tie_list_set = true;
       }
 
@@ -1790,7 +1778,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
           --triangulate
           --triangulate-section=file:section
           --triangulate-scale=scale */
-      else if (strcmp("triangulate", options[option_index].name) == 0) {
+      else if (strcmp("triangulate", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_TRIANGULATE;
           num_mods++;
@@ -1801,7 +1789,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
                   "Maximum number of mod commands reached:\n\ttriangulate command ignored\n\n");
         }
       }
-      else if (strcmp("triangulate-all", options[option_index].name) == 0) {
+      else if (strcmp("triangulate-all", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_TRIANGULATE;
           num_mods++;
@@ -1812,42 +1800,42 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
                   "Maximum number of mod commands reached:\n\ttriangulate-all command ignored\n\n");
         }
       }
-      else if (strcmp("triangulate-section", options[option_index].name) == 0) {
+      else if (strcmp("triangulate-section", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d:%d", &mods[num_mods].file1, &mods[num_mods].section1)) == 2) {
+          if ((nscan = sscanf(optarg_value, "%d:%d", &mods[num_mods].file1, &mods[num_mods].section1)) == 2) {
             mods[num_mods].mode = MOD_MODE_TRIANGULATE_SECTION;
             num_mods++;
             triangulate = TRIANGULATE_ALL;
           }
           else {
-            fprintf(stderr, "Failure to parse --triangulate-section=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+            fprintf(stderr, "Failure to parse --triangulate-section=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--triangulate-section=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--triangulate-section=%s command ignored\n\n", optarg_value);
         }
       }
-      else if (strcmp("triangulate-scale", options[option_index].name) == 0) {
+      else if (strcmp("triangulate-scale", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%lf", &triangle_scale)) != 1) {
-            fprintf(stderr, "Failure to parse --triangulate-scale=%s\n\tmod command ignored\n\n", getopt_state.optarg);
+          if ((nscan = sscanf(optarg_value, "%lf", &triangle_scale)) != 1) {
+            fprintf(stderr, "Failure to parse --triangulate-scale=%s\n\tmod command ignored\n\n", optarg_value);
           }
         }
         else {
-          fprintf(stderr, "Maximum number of mod commands reached:\n\t--triangulate-scale=%s command ignored\n\n", getopt_state.optarg);
+          fprintf(stderr, "Maximum number of mod commands reached:\n\t--triangulate-scale=%s command ignored\n\n", optarg_value);
         }
       }
 
       /*-------------------------------------------------------*/
       // unset ties or skip crossings where one or both sections is too short
       // (section->distance < 0.25 * project->section_length)
-      else if (strcmp("unset-short-section-ties", options[option_index].name) == 0) {
+      else if (strcmp("unset-short-section-ties", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_UNSET_SHORT_SECTION_TIES;
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%lf/%d", &minimum_section_length, &minimum_section_soundings)) >= 1) {
+          if ((nscan = sscanf(optarg_value, "%lf/%d", &minimum_section_length, &minimum_section_soundings)) >= 1) {
             num_mods++;
           }
           else {
@@ -1859,11 +1847,11 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
                   "Maximum number of mod commands reached:\n\tunset-short-section-ties command ignored\n\n");
         }
       }
-      else if (strcmp("skip-short-section-crossings", options[option_index].name) == 0) {
+      else if (strcmp("skip-short-section-crossings", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_SKIP_SHORT_SECTION_CROSSINGS;
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%lf/%d", &minimum_section_length, &minimum_section_soundings)) >= 1) {
+          if ((nscan = sscanf(optarg_value, "%lf/%d", &minimum_section_length, &minimum_section_soundings)) >= 1) {
             num_mods++;
           }
           else {
@@ -1879,11 +1867,11 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
       /*-------------------------------------------------------*/
       // remove sections that are too short by adding them to the
       // prior section
-      else if (strcmp("remove-short-sections", options[option_index].name) == 0) {
+      else if (strcmp("remove-short-sections", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_REMOVE_SHORT_SECTIONS;
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%lf/%d", &minimum_section_length, &minimum_section_soundings)) >= 1) {
+          if ((nscan = sscanf(optarg_value, "%lf/%d", &minimum_section_length, &minimum_section_soundings)) >= 1) {
             num_mods++;
           }
           else {
@@ -1898,11 +1886,11 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
 
       /*-------------------------------------------------------*/
       // remove specified file
-      else if (strcmp("remove-file", options[option_index].name) == 0) {
+      else if (strcmp("remove-file", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_REMOVE_FILE;
           int nscan;
-          if ((nscan = sscanf(getopt_state.optarg, "%d", &ifile_remove)) == 1) {
+          if ((nscan = sscanf(optarg_value, "%d", &ifile_remove)) == 1) {
             num_mods++;
           }
           else {
@@ -1919,7 +1907,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
       // regenerate the *.mb166 files (navigation for each swath file)
       // - needed because MBnavadjust was mistakenly including navigation
       //   from nav records as well as ping records
-      else if (strcmp("remake-mb166-files", options[option_index].name) == 0) {
+      else if (strcmp("remake-mb166-files", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_REMAKE_MB166_FILES;
           num_mods++;
@@ -1932,7 +1920,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
 
       /*-------------------------------------------------------*/
       // reset S_NAV sensordepth values from the *.mb166 files
-      else if (strcmp("fix-sensordepth", options[option_index].name) == 0) {
+      else if (strcmp("fix-sensordepth", long_options[option_index].name) == 0) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_FIX_SENSORDEPTH;
           num_mods++;
@@ -1946,20 +1934,19 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
       /*-------------------------------------------------------*/
 
       break;
-    case '?':
-      errflg++;
     }
-
-  /* if error flagged then print it and exit */
-  if (errflg) {
-    fprintf(stderr, "usage: %s\n", usage_message);
-    fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-    error = MB_ERROR_BAD_USAGE;
-    Return(error);
   }
 
+  /* if error flagged then exit */
+  if (errflg)
+    Return(GMT_PARSE_ERROR);
+
+  /* if help desired then print it and exit */
+  if (help)
+    Return(usage(API, GMT_USAGE));
+
   /* print starting message */
-  if (verbose == 1 || help) {
+  if (verbose == 1) {
     fprintf(stderr, "\nProgram %s\n", program_name);
     fprintf(stderr, "MB-system Version %s\n", MB_VERSION);
   }
@@ -1993,24 +1980,18 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
   }
 
   /* if help desired then print it and exit */
-  if (help) {
-    fprintf(stderr, "\n%s\n", help_message);
-    fprintf(stderr, "\nusage: %s\n", usage_message);
-    Return(error);
-  }
-
   }
 
   /* figure out mbnavadjust project merge mode */
   if (project_create_set && (project_inputbase_set || project_inputadd_set)) {
     fprintf(stderr, "--create-project cannot be combined with --input.\n");
     fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-    Return(MB_ERROR_BAD_USAGE);
+    Return(GMT_PARSE_ERROR);
   }
   if (!project_create_set && !project_inputbase_set) {
     fprintf(stderr, "No input base project has been set.\n");
     fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-    Return(MB_ERROR_BAD_USAGE);
+    Return(GMT_PARSE_ERROR);
   }
 
   int mbnavadjustmerge_mode = MBNAVADJUSTMERGE_MODE_NONE;
@@ -2060,7 +2041,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
     fprintf(stderr, "The output project must either be the input base project or a new project.\n");
     fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
     error = MB_ERROR_BAD_USAGE;
-    Return(error);
+    Return(GMT_PARSE_ERROR);
   }
   else if (project_inputbase_set && project_inputadd_set && project_output_set &&
     strcmp(project_output_path, project_inputbase_path) == 0) {
@@ -2092,7 +2073,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
       fprintf(stderr, "Load failure for input base project:\n\t%s\n", project_inputbase_path);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
       error = MB_ERROR_BAD_USAGE;
-      Return(error);
+      Return(GMT_RUNTIME_ERROR);
     }
 
     status = mbnavadjust_new_project(
@@ -2106,7 +2087,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
       fprintf(stderr, "Creation failure for output project:\n\t%s\n", project_output_path);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
       error = MB_ERROR_BAD_USAGE;
-      Return(error);
+      Return(GMT_RUNTIME_ERROR);
     }
 
     /* copy the input base project to the output project */
@@ -2198,7 +2179,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
     }
     if (status == MB_FAILURE) {
       fprintf(stderr, "Die at line:%d file:%s\n", __LINE__, __FILE__);
-      Return(0);
+      Return(GMT_MEMORY_ERROR);	/* the program exits 0 here, on a failure */
     }
 
     /* allocate and copy the crossings */
@@ -2218,7 +2199,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
     }
     if (status == MB_FAILURE) {
       fprintf(stderr, "Die at line:%d file:%s\n", __LINE__, __FILE__);
-      Return(0);
+      Return(GMT_MEMORY_ERROR);	/* the program exits 0 here, on a failure */
     }
 
     /* now concatenate the log.txt from the input project with the log.txt for the new output project */
@@ -2277,7 +2258,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
 				  	srcfile);
 		  		fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
 		  		error = MB_ERROR_BAD_USAGE;
-		  		Return(error);
+		  		Return(GMT_RUNTIME_ERROR);
         } else {
           num_sections_copied++;
         }
@@ -2329,7 +2310,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
               project_output_path);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
       error = MB_ERROR_BAD_USAGE;
-      Return(error);
+      Return(GMT_RUNTIME_ERROR);
     }
   }
 
@@ -2345,7 +2326,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
       fprintf(stderr, "Creation failure for new project:\n\t%s\n", project_output_path);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
       error = MB_ERROR_BAD_USAGE;
-      Return(error);
+      Return(GMT_RUNTIME_ERROR);
     }
   }
 
@@ -2371,7 +2352,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
       fprintf(stderr, "Load failure for input add project:\n\t%s\n", project_inputadd_path);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
       error = MB_ERROR_BAD_USAGE;
-      Return(error);
+      Return(GMT_RUNTIME_ERROR);
     }
 
     /* allocate space for additional files */
@@ -2382,7 +2363,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
                            (void **)&project_output.files, &error);
       if (status == MB_FAILURE) {
         fprintf(stderr, "Die at line:%d file:%s\n", __LINE__, __FILE__);
-        Return(0);
+        Return(GMT_MEMORY_ERROR);	/* the program exits 0 here, on a failure */
       }
     }
 
@@ -2408,7 +2389,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
                        (void **)&project_output.files[j].sections, &error);
         if (status == MB_FAILURE) {
           fprintf(stderr, "Die at line:%d file:%s\n", __LINE__, __FILE__);
-          Return(0);
+          Return(GMT_MEMORY_ERROR);	/* the program exits 0 here, on a failure */
         }
         if (project_output.files[j].sections != NULL) {
           project_output.files[j].num_sections_alloc = project_output.files[j].num_sections;
@@ -2438,7 +2419,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
                            (void **)&project_output.crossings, &error);
       if (status == MB_FAILURE) {
         fprintf(stderr, "Die at line:%d file:%s\n", __LINE__, __FILE__);
-        Return(0);
+        Return(GMT_MEMORY_ERROR);	/* the program exits 0 here, on a failure */
       }
       if (project_output.crossings != NULL) {
         project_output.num_crossings_alloc = project_output.num_crossings + project_inputadd.num_crossings;
@@ -2462,7 +2443,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
     }
     if (status == MB_FAILURE) {
       fprintf(stderr, "Die at line:%d file:%s\n", __LINE__, __FILE__);
-      Return(0);
+      Return(GMT_MEMORY_ERROR);	/* the program exits 0 here, on a failure */
     }
 
     /* now concatenate the log.txt from the inputadd project with the log.txt for the new output project */
@@ -2508,7 +2489,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
 				  srcfile);
 		  fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
 		  error = MB_ERROR_BAD_USAGE;
-		  Return(error);
+		  Return(GMT_RUNTIME_ERROR);
         }
         else {
           num_sections_copied++;
@@ -4400,7 +4381,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
             mb_mallocd(verbose, __FILE__, __LINE__, nnav_alloc * sizeof(double), (void **)&nav_sensordepth, &error);
             if (error > MB_ERROR_NO_ERROR) {
               error = MB_ERROR_MEMORY_FAIL;
-              Return(error);
+              Return(GMT_MEMORY_ERROR);
             }
           }
           if (nnav_alloc > 0 && error == MB_ERROR_NO_ERROR) {
@@ -4460,7 +4441,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
       fprintf(stderr, "Unable to open tie list file %s for reading\n", import_tie_list_path);
       status = MB_FAILURE;
       error = MB_ERROR_OPEN_FAIL;
-      Return(error);
+      Return(GMT_ERROR_ON_FOPEN);
     }
 
     int num_import_tie;
@@ -5003,7 +4984,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
       fprintf(stderr, "Unable to open tie list file %s for writing\n", export_tie_list_path);
       status = MB_FAILURE;
       error = MB_ERROR_OPEN_FAIL;
-      Return(error);
+      Return(GMT_ERROR_ON_FOPEN);
     }
 
     /* output navigation crossing ties */
@@ -5053,7 +5034,7 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
       fprintf(stderr, "Write failure for output project:\n\t%s\n", project_output_path);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
       error = MB_ERROR_BAD_USAGE;
-      Return(error);
+      Return(GMT_RUNTIME_ERROR);
     }
 
     if (update_datalist) {
@@ -5094,6 +5075,16 @@ int GMT_mbnavadjustmerge(void *V_API, int gmt_mode, void *args) {
 
   /* end it all */
   free(mods);
-  Return(error);
+  mods = NULL;
+
+  /* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+     The end of the data (EOF) is how every read finishes, not an error. */
+  if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+    char *message;
+    mb_error(verbose, error, &message);
+    GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+    Return(GMT_RUNTIME_ERROR);
+  }
+  Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

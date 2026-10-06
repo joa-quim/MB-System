@@ -200,6 +200,7 @@ static void mbotps_write_header(FILE *ofp, const char *otps_model,
 /* GMT module scaffolding. Everything below the parser is the original
    main() body with the getopt_long loop removed. */
 struct MBOTPS_CTRL {
+	int verbose;	/* the program's -V/-v count */
 	struct otps_A { bool active; int tideformat; } A;
 	struct otps_B { bool active; int time_i[7]; } B;
 	struct otps_C { bool active; int tidestation_format; } C;
@@ -228,17 +229,42 @@ static void Free_mbotps_Ctrl(struct GMT_CTRL *GMT, struct MBOTPS_CTRL *Ctrl) {
 	gmt_M_free(GMT, Ctrl);
 }
 
+/* Translation table from the program's long options to its short ones */
+static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
+	/* separator, short_option, long_option, short_directives, long_directives, short_modifiers, long_modifiers, transproc_mask */
+	{ 0, 'I', "input",                 "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'F', "format",                "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'M', "use-mbprocess",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'S', "skip-existing",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'O', "tide-output",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'R', "tide-position",         "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'A', "tide-format",           "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'D', "interval",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'B', "start-time",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'E', "end-time",              "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'N', "tide-station-file",     "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'U', "tide-station-position", "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'C', "tide-station-format",   "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'T', "otps-model",            "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'P', "otps-path",             "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'H', "help",                  "", "", "", "", GMT_TP_STANDARD },
+	{ 0, 'v', "verbose",               "", "", "", "", GMT_TP_STANDARD },
+	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
+};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
-	GMT_Message(API, GMT_TIME_NONE, "\n%s\n", help_message);
 	GMT_Message(API, GMT_TIME_NONE, "\nusage: %s\n", usage_message);
-	if (level == GMT_SYNOPSIS) return EXIT_FAILURE;
-	return EXIT_FAILURE;
+	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
+	GMT_Message(API, GMT_TIME_NONE, "\n%s\n", help_message);
+	GMT_Message(API, GMT_TIME_NONE, "\tEvery option also has the program's lower-case form.\n");
+	GMT_Option(API, "V,.");
+	return GMT_MODULE_USAGE;
 }
 
-/* Port of the option switch. The long forms reach it through
-   preparse_long_options() below. */
+/* Port of the option switch: the long forms come in through module_kw, the lower-case aliases are
+   the program's own. */
 static int parse_mbotps(struct GMT_CTRL *GMT, struct MBOTPS_CTRL *Ctrl, struct GMT_OPTION *options) {
 	unsigned int n_errors = 0;
 	struct GMT_OPTION *opt = NULL;
@@ -248,14 +274,17 @@ static int parse_mbotps(struct GMT_CTRL *GMT, struct MBOTPS_CTRL *Ctrl, struct G
 		switch (opt->option) {
 		case '<':
 		case 'I':
+		case 'i':
 			sscanf(opt->arg, "%1023s", Ctrl->I.file);
 			Ctrl->I.active = true;
 			break;
 		case 'A':
+		case 'a':
 			if (sscanf(opt->arg, "%d", &Ctrl->A.tideformat) == 1) Ctrl->A.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'B':
+		case 'b':
 			if (sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &Ctrl->B.time_i[0], &Ctrl->B.time_i[1],
 			           &Ctrl->B.time_i[2], &Ctrl->B.time_i[3], &Ctrl->B.time_i[4],
 			           &Ctrl->B.time_i[5]) == 6) {
@@ -265,14 +294,17 @@ static int parse_mbotps(struct GMT_CTRL *GMT, struct MBOTPS_CTRL *Ctrl, struct G
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'C':
+		case 'c':
 			if (sscanf(opt->arg, "%d", &Ctrl->C.tidestation_format) == 1) Ctrl->C.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'D':
+		case 'd':
 			if (sscanf(opt->arg, "%lf", &Ctrl->D.interval) == 1) Ctrl->D.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'E':
+		case 'e':
 			if (sscanf(opt->arg, "%d/%d/%d/%d/%d/%d", &Ctrl->E.time_i[0], &Ctrl->E.time_i[1],
 			           &Ctrl->E.time_i[2], &Ctrl->E.time_i[3], &Ctrl->E.time_i[4],
 			           &Ctrl->E.time_i[5]) == 6) {
@@ -282,190 +314,67 @@ static int parse_mbotps(struct GMT_CTRL *GMT, struct MBOTPS_CTRL *Ctrl, struct G
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'F':
+		case 'f':
 			if (sscanf(opt->arg, "%d", &Ctrl->F.format) == 1) Ctrl->F.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'M':
+		case 'm':
 			Ctrl->M.active = true;
 			break;
 		case 'N':
+		case 'n':
 			sscanf(opt->arg, "%1023s", Ctrl->N.file);
 			Ctrl->N.active = true;
 			break;
 		case 'O':
+		case 'o':
 			sscanf(opt->arg, "%1023s", Ctrl->O.file);
 			Ctrl->O.active = true;
 			break;
 		case 'P':
+		case 'p':
 			sscanf(opt->arg, "%1023s", Ctrl->P.path);
 			Ctrl->P.active = true;
 			break;
 		case 'R':
+		case 'r':
 			if (sscanf(opt->arg, "%lf/%lf", &Ctrl->R.lon, &Ctrl->R.lat) == 2) Ctrl->R.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
 			break;
 		case 'S':
+		case 's':
 			Ctrl->S.active = true;
 			break;
 		case 'T':
+		case 't':
 			sscanf(opt->arg, "%1023s", Ctrl->T.model);
 			Ctrl->T.active = true;
 			break;
 		case 'U':
+		case 'u':
 			if (sscanf(opt->arg, "%lf/%lf", &Ctrl->U.lon, &Ctrl->U.lat) == 2) Ctrl->U.active = true;
 			else { GMT_Report(API, GMT_MSG_NORMAL, "Syntax error -%c option\n", opt->option); n_errors++; }
+			break;
+		case 'V':
+		case 'v':
+			Ctrl->verbose++;
 			break;
 		case 'H':
 		case 'h':
 			Ctrl->H.active = true;
 			break;
 		default:
-			n_errors += gmt_default_error(GMT, opt->option);
+			n_errors += gmt_default_option_error(GMT, opt);
 			break;
 		}
 	}
 
-	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
-}
-
-/* GMT has no long-option keyword dictionary for an out-of-tree module, so
-   the original getopt_long table is reproduced here: every long form is
-   rewritten into the short option the parser above handles, before
-   GMT_Create_Options() sees the command line. */
-/*--------------------------------------------------------------------*/
-/* Joins the argv[] form of a module's arguments into the single string that
- * preparse_long_options() works on. GMT hands a module its arguments either
- * as an argv[] array of mode entries (mode > 0, which is what the gmt
- * executable does), as a single command string (mode == GMT_MODULE_CMD,
- * which is what the C API and the external interfaces do), or as a
- * ready-made option list (mode < 0). Returns NULL for the shapes that are
- * not an argv[] array, so the caller can fall back to them. */
-static char *join_args(int mode, void *args) {
-	char **argv = (char **)args;
-	size_t total = 1;
-	int i;
-	char *joined = NULL;
-
-	if (mode <= 0 || args == NULL) return NULL;
-	for (i = 0; i < mode; i++) total += strlen(argv[i]) + 1;
-	joined = (char *)calloc(total, sizeof(char));
-	if (joined == NULL) return NULL;
-	for (i = 0; i < mode; i++) {
-		if (i > 0) strcat(joined, " ");
-		strcat(joined, argv[i]);
-	}
-	return joined;
-}
-
-static char *preparse_long_options(struct MBOTPS_CTRL *Ctrl, const char *args) {
-	const size_t length = (args != NULL) ? strlen(args) : 0;
-	char *rewritten = (char *)calloc(2 * length + 8, sizeof(char));
-	char *copy = (char *)calloc(length + 2, sizeof(char));
-	size_t out = 0;
-	char *token = NULL;
-	char *saveptr = NULL;
-	char pending = '\0';
-
-	if (rewritten == NULL || copy == NULL) {
-		free(rewritten);
-		free(copy);
-		return NULL;
-	}
-	if (length == 0) {
-		free(copy);
-		return rewritten;
-	}
-	memcpy(copy, args, length);
-
-	for (token = strtok_r(copy, " \t", &saveptr); token != NULL; token = strtok_r(NULL, " \t", &saveptr)) {
-		char name[128];
-		const char *value = NULL;
-		char *equals = NULL;
-		char emit = '\0';
-
-		if (pending != '\0') {
-			if (out > 0) rewritten[out++] = ' ';
-			rewritten[out++] = '-';
-			rewritten[out++] = pending;
-			memcpy(rewritten + out, token, strlen(token));
-			out += strlen(token);
-			pending = '\0';
-			continue;
-		}
-
-		if (!(token[0] == '-' && token[1] == '-' && token[2] != '\0')) {
-			if (out > 0) rewritten[out++] = ' ';
-			memcpy(rewritten + out, token, strlen(token));
-			out += strlen(token);
-			continue;
-		}
-
-		strncpy(name, token + 2, sizeof(name) - 1);
-		name[sizeof(name) - 1] = '\0';
-		equals = strchr(name, '=');
-		if (equals != NULL) {
-			*equals = '\0';
-			value = equals + 1;
-		}
-
-		/* --help is acted on here: -h is a GMT common option and would be
-		   intercepted before this module sees it. */
-		if (strcmp(name, "help") == 0) {
-			Ctrl->H.active = true;
-			continue;
-		}
-
-		if (strcmp(name, "verbose") == 0)                     emit = 'V';
-		else if (strcmp(name, "use-mbprocess") == 0)          emit = 'M';
-		else if (strcmp(name, "skip-existing") == 0)          emit = 'S';
-		else if (strcmp(name, "input") == 0)                  emit = 'I';
-		else if (strcmp(name, "format") == 0)                 emit = 'F';
-		else if (strcmp(name, "tide-output") == 0)            emit = 'O';
-		else if (strcmp(name, "tide-position") == 0)          emit = 'R';
-		else if (strcmp(name, "tide-format") == 0)            emit = 'A';
-		else if (strcmp(name, "interval") == 0)               emit = 'D';
-		else if (strcmp(name, "start-time") == 0)             emit = 'B';
-		else if (strcmp(name, "end-time") == 0)               emit = 'E';
-		else if (strcmp(name, "tide-station-file") == 0)      emit = 'N';
-		else if (strcmp(name, "tide-station-position") == 0)  emit = 'U';
-		else if (strcmp(name, "tide-station-format") == 0)    emit = 'C';
-		else if (strcmp(name, "otps-model") == 0)             emit = 'T';
-		else if (strcmp(name, "otps-path") == 0)              emit = 'P';
-
-		if (emit == '\0') {
-			/* not ours: hand it to GMT unchanged */
-			if (out > 0) rewritten[out++] = ' ';
-			memcpy(rewritten + out, token, strlen(token));
-			out += strlen(token);
-			continue;
-		}
-
-		if (emit == 'V' || emit == 'M' || emit == 'S') {
-			if (out > 0) rewritten[out++] = ' ';
-			rewritten[out++] = '-';
-			rewritten[out++] = emit;
-			continue;
-		}
-		if (value != NULL) {
-			if (out > 0) rewritten[out++] = ' ';
-			rewritten[out++] = '-';
-			rewritten[out++] = emit;
-			memcpy(rewritten + out, value, strlen(value));
-			out += strlen(value);
-		}
-		else {
-			pending = emit;
-		}
-	}
-
-	rewritten[out] = '\0';
-	free(copy);
-	return rewritten;
+	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
 #define bailout(code) { gmt_M_free_options(mode); return (code); }
-#define Return(code)  { free(remaining_args); Free_mbotps_Ctrl(GMT, Ctrl); \
-                        gmt_end_module(GMT, GMT_cpy); bailout(code); }
+#define Return(code)  { Free_mbotps_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 
 EXTERN_MSC int GMT_mbotps(void *V_API, int mode, void *args);
 
@@ -476,49 +385,19 @@ int GMT_mbotps(void *V_API, int mode, void *args) {
 	struct GMT_CTRL *GMT = NULL, *GMT_cpy = NULL;
 	struct GMT_OPTION *options = NULL;
 	struct GMTAPI_CTRL *API = gmt_get_api_ptr(V_API);
-	char *remaining_args = NULL;
 	int parse_status;
 
 	if (API == NULL) return GMT_NOT_A_SESSION;
 	if (mode == GMT_MODULE_PURPOSE) return usage(API, GMT_MODULE_PURPOSE);
+	options = GMT_Create_Options(API, mode, args);
+	if (API->error) return API->error;
+	/* 1: no options is a run of the program (it lists the tide models and predicts at 0/0) */
+	if ((parse_status = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(parse_status);
+	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
+	                           THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
+	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
-	{
-		struct MBOTPS_CTRL staged;
-		memset(&staged, 0, sizeof(staged));
-		{
-			char *joined = join_args(mode, args);
-			const char *text = (joined != NULL) ? joined
-			                                    : ((mode == GMT_MODULE_CMD) ? (const char *)args : NULL);
-			if (text != NULL) remaining_args = preparse_long_options(&staged, text);
-			free(joined);
-		}
-
-		options = GMT_Create_Options(API, (remaining_args != NULL) ? GMT_MODULE_CMD : mode,
-		                             (remaining_args != NULL) ? (void *)remaining_args : args);
-		if (API->error) {
-			free(remaining_args);
-			return API->error;
-		}
-		if (!options || options->option == GMT_OPT_USAGE) {
-			free(remaining_args);
-			bailout(usage(API, GMT_USAGE));
-		}
-		if (options->option == GMT_OPT_SYNOPSIS) {
-			free(remaining_args);
-			bailout(usage(API, GMT_SYNOPSIS));
-		}
-
-		if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS,
-		                           THIS_MODULE_NEEDS, NULL, &options, &GMT_cpy)) == NULL) {
-			free(remaining_args);
-			bailout(API->error);
-		}
-		if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
-
-		Ctrl = (struct MBOTPS_CTRL *)New_mbotps_Ctrl(GMT);
-		Ctrl->H.active = staged.H.active;
-	}
-
+	Ctrl = (struct MBOTPS_CTRL *)New_mbotps_Ctrl(GMT);
 	if ((parse_status = parse_mbotps(GMT, Ctrl, options)) != 0) Return(parse_status);
 
   int verbose = 0;
@@ -577,7 +456,7 @@ int GMT_mbotps(void *V_API, int mode, void *args) {
 
 
 	/* apply the parsed options onto the mb_defaults-initialised locals */
-	verbose = GMT->common.V.active ? GMT->current.setting.verbose : 0;
+	verbose = Ctrl->verbose;	/* the program's count (was GMT's verbosity level, not MB-System's) */
 	help = Ctrl->H.active;
 	if (Ctrl->A.active) {
 		tideformat = Ctrl->A.tideformat;
@@ -736,16 +615,18 @@ int GMT_mbotps(void *V_API, int mode, void *args) {
     fprintf(stderr, "\nUsing OTPS tide model:  %s\n", otps_model);
   }
 
-  /* exit if no valid OTPS models can be found */
+  /* help (and the model listing above) is done: no model is needed for it, and the program exited
+     0 here either way */
+  if (help)
+    Return(GMT_NOERROR);
+
+  /* exit if no valid OTPS models can be found - an error (the program exited with MB_FAILURE, 0) */
   if (notpsmodels <= 0) {
     // error = MB_ERROR_OPEN_FAIL;
     fprintf(stderr, "\nUnable to find a valid OTPS tidal model\n");
     fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-    Return(MB_FAILURE);
+    Return(GMT_ERROR_ON_FOPEN);
   }
-
-  if (help)
-    Return(MB_ERROR_NO_ERROR);
   if (verbose >= 2) {
     fprintf(stderr, "\ndbg2  Program <%s>\n", program_name);
     fprintf(stderr, "dbg2  MB-system Version %s\n", MB_VERSION);
@@ -794,7 +675,7 @@ int GMT_mbotps(void *V_API, int mode, void *args) {
   if (mb_otps_model_open(verbose, otps_location_use, otps_model, &model, &error) != MB_SUCCESS) {
     fprintf(stderr, "\nUnable to open OTPS tidal model '%s' at '%s'\n", otps_model, otps_location_use);
     fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-    Return(MB_FAILURE);
+    Return(GMT_ERROR_ON_FOPEN);
   }
 
   int ntidestation = 0;
@@ -829,7 +710,7 @@ int GMT_mbotps(void *V_API, int mode, void *args) {
         "\nUnable to open tide station file <%s> for writing\n",
         tidestation_file);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      Return(MB_FAILURE);
+      Return(GMT_ERROR_ON_FOPEN);
     }
 
     /* count the lines in the tide station data */
@@ -855,7 +736,7 @@ int GMT_mbotps(void *V_API, int mode, void *args) {
       mb_error(verbose, error, &message);
       fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      Return(error);
+      Return(GMT_MEMORY_ERROR);
     }
 
     /* read the tide station data in the specified format */
@@ -994,7 +875,7 @@ int GMT_mbotps(void *V_API, int mode, void *args) {
         ntidestation,
         ngood);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      Return(MB_FAILURE);
+      Return(GMT_RUNTIME_ERROR);
       }
 
     /* get start end min max of tide station data */
@@ -1117,7 +998,7 @@ int GMT_mbotps(void *V_API, int mode, void *args) {
     if ((ofp = fopen(tide_file, "w")) == NULL) {
       fprintf(stderr, "\nUnable to open tide output file <%s>\n", tide_file);
       fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-      Return(MB_FAILURE);
+      Return(GMT_ERROR_ON_FOPEN);
     }
     mbotps_write_header(ofp, otps_model, &model, tideformat);
 
@@ -1207,7 +1088,7 @@ int GMT_mbotps(void *V_API, int mode, void *args) {
       if (status != MB_SUCCESS) {
         fprintf(stderr, "\nUnable to open data list file: %s\n", read_file);
         fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-        Return(MB_ERROR_OPEN_FAIL);
+        Return(GMT_ERROR_ON_FOPEN);
       }
       if ((status =
         mb_datalist_read(verbose, datalist, file, dfile, &format, &file_weight,
@@ -1282,7 +1163,7 @@ int GMT_mbotps(void *V_API, int mode, void *args) {
             message);
           fprintf(stderr, "\nMultibeam File <%s> not initialized for reading\n", file);
           fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-          Return(error);
+          Return(GMT_RUNTIME_ERROR);
         }
 
         /* allocate memory for data arrays */
@@ -1365,7 +1246,7 @@ int GMT_mbotps(void *V_API, int mode, void *args) {
           mb_error(verbose, error, &message);
           fprintf(stderr, "\nMBIO Error allocating data arrays:\n%s\n", message);
           fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-          Return(error);
+          Return(GMT_MEMORY_ERROR);
         }
 
         /* open this swath file's own tide output file */
@@ -1373,7 +1254,7 @@ int GMT_mbotps(void *V_API, int mode, void *args) {
         if ((ofp = fopen(tides_file, "w")) == NULL) {
           fprintf(stderr, "\nUnable to open tide output file <%s>\n", tides_file);
           fprintf(stderr, "\nProgram <%s> Terminated\n", program_name);
-          Return(MB_FAILURE);
+          Return(GMT_ERROR_ON_FOPEN);
         }
         mbotps_write_header(ofp, otps_model, &model, tideformat);
 
@@ -1534,6 +1415,14 @@ int GMT_mbotps(void *V_API, int mode, void *args) {
     fprintf(stderr, "dbg2       status:  %d\n", status);
   }
 
-  Return(error);
+  /* The program exits with MBIO's error; as a module that is a GMT error code, never an MBIO one.
+     The end of the data (EOF) is how every read finishes, not an error. */
+  if (error > MB_ERROR_NO_ERROR && error != MB_ERROR_EOF) {
+    char *message;
+    mb_error(verbose, error, &message);
+    GMT_Report(API, GMT_MSG_ERROR, "%s\n", message);
+    Return(GMT_RUNTIME_ERROR);
+  }
+  Return(GMT_NOERROR);
 }
 /*--------------------------------------------------------------------*/

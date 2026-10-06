@@ -11,3 +11,10 @@ foreach(test ${tests})
   target_link_libraries(${test} PRIVATE mbio GTest::gmock_main)
   add_test(NAME ${test} COMMAND ${test})
 endforeach()
+
+# mb_mem_test puts a struct mb_io_struct (about 1.05 MB) on the stack. That fits the 8 MB
+# default stack of Linux and macOS but not the 1 MB one of MSVC executables, where the test
+# dies with a stack overflow (0xC00000FD) before running. Give it the Linux size.
+if(MSVC)
+  target_link_options(mb_mem_test PRIVATE /STACK:8388608)
+endif()
