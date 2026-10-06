@@ -19,6 +19,7 @@
 #include "gmt_dev.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "mb_define.h"
@@ -83,8 +84,18 @@ static int mb_gmt_run_program(const char *program, const char *args, const char 
 	return status;
 }
 
+/* GMT unloads a custom library when the session that loaded it ends, while libmbio stays: the runner
+   is withdrawn with the library, so libmbio never calls into code that is gone (it falls back to
+   system() until the plugin is loaded, and installs it, again). */
+static void mb_gmt_runner_uninstall(void) {
+	mb_set_program_runner(NULL);
+}
+
 static void mb_gmt_runner_install(void) {
 	mb_set_program_runner(mb_gmt_run_program);
+#if defined(_MSC_VER)
+	atexit(mb_gmt_runner_uninstall);	/* in a DLL, the CRT runs these when the DLL is unloaded */
+#endif
 }
 
 #if defined(_MSC_VER)
@@ -101,5 +112,8 @@ __declspec(allocate(".CRT$XCU")) void (*mb_gmt_runner_install_ptr)(void) = mb_gm
 /* GCC, Clang (MinGW included) */
 __attribute__((constructor)) static void mb_gmt_runner_ctor(void) {
 	mb_gmt_runner_install();
+}
+__attribute__((destructor)) static void mb_gmt_runner_dtor(void) {
+	mb_gmt_runner_uninstall();
 }
 #endif

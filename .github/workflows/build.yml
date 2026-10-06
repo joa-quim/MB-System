@@ -781,16 +781,23 @@ jobs:
             callm(m, a) = GC.@preserve a GMT.GMT_Call_Module(api, m, GMT.GMT_MODULE_CMD, pointer(a))
             st = callm("mbdefaults", "-V");  println("mbdefaults -V status = ", st)
             st == 0 || error("mbdefaults failed")
+            # Which plugin answered, checked twice: here, as the Linux/macOS probe does, and again at the
+            # end, after mbgrid + gmtread. Every MB library loaded is printed both times, from any dir.
+            mbdlls() = filter(l -> occursin(r"mbsystem|mbio", lowercase(basename(l))), Libdl.dllist())
+            function from_archive(when)
+                ours = filter(l -> occursin(lowercase(ENV["PROBEDIR"]), lowercase(l)), Libdl.dllist())
+                println("MB libraries loaded ", when, ": ", mbdlls())
+                any(l -> lowercase(basename(l)) == "mbsystem.dll", ours) || error("the plugin loaded is not the one in the archive (", when, ")")
+                any(l -> lowercase(basename(l)) == "libmbio.dll", ours) || error("libmbio not loaded from the archive (", when, ")")
+            end
+            from_archive("after mbdefaults")
             st = callm("mbgrid", "-Idatalist.mb-1 -Ogridtest -E0.0002/0.0002/degrees! -A2 -N")
             println("mbgrid status = ", st)
             (st == 0 && isfile("gridtest.grd")) || error("mbgrid did not write its grid")
             G = gmtread("gridtest.grd")
             println("grid back in GMT: ", size(G.z), "  z ", extrema(filter(isfinite, G.z)))
             size(G.z) == (6, 10) || error("the grid does not have the 10 x 6 nodes mbgrid made")
-            ours = filter(l -> occursin(lowercase(ENV["PROBEDIR"]), lowercase(l)), Libdl.dllist())
-            println("loaded from the archive: ", basename.(ours))
-            any(l -> lowercase(basename(l)) == "mbsystem.dll", ours) || error("the plugin loaded is not the one in the archive")
-            any(l -> lowercase(basename(l)) == "libmbio.dll", ours) || error("libmbio not loaded from the archive")
+            from_archive("after mbgrid + gmtread")
           '
 
       - name: Publish to the mbsystem-latest release
