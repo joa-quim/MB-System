@@ -70,6 +70,7 @@
 #include <sys/stat.h>
 
 #include "gmt_dev.h"
+#include "mb_gmt_compat.h"
 
 #include "mb_status.h"
 #include "mb_gmt_opts.h"

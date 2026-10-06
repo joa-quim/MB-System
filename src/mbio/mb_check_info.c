@@ -602,6 +602,14 @@ bool mb_should_make_fnv(int verbose, int format) {
 }
 /*--------------------------------------------------------------------*/
 
+/* The program runner set by mb_set_program_runner() (mb_define.h); NULL = system() */
+static mb_program_runner mb_runner = NULL;
+
+void mb_set_program_runner(mb_program_runner runner) {
+	mb_runner = runner;
+}
+/*--------------------------------------------------------------------*/
+
 int mb_make_info(int verbose, bool force, char *file, int format, int *error) {
 	if (verbose >= 2) {
 		fprintf(stderr, "\ndbg2  MBIO function <%s> called\n", __func__);
@@ -647,11 +655,20 @@ int mb_make_info(int verbose, bool force, char *file, int format, int *error) {
 		if (verbose >= 1)
 			fprintf(stderr, "\nGenerating inf file for %s\n", file);
 		char command[MB_PATH_MAXLINE];
+		if (mb_runner != NULL) {
+			sprintf(command, "-F %d -I %s -G -N -O -M10/10", format, file);
+			if (verbose >= 2)
+				fprintf(stderr, "\tmbinfo %s\n", command);
+			if (mb_runner("mbinfo", command, NULL) != 0)
+				status = MB_FAILURE;
+		}
+		else {
 		sprintf(command, "mbinfo -F %d -I %s -G -N -O -M10/10", format, file);
 		if (verbose >= 2)
 			fprintf(stderr, "\t%s\n", command);
 		if ((shellstatus = system(command)) != 0)
       status = MB_FAILURE;
+		}
 	}
 
 	/* make new fbt file if not there or out of date */
@@ -659,9 +676,16 @@ int mb_make_info(int verbose, bool force, char *file, int format, int *error) {
 		if (verbose >= 1)
 			fprintf(stderr, "Generating fbt file for %s\n", file);
 		  char command[MB_PATH_MAXLINE];
+		  if (mb_runner != NULL) {
+			  sprintf(command, "-F %d/71 -I %s -D -O %s.fbt", format, file, file);
+			  if (mb_runner("mbcopy", command, NULL) != 0)
+				  status = MB_FAILURE;
+		  }
+		  else {
 		  sprintf(command, "mbcopy -F %d/71 -I %s -D -O %s.fbt", format, file, file);
 		  if ((shellstatus = system(command)) != 0)
         status = MB_FAILURE;
+		  }
 	}
 
 	/* make new fnv file if not there or out of date */
@@ -669,6 +693,23 @@ int mb_make_info(int verbose, bool force, char *file, int format, int *error) {
 		if (verbose >= 1)
 			fprintf(stderr, "Generating fnv file for %s\n", file);
 	  char command[MB_PATH_MAXLINE];
+	  if (mb_runner != NULL) {
+		  /* the same header line the echo below writes, then mblist's listing appended to it */
+		  FILE *fp = fopen(fnvfile, "w");
+		  if (fp == NULL)
+			  status = MB_FAILURE;
+		  else {
+			  fprintf(fp, "## <yyyy mm dd hh mm ss.ssssss> <epoch seconds> "
+			              "<longitude (deg)> <latitude (deg)> <heading (deg)> <speed (km/hr)> "
+			              "<draft (m)> <roll (deg)> <pitch (deg)> <heave (m)> <portlon (deg)> "
+			              "<portlat (deg)> <stbdlon (deg)> <stbdlat (deg)>\n");
+			  fclose(fp);
+			  sprintf(command, "-F %d -I %s -O tMXYHScRPr=X=Y+X+Y -UN", format, file);
+			  if (mb_runner("mblist", command, fnvfile) != 0)
+				  status = MB_FAILURE;
+		  }
+	  }
+	  else {
     sprintf(command,  "echo \"## <yyyy mm dd hh mm ss.ssssss> <epoch seconds> "
                       "<longitude (deg)> <latitude (deg)> <heading (deg)> <speed (km/hr)> "
                       "<draft (m)> <roll (deg)> <pitch (deg)> <heave (m)> <portlon (deg)> "
@@ -678,6 +719,7 @@ int mb_make_info(int verbose, bool force, char *file, int format, int *error) {
 	  sprintf(command, "mblist -F %d -I %s -O tMXYHScRPr=X=Y+X+Y -UN >> %s.fnv", format, file, file);
 	  if ((shellstatus = system(command)) != 0)
       status = MB_FAILURE;
+	  }
 	}
 
 	if (verbose >= 2) {

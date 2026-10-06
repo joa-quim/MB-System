@@ -504,6 +504,12 @@ MBIO_API int mb_check_info(int verbose, char *file, int lonflip, double bounds[4
 MBIO_API bool mb_should_make_fbt(int verbose, int format);
 MBIO_API bool mb_should_make_fnv(int verbose, int format);
 MBIO_API int mb_make_info(int verbose, bool force, char *file, int format, int *error);
+/* How mb_make_info() runs the MB-System programs it needs (mbinfo, mbcopy, mblist): `program` with
+   `args`, its standard output appended to `outfile` (NULL = not captured); 0 = success. NULL, the
+   default, is system() on the separate executables. The GMT plugin (src/gmt), whose programs are
+   modules inside it with no executables beside it, sets one that runs them in-process. */
+typedef int (*mb_program_runner)(const char *program, const char *args, const char *outfile);
+MBIO_API void mb_set_program_runner(mb_program_runner runner);
 MBIO_API int mb_make_info_datalist(int verbose, bool force, char *read_file, int *format, int *error);
 MBIO_API int mb_get_fbt(int verbose, char *file, int *format, int *error);
 MBIO_API int mb_get_fnv(int verbose, char *file, int *format, int *error);

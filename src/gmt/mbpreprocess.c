@@ -53,6 +53,7 @@
 #include <sys/types.h>
 
 #include "gmt_dev.h"
+#include "mb_gmt_compat.h"
 
 #include "mb_aux.h"
 #include "mb_define.h"

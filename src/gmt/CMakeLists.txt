@@ -111,7 +111,8 @@ set (MBSYSTEM_EXTRA_SRCS
     ${CMAKE_SOURCE_DIR}/src/otps/mb_otps_predict.c
     mb_gmt_opts.c
     mb_gmt_text.c
-    mb_gmt_simrad.c)
+    mb_gmt_simrad.c
+    mb_gmt_runner.c)
 
 set (MBSYSTEM_MODULEINFO_H
     "${CMAKE_CURRENT_BINARY_DIR}/gmt_${MBSYSTEM_SUPPL_NAME}_moduleinfo.h")
