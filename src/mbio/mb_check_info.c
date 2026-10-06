@@ -656,7 +656,8 @@ int mb_make_info(int verbose, bool force, char *file, int format, int *error) {
 			fprintf(stderr, "\nGenerating inf file for %s\n", file);
 		char command[MB_PATH_MAXLINE];
 		if (mb_runner != NULL) {
-			sprintf(command, "-F %d -I %s -G -N -O -M10/10", format, file);
+			/* values attached to their option: GMT's parser reads a separate word as an input file */
+			sprintf(command, "-F%d -I%s -G -N -O -M10/10", format, file);
 			if (verbose >= 2)
 				fprintf(stderr, "\tmbinfo %s\n", command);
 			if (mb_runner("mbinfo", command, NULL) != 0)
@@ -677,7 +678,7 @@ int mb_make_info(int verbose, bool force, char *file, int format, int *error) {
 			fprintf(stderr, "Generating fbt file for %s\n", file);
 		  char command[MB_PATH_MAXLINE];
 		  if (mb_runner != NULL) {
-			  sprintf(command, "-F %d/71 -I %s -D -O %s.fbt", format, file, file);
+			  sprintf(command, "-F%d/71 -I%s -D -O%s.fbt", format, file, file);
 			  if (mb_runner("mbcopy", command, NULL) != 0)
 				  status = MB_FAILURE;
 		  }
@@ -704,7 +705,7 @@ int mb_make_info(int verbose, bool force, char *file, int format, int *error) {
 			              "<draft (m)> <roll (deg)> <pitch (deg)> <heave (m)> <portlon (deg)> "
 			              "<portlat (deg)> <stbdlon (deg)> <stbdlat (deg)>\n");
 			  fclose(fp);
-			  sprintf(command, "-F %d -I %s -O tMXYHScRPr=X=Y+X+Y -UN", format, file);
+			  sprintf(command, "-F%d -I%s -OtMXYHScRPr=X=Y+X+Y -UN", format, file);
 			  if (mb_runner("mblist", command, fnvfile) != 0)
 				  status = MB_FAILURE;
 		  }
