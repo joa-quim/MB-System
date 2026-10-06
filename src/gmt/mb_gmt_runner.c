@@ -37,10 +37,19 @@ static int mb_gmt_run_program(const char *program, const char *args, const char 
 		return -1;
 	}
 
-	/* ">> file": GMT's own append-to-file output (gmt_parse.c) */
+	/* Output to a file: mblist's own -X<file>, then appended to `outfile`. Not GMT's ">> file": outside
+	   an external session mblist writes its listing straight to stdout, and the stdout written that way
+	   leaves the next GMT_Create_Session of this process failing (mb_write_gmt_grd's, in mbgrid). */
 	char cmd[3 * MB_PATH_MAXLINE];
-	if (outfile != NULL)
-		snprintf(cmd, sizeof(cmd), "%s >> %s", args, outfile);
+	char tmpfile[MB_PATH_MAXLINE + 8] = "";
+	if (outfile != NULL) {
+		if (module != GMT_mblist) {
+			fprintf(stderr, "mb_gmt_run_program: %s cannot write to a file\n", program);
+			return -1;
+		}
+		snprintf(tmpfile, sizeof(tmpfile), "%s.tmp", outfile);
+		snprintf(cmd, sizeof(cmd), "%s -X%s", args, tmpfile);
+	}
 	else
 		snprintf(cmd, sizeof(cmd), "%s", args);
 
@@ -48,8 +57,29 @@ static int mb_gmt_run_program(const char *program, const char *args, const char 
 	   destroying it would shut GDAL down under the outer session too. */
 	void *API = GMT_Create_Session("mbsystem", GMT_PAD_DEFAULT, GMT_SESSION_NOEXIT | GMT_SESSION_NOHISTORY | GMT_SESSION_NOGDALCLOSE, NULL);
 	if (API == NULL) return -1;
-	const int status = module(API, GMT_MODULE_CMD, cmd);
+	int status = module(API, GMT_MODULE_CMD, cmd);
 	GMT_Destroy_Session(API);
+
+	if (outfile != NULL) {
+		if (status == 0) {
+			FILE *in = fopen(tmpfile, "rb");
+			FILE *out = fopen(outfile, "ab");
+			if (in == NULL || out == NULL)
+				status = -1;
+			else {
+				char buf[8192];
+				size_t n;
+				while ((n = fread(buf, 1, sizeof(buf), in)) > 0)
+					if (fwrite(buf, 1, n, out) != n) {
+						status = -1;
+						break;
+					}
+			}
+			if (in != NULL) fclose(in);
+			if (out != NULL) fclose(out);
+		}
+		remove(tmpfile);
+	}
 	return status;
 }
 
