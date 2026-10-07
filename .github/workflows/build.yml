@@ -782,7 +782,7 @@ jobs:
             st = callm("mbdefaults", "-V");  println("mbdefaults -V status = ", st)
             st == 0 || error("mbdefaults failed")
             # Which plugin answered, checked twice: here, as the Linux/macOS probe does, and again at the
-            # end, after mbgrid + gmtread. Every MB library loaded is printed both times, from any dir.
+            # end, after the session restart gmtread causes. Every MB library loaded is printed both times.
             mbdlls() = filter(l -> occursin(r"mbsystem|mbio", lowercase(basename(l))), Libdl.dllist())
             function from_archive(when)
                 ours = filter(l -> occursin(lowercase(ENV["PROBEDIR"]), lowercase(l)), Libdl.dllist())
@@ -797,7 +797,14 @@ jobs:
             G = gmtread("gridtest.grd")
             println("grid back in GMT: ", size(G.z), "  z ", extrema(filter(isfinite, G.z)))
             size(G.z) == (6, 10) || error("the grid does not have the 10 x 6 nodes mbgrid made")
-            from_archive("after mbgrid + gmtread")
+            # gmtread of a grid ("read -Tg") makes GMT.jl restart its session (gmt_restart), which
+            # unloads the plugin. The next MB module, in the NEW session, loads it again: from the archive.
+            api2 = GMT.G_API[]
+            a2 = "-V"
+            st = GC.@preserve a2 GMT.GMT_Call_Module(api2, "mbdefaults", GMT.GMT_MODULE_CMD, pointer(a2))
+            println("mbdefaults after the session restart: status = ", st)
+            st == 0 || error("mbdefaults failed after the session restart")
+            from_archive("after the session restart")
           '
 
       - name: Publish to the mbsystem-latest release
