@@ -886,6 +886,102 @@ jobs:
           path: mbsystem-linux-gui-ubuntu22.04.tar.gz
           if-no-files-found: error
 
+  # Full builds including the Motif/X11 graphical tools for the newer Ubuntu LTS releases, each in
+  # that release's own container so the package links the libraries the release ships. Like the
+  # Ubuntu 22.04 package above, each only runs on the release it was built for.
+  linux-gui-ubuntu:
+    name: Linux with GUIs (GCC, Ubuntu ${{ matrix.release }})
+    runs-on: ubuntu-24.04
+    container: ubuntu:${{ matrix.release }}
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ["24.04", "26.04"]
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates git tar gzip file \
+            build-essential cmake ninja-build pkg-config \
+            gmt libgmt-dev libglib2.0-dev libgdal-dev libproj-dev libnetcdf-dev \
+            libfftw3-dev libtirpc-dev \
+            libmotif-dev libx11-dev libxt-dev \
+            libgl1-mesa-dev libglu1-mesa-dev
+
+      - uses: actions/checkout@v4
+
+      # gcc 13 (24.04) and newer (26.04) make some old C constructs in the legacy Motif GUI code
+      # errors (incompatible pointer types, implicit declarations, int conversions); -fpermissive
+      # makes them warnings again, as the Fedora build does. GMT's gmt_glib.h may include <glib.h>,
+      # which lives in glib-2.0's own include dirs that only pkg-config knows.
+      - name: Configure
+        run: |
+          GLIB_CFLAGS="$(pkg-config --cflags glib-2.0)"
+          cmake -S . -B build-ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS="-fpermissive $GLIB_CFLAGS" \
+            -DCMAKE_CXX_FLAGS="$GLIB_CFLAGS" \
+            -DbuildGUIs=ON \
+            -DbuildOpenCV=OFF \
+            -DbuildTRN=ON \
+            -DbuildTests=OFF
+
+      - name: Build
+        run: cmake --build build-ci --parallel -- -k 0
+
+      # The binaries have /usr/local compiled in (library RPATH, data file locations), so the
+      # package holds a /usr/local tree. The runtime packages listed in the README are the ones
+      # owning the shared libraries the installed binaries actually load, found with ldd and
+      # dpkg -S, so the list is right for each release without naming library versions here.
+      - name: Package
+        run: |
+          rel="${{ matrix.release }}"
+          pkg="mbsystem-linux-gui-ubuntu$rel"
+          DESTDIR="$PWD/stage" cmake --install build-ci
+          export LD_LIBRARY_PATH="$PWD/stage/usr/local/lib"
+          # a file ldd or dpkg -S cannot resolve is skipped, not fatal (the step runs with pipefail)
+          set +o pipefail
+          deps=$(find stage/usr/local -type f \( -perm -u+x -o -name '*.so*' \) -print0 |
+            xargs -0 file | grep ELF | cut -d: -f1 |
+            xargs -r ldd 2>/dev/null | awk '/=> \// {print $3}' | sort -u |
+            grep -v "^$PWD/stage" |
+            xargs -r -n1 sh -c 'dpkg -S "$(readlink -f "$0")" 2>/dev/null || dpkg -S "$0" 2>/dev/null' |
+            cut -d: -f1 | sort -u | grep -v -E '^(libc6|libgcc-s1|libstdc\+\+6)$' | tr '\n' ' ')
+          set -o pipefail
+          test -n "$deps"
+          cat > stage/usr/local/README-ubuntu.txt <<TXT
+          MB-System with graphical tools, built for Ubuntu $rel (native, or WSL2 on Windows 11).
+
+          1. Install the libraries the programs need (in Ubuntu, or inside WSL):
+               sudo apt update
+               sudo apt install gmt $deps
+
+          2. Unpack this archive into /usr/local and refresh the library cache:
+               sudo tar -xzf $pkg.tar.gz -C /usr/local
+               sudo ldconfig
+
+          3. Run a graphical tool, e.g.:
+               mbgrdviz
+               mbedit
+             On Windows 11 the windows open on the Windows desktop (WSLg).
+          TXT
+          cat stage/usr/local/README-ubuntu.txt
+          tar -czf "$pkg.tar.gz" -C stage/usr/local .
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mbsystem-linux-gui-ubuntu${{ matrix.release }}
+          path: mbsystem-linux-gui-ubuntu${{ matrix.release }}.tar.gz
+          if-no-files-found: error
+
   # Full Fedora 44 build including the Motif/X11 graphical tools, against Fedora's own GMT, GDAL,
   # PROJ, netCDF and FFTW packages. Like the Ubuntu 22.04 package above it only runs on the release
   # it was built for: every Fedora release ships different library versions.
