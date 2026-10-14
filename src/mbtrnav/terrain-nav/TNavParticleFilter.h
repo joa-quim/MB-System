@@ -18,6 +18,7 @@
 
 #ifndef _TNavParticleFilter_h
 #define _TNavParticleFilter_h
+#include "trn_export.h"
 
 #include "TNavFilter.h"
 #include "genFilterDefs.h"
@@ -148,7 +149,7 @@ struct particleT {
  *               tNavFilter->computeMLE(mlePose)
  *               tNavFilter->computeMMSE(mmsePose)
  */
-class TNavParticleFilter : public TNavFilter
+class TNAV_API TNavParticleFilter : public TNavFilter
 {
  public:
  

@@ -1,5 +1,6 @@
 #ifndef TerrainMap_H
 #define TerrainMap_H
+#include "trn_export.h"
 
 // Use NINVAL instead of NAN
 // NINVAL defined in matrixArrayCalcs.h
@@ -27,7 +28,7 @@ NOTE: several of the functions listed below are no-ops for the Octree since they
 */
 
 
-class TerrainMap{
+class TNAV_API TerrainMap{
 	public:
 		virtual ~TerrainMap(void){}
 		

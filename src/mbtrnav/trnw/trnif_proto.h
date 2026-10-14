@@ -62,6 +62,7 @@
 
 #ifndef TRNIF_PROTO_H
 #define TRNIF_PROTO_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -154,22 +155,22 @@ typedef struct trnuif_msg_s
 extern "C" {
 #endif
 
-trnuif_msg_t *trnu_msg_str(const char *mid);
+NETIF_API trnuif_msg_t *trnu_msg_str(const char *mid);
 trnuif_msg_t *trnu_msg_pd(const char *mid, int n, double *darr);
-trnuif_msg_t *trnu_msg_d3(const char *mid, double d0, double d1, double d2);
-trnuif_msg_t *trnu_msg_d6(const char *mid, double d0, double d1, double d2, double d3, double d4, double d5);
+NETIF_API trnuif_msg_t *trnu_msg_d3(const char *mid, double d0, double d1, double d2);
+NETIF_API trnuif_msg_t *trnu_msg_d6(const char *mid, double d0, double d1, double d2, double d3, double d4, double d5);
 
 #if defined (__UNIX__) || defined (__unix__) || defined (__APPLE__) || defined (_WIN32)
-    int trnif_msg_read_ct(byte **pdest, uint32_t *len, netif_t *self, msock_connection_t *peer, int *errout);
-    int trnif_msg_handle_ct(void *msg, netif_t *self, msock_connection_t *peer, int *errout);
+    NETIF_API int trnif_msg_read_ct(byte **pdest, uint32_t *len, netif_t *self, msock_connection_t *peer, int *errout);
+    NETIF_API int trnif_msg_handle_ct(void *msg, netif_t *self, msock_connection_t *peer, int *errout);
 
-    int trnif_msg_read_mb(byte **pdest, uint32_t *len, netif_t *self, msock_connection_t *peer, int *errout);
-    int trnif_msg_handle_mb(void *msg, netif_t *self, msock_connection_t *peer, int *errout);
-    int trnif_msg_pub_mb(netif_t *self, msock_connection_t *peer, char *data, size_t len);
+    NETIF_API int trnif_msg_read_mb(byte **pdest, uint32_t *len, netif_t *self, msock_connection_t *peer, int *errout);
+    NETIF_API int trnif_msg_handle_mb(void *msg, netif_t *self, msock_connection_t *peer, int *errout);
+    NETIF_API int trnif_msg_pub_mb(netif_t *self, msock_connection_t *peer, char *data, size_t len);
 
-    int trnif_msg_read_trnu(byte **pdest, uint32_t *len, netif_t *self, msock_connection_t *peer, int *errout);
-    int trnif_msg_handle_trnu(void *msg, netif_t *self, msock_connection_t *peer, int *errout);
-    int trnif_msg_pub_trnu(netif_t *self, msock_connection_t *peer, char *data, size_t len);
+    NETIF_API int trnif_msg_read_trnu(byte **pdest, uint32_t *len, netif_t *self, msock_connection_t *peer, int *errout);
+    NETIF_API int trnif_msg_handle_trnu(void *msg, netif_t *self, msock_connection_t *peer, int *errout);
+    NETIF_API int trnif_msg_pub_trnu(netif_t *self, msock_connection_t *peer, char *data, size_t len);
 
     int trnif_msg_read_trnmsg(byte **pdest, uint32_t *len, netif_t *self, msock_connection_t *peer, int *errout);
     int trnif_msg_handle_trnmsg(void *msg, netif_t *self, msock_connection_t *peer, int *errout);

@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include "mxdebug-common.h"
+#include "trn_export.h"
 
 // C output API
 #ifndef WITHOUT_MXDEBUG
@@ -73,27 +74,27 @@
 #endif
 
 // C API
-extern void mxd_setModule(int id, int level, bool suspend, const char *name);
+extern MBTRNFRAME_API void mxd_setModule(int id, int level, bool suspend, const char *name);
 extern void mxd_removeModule(int id);
 extern void mxd_autoNewline(bool enable);
-extern void mxd_release();
+extern MBTRNFRAME_API void mxd_release();
 extern void mxd_destroy();
-extern void mxd_show();
+extern MBTRNFRAME_API void mxd_show();
 extern void mxd_fshow(FILE *fp, int indent);
 extern char *mxd_name(int id);
 extern void mxd_setName(int id, const char *name);
-extern int mxd_level(int id);
+extern MBTRNFRAME_API int mxd_level(int id);
 extern void mxd_setLevel(int id, int level);
-extern bool mxd_testModule(int id, int level);
-extern bool mxd_nTestModule(int *id, int len, int level);
+extern MBTRNFRAME_API bool mxd_testModule(int id, int level);
+extern MBTRNFRAME_API bool mxd_nTestModule(int *id, int len, int level);
 extern int mxd_size();
 extern bool mxd_hasID(int id);
 extern void mxd_suspend(int id, bool suspend);
 extern void mxd_nSuspend(int *id, int len, bool suspend);
 extern bool mxd_suspended(int id);
-extern mx_module_t *mxd_save(int id);
-extern void mxd_restore(int id, mx_module_t *src);
-extern void mxd_dprint(const char *fmt, ...);
-extern void mxd_mdprint(int id, const char *fmt, ...);
-extern void mxd_geprint(int id, int lvl, const char *fmt, ...);
-extern void mxd_nzprint(int id, const char *fmt, ...);
+extern MBTRNFRAME_API mx_module_t *mxd_save(int id);
+extern MBTRNFRAME_API void mxd_restore(int id, mx_module_t *src);
+extern MBTRNFRAME_API void mxd_dprint(const char *fmt, ...);
+extern MBTRNFRAME_API void mxd_mdprint(int id, const char *fmt, ...);
+extern MBTRNFRAME_API void mxd_geprint(int id, int lvl, const char *fmt, ...);
+extern MBTRNFRAME_API void mxd_nzprint(int id, const char *fmt, ...);

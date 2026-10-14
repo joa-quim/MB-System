@@ -17,6 +17,7 @@
 
 #ifndef TRNLOG_H
 #define TRNLOG_H
+#include "trn_export.h"
 
 #define TRNLOG_NAME_DFL  "TrnIO"
 #define TRNLOG_MNEM_NAME_DFL "trn"
@@ -111,7 +112,7 @@ typedef struct est_out_s
 
 #pragma pack(pop)
 
-class TrnLog: public DataLogWriter {
+class TNAV_API TrnLog: public DataLogWriter {
 
 public:
 

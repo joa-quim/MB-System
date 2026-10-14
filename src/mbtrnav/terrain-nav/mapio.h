@@ -56,6 +56,7 @@
 
 #ifndef _MAPIO_H
 #define	_MAPIO_H
+#include "trn_export.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -236,7 +237,7 @@ float mapsrc_find(struct mapsrc *src, double x, double y);
  * when you are finished with it.
  * @result A mapsrc structure. 
  */
-struct mapsrc *mapsrc_init(void);
+TNAV_API struct mapsrc *mapsrc_init(void);
 
 /*!
  * function: mapsrc_tostring

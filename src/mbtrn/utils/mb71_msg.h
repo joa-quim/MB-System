@@ -62,6 +62,7 @@
 // Always do this
 #ifndef MB71_MSG_H
 #define MB71_MSG_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -255,7 +256,7 @@ extern "C" {
     /// @param[in] dest output to byte array
     /// @param[in] src mb71 frame data
     /// @return 0 on success, -1 otherwise
-    int mb71v5_bswap(mb71v5_t *dest, mb71v5_t *src);
+    MB71_API int mb71v5_bswap(mb71v5_t *dest, mb71v5_t *src);
      
     /// @fn mb71v5_show(mb71v5_t *self, bool verbose, uint16_t indent)
     /// @brief write summary of mb71_frame_t to console (stderr)
@@ -263,7 +264,7 @@ extern "C" {
     /// @param[in] verbose indent extra output (if implemented)
     /// @param[in] indent  output indentation (spaces)
     /// @return none
-    void mb71v5_show(mb71v5_t *self, bool verbose, uint16_t indent);
+    MB71_API void mb71v5_show(mb71v5_t *self, bool verbose, uint16_t indent);
 #ifdef __cplusplus
 }
 #endif

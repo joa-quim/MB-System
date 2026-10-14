@@ -10,6 +10,7 @@
 
 #ifndef GEOCON_H
 #define GEOCON_H
+#include "trn_export.h"
 
 // CRS: UTM10N (Monterey Bay)
 #define GEOIF_TCRS_UTM10N "EPSG:32610"
@@ -46,15 +47,15 @@ extern "C" {
 // GeoCon C API
 
 // GCTP instance (caller must free using wgeocon_destroy)
-wgeocon_t *wgeocon_new_gctp(long int utm);
+GEOCON_API wgeocon_t *wgeocon_new_gctp(long int utm);
 
 // PROJ instance (caller must free using wgeocon_destroy)
-wgeocon_t *wgeocon_new_proj(const char *tcrs);
+GEOCON_API wgeocon_t *wgeocon_new_proj(const char *tcrs);
 wgeocon_t *wgeocon_inew_proj(void *xfm, bool autodel, const char *tcrs, const char *scrs);
 wgeocon_t *wgeocon_xnew_proj(void *xfm, bool autodel);
 
 // release GeoConverter instance
-void wgeocon_delete(wgeocon_t *self);
+GEOCON_API void wgeocon_delete(wgeocon_t *self);
 
 // get implentation type ID
 GeoConType wgeocon_type(wgeocon_t *self);
@@ -67,13 +68,13 @@ void wgeocon_set_debug(wgeocon_t *self, int debug);
 int wgeocon_debug(wgeocon_t *self);
 
 // lat/lon to mercator projection
-int wgeocon_geo_to_mp(wgeocon_t *self, double lat_rad, double lon_rad, double *r_northing_m, double *r_easting_m);
+GEOCON_API int wgeocon_geo_to_mp(wgeocon_t *self, double lat_rad, double lon_rad, double *r_northing_m, double *r_easting_m);
 
 // mercator projection to lat/lon
 int wgeocon_mp_to_geo(wgeocon_t *self, double northing_m, double easting_m, double *r_lat_rad, double *r_lon_rad);
 
 // lat/lon to mercator projection (wraps NavUtils::GeoToUtm directly, w/o underlying object; for use with callbacks)
-int wgeocon_navutils_geoToUtm(double lat_rad, double lon_rad, long int utm_zone, double *r_northing_m, double *r_easting_m);
+GEOCON_API int wgeocon_navutils_geoToUtm(double lat_rad, double lon_rad, long int utm_zone, double *r_northing_m, double *r_easting_m);
 
 // get a pointer to a member (optional; keys defined per implementation)
 void *wgeocon_get_member(wgeocon_t *self, const char *key);
@@ -82,7 +83,7 @@ void *wgeocon_get_member(wgeocon_t *self, const char *key);
 int wgeocon_set_member(wgeocon_t *self, const char *key, void *value);
 
 // initialize (optional; argments defined per implementation)
-void *wgeocon_init(wgeocon_t *self, int argc, void **argv);
+GEOCON_API void *wgeocon_init(wgeocon_t *self, int argc, void **argv);
 
 // enable/disable deletion of members (optional; keys defined per implementation)
 void wgeocon_auto_delete(wgeocon_t *self, const char *key, bool enable);

@@ -60,6 +60,7 @@
 
 #ifndef MKVCONF_H
 #define MKVCONF_H
+#include "trn_export.h"
 
 /// Includes
 #include "mframe.h"
@@ -90,12 +91,12 @@ extern "C" {
     /// @fn mkvc_reader_t *mkvc_new(const char *file, const char *del, mkvc_parse_fn parser)
     /// @brief get new loader instance
     /// @return new loader instance on success, NULL otherwise
-    mkvc_reader_t *mkvc_new(const char *file, const char *del, mkvc_parse_fn parser);
+    MBTRNFRAME_API mkvc_reader_t *mkvc_new(const char *file, const char *del, mkvc_parse_fn parser);
 
     /// @fn void mkvc_destroy(mkvc_reader_t **pself)
     /// @brief release loader instance resources
     /// @return none
-    void mkvc_destroy(mkvc_reader_t **pself);
+    MBTRNFRAME_API void mkvc_destroy(mkvc_reader_t **pself);
     
     /// @fn int mkvc_load_config(char *config_path)
     /// @brief load configuration file (key/value pairs)
@@ -105,7 +106,7 @@ extern "C" {
     /// @param[in] r_inv return number of invalid parameters
     /// @param[in] r_err return number of parse errors 
     /// @return 0 on success, -1 otherwise
-    int mkvc_load_config(mkvc_reader_t *self, void *cfg, int *r_par, int *r_inv, int *r_err);
+    MBTRNFRAME_API int mkvc_load_config(mkvc_reader_t *self, void *cfg, int *r_par, int *r_inv, int *r_err);
 
     /// @fn int mkvc_parse_kv(char *line, const char *del, char **pkey, char **pval)
     /// @brief parse and trim key/value pair. Both key and value must exist.
@@ -126,13 +127,13 @@ extern "C" {
     /// @param[out] pval pointer to key char array (dynamically created if key is NULL)
     /// @param[in] val_required true if value is required, false if optional
     /// @return 0 on success, -1 otherwise, key and/or value set
-    int mkvc_parse_kx(char *line, const char *del, char **pkey, char **pval, bool val_required);
+    MBTRNFRAME_API int mkvc_parse_kx(char *line, const char *del, char **pkey, char **pval, bool val_required);
     
     /// @fn int mkvc_parse_bool(const char *src, bool *dest)
     /// @brief parse boolean string values. Accepts "true"/"false"/"y"/n"/"0"/"1". Case insensitive
     /// @param[in] src boolean string value
     /// @param[out] dest boolean value
-    int mkvc_parse_bool(const char *src, bool *dest);
+    MBTRNFRAME_API int mkvc_parse_bool(const char *src, bool *dest);
 
 #ifdef WITH_MKVCONF_TEST
     extern bool g_mkvconf_test_quit;

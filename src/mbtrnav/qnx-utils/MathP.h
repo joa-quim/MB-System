@@ -15,6 +15,7 @@
 /****************************************************************************/
 #ifndef _MATHP_H
 #define _MATHP_H
+#include "trn_export.h"
 
 /*
 $Log$
@@ -119,7 +120,7 @@ Various static utility methods, including angular conversions.
 AUTHOR
 Tom O'Reilly
 */
-class Math
+class QNX_API Math
 {
   public:
   

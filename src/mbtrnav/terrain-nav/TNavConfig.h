@@ -15,11 +15,12 @@
 
 #ifndef _TNavConfig_h
 #define _TNavConfig_h
+#include "trn_export.h"
 
 class TerrainNav;
 #include <stdlib.h>           // For atoi()
 
-class TNavConfig
+class TNAV_API TNavConfig
 {
    //friend TerrainNav;
 

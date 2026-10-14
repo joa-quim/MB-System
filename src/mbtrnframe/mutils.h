@@ -62,6 +62,7 @@
 // Always do this
 #ifndef MUTILS_H
 #define MUTILS_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -100,8 +101,8 @@
 extern "C" {
 #endif
 
-    void mfu_hex_show(byte *data, uint32_t len, uint16_t cols, bool show_offsets, uint16_t indent);
-    uint32_t mfu_checksum(byte *pdata, uint32_t len);
+    MBTRNFRAME_API void mfu_hex_show(byte *data, uint32_t len, uint16_t cols, bool show_offsets, uint16_t indent);
+    MBTRNFRAME_API uint32_t mfu_checksum(byte *pdata, uint32_t len);
     char *mfu_vsprint(int sz_hint, const char *fmt, ...);
     int mfu_vbprint(char **dest, size_t len, off_t ofs, const char *fmt, ...);
     void mfu_trim(char *buf,uint32_t len);

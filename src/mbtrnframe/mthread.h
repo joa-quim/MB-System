@@ -64,6 +64,7 @@
 /// @def MTHREAD_H
 /// @brief include guard
 #define MTHREAD_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -129,17 +130,17 @@ extern "C" {
 #endif
 
     // mfile thread API (not implemented for QNX)
-mthread_thread_t *mthread_thread_new();
-void mthread_thread_destroy(mthread_thread_t **pself);
+MBTRNFRAME_API mthread_thread_t *mthread_thread_new();
+MBTRNFRAME_API void mthread_thread_destroy(mthread_thread_t **pself);
 
-int mthread_thread_start(mthread_thread_t *thread, mthread_thread_fn func, void *arg);
-int mthread_thread_join(mthread_thread_t *thread);
+MBTRNFRAME_API int mthread_thread_start(mthread_thread_t *thread, mthread_thread_fn func, void *arg);
+MBTRNFRAME_API int mthread_thread_join(mthread_thread_t *thread);
 
 // mfile mutex API
-mthread_mutex_t *mthread_mutex_new();
-void mthread_mutex_destroy(mthread_mutex_t **pself);
-int mthread_mutex_lock(mthread_mutex_t *self);
-int mthread_mutex_unlock(mthread_mutex_t *self);
+MBTRNFRAME_API mthread_mutex_t *mthread_mutex_new();
+MBTRNFRAME_API void mthread_mutex_destroy(mthread_mutex_t **pself);
+MBTRNFRAME_API int mthread_mutex_lock(mthread_mutex_t *self);
+MBTRNFRAME_API int mthread_mutex_unlock(mthread_mutex_t *self);
     
 #ifdef __cplusplus
 }

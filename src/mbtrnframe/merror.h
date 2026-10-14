@@ -66,6 +66,7 @@
 /// @def MERROR_H
 /// @brief include guard
 #define MERROR_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -111,8 +112,8 @@ extern "C" {
 
 /// @var int me_errno
 /// @brief application specific global error value.
-extern int me_errno;
-const char *me_strerror(int m_errno);
+extern MBTRNFRAME_API int me_errno;
+MBTRNFRAME_API const char *me_strerror(int m_errno);
 void me_set_strerror_func(me_error_str_func_t *func);
     
 #ifdef __cplusplus

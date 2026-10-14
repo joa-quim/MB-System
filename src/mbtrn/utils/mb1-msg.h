@@ -62,6 +62,7 @@
 // Always do this
 #ifndef NEW_MB1_MSG_H
 #define NEW_MB1_MSG_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -299,7 +300,7 @@ void mb1_sounding_show(mb1_sounding_t *self, bool verbose, uint16_t indent);
 /// @brief return mb1 checksum for data.
 /// @param[in] self mb1 message reference
 /// @return mb1 checksum value (sum of bytes).
-uint32_t mb1_calc_checksum(mb1_sounding_t *self);
+MB1_API uint32_t mb1_calc_checksum(mb1_sounding_t *self);
 
 /// @fn uint32_t mb1_sounding_set_checksum(mb1_sounding_t * self)
 /// @brief set the checksum for an mb1 message structure.
@@ -338,7 +339,7 @@ uint32_t mb1_checksum_u32(byte *pdata, uint32_t len);
 /// @param[in] show_offsets show starting offset for each row
 /// @param[in] indent output indent spaces
 /// @return none
-void mb1_hex_show(byte *data, uint32_t len, uint16_t cols, bool show_offsets, uint16_t indent);
+MB1_API void mb1_hex_show(byte *data, uint32_t len, uint16_t cols, bool show_offsets, uint16_t indent);
 
 // Tests
 

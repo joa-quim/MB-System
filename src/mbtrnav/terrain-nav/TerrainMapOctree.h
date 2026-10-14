@@ -1,4 +1,5 @@
 #ifndef TerrainMapOctree_H
+#include "trn_export.h"
 
 
 #include "TerrainMap.h"
@@ -13,7 +14,7 @@ TerrainMapOctree is a wrapper for the Octreeclass to make it useful for TNavFilt
 Several of these functions are DEM specific, and are included here only to standardize the interface for the two map types.
 */
 
-class TerrainMapOctree : public TerrainMap{
+class TNAV_API TerrainMapOctree : public TerrainMap{
 	public:
 		double GetRangeError(double& mapVariance, const double* const startPoint, const double* const directionVector, double expectedDistance);
 

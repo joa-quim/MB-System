@@ -11,6 +11,7 @@
 
 #ifndef _TRNATTR_H_
 #define _TRNATTR_H_
+#include "trn_export.h"
 
 #include <stdlib.h>
 #include <cstdlib>
@@ -53,7 +54,7 @@
 #define TA_USEMBTRNSVR_KEY "useMbTrnServer"
 #define TA_SKIPINIT_KEY "skipInit"
 
-class TrnAttr
+class TRNCLI_API TrnAttr
 {
 public:
 

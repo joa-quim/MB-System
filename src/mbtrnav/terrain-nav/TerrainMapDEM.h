@@ -1,4 +1,5 @@
 #ifndef TerrainMapDEM_H
+#include "trn_export.h"
 
 #include "TerrainMap.h"
 #include "mapio.h"
@@ -48,7 +49,7 @@ it work through the same interface as the Octree version of TerrainMap.
 Documentation form TNavFilter and ParticleFilter is grouped together at the bottom of the file.
 */
 
-class TerrainMapDEM : public TerrainMap{
+class TNAV_API TerrainMapDEM : public TerrainMap{
 	public:
 		double GetRangeError(double& mapVariance, const double* const startPoint, const double* const directionVector, double expectedDistance);
 		//double QueryMap(double const * const queryPoint);

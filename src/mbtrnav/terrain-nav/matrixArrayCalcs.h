@@ -14,6 +14,7 @@
 
 #ifndef _matrixArrayCalcs_h_
 #define _matrixArrayCalcs_h_
+#include "trn_export.h"
 
 #include "myOutput.h"
 
@@ -418,7 +419,7 @@ inline double randn_zeroMean(const double& stddev)
  *  char array must be greater than or equal to the sum of the lengths of the
  *  front and back arrays.   
  */
-char* charCat(char* dest, const char* front, const char* back);
+TNAV_API char* charCat(char* dest, const char* front, const char* back);
 
 
 /* Function: computeKLdiv_gaussian_mat

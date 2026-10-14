@@ -37,14 +37,6 @@ message("In src/mbtrnframe")
 # BSD-socket headers (sys/socket.h, arpa/inet.h, netinet/*, netdb.h) plus
 # libgen.h come from the Winsock-backed shims in src/mbtrnframe/win32.
 if(WIN32)
-  # Build the TRN libraries static on Windows. Several of them export data
-  # (mbtrnframe me_errno, newmat BaseException::what_error), and data crossing
-  # a DLL boundary needs explicit dllexport/dllimport annotations these
-  # sources do not carry. They are internal libraries, so linking them in
-  # directly is the simpler and safer answer.
-  set(BUILD_SHARED_LIBS OFF)
-  # tells the headers not to mark their exports dllimport/dllexport
-  add_compile_definitions(TRNW_STATIC)
   include_directories(${CMAKE_SOURCE_DIR}/src/mbio
                       ${CMAKE_SOURCE_DIR}/src/mbtrnframe/win32)
   # Force-include the compat header, as the top-level build already does for

@@ -66,6 +66,7 @@
 /// @def MB1_READER_H
 /// @brief TBD
 #define MB1_READER_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes
@@ -305,26 +306,26 @@ typedef struct mb1r_reader_s
 //void mb1r_show_app_version(const char *app_name, const char *app_version);
 
 // mb1r reader API
-mb1r_reader_t *mb1r_reader_new(const char *host, int port, uint32_t capacity);
+MB1R_API mb1r_reader_t *mb1r_reader_new(const char *host, int port, uint32_t capacity);
 mb1r_reader_t *mb1r_freader_new(mfile_file_t *file, uint32_t capacity);
-void mb1r_reader_destroy(mb1r_reader_t **pself);
-int mb1r_reader_connect(mb1r_reader_t *self, bool replace_socket);
-void mb1r_reader_set_log(mb1r_reader_t *self, mlog_id_t id);
+MB1R_API void mb1r_reader_destroy(mb1r_reader_t **pself);
+MB1R_API int mb1r_reader_connect(mb1r_reader_t *self, bool replace_socket);
+MB1R_API void mb1r_reader_set_log(mb1r_reader_t *self, mlog_id_t id);
 void mb1r_reader_set_logstream(mb1r_reader_t *self, FILE *log);
-mstats_t *mb1r_reader_get_stats(mb1r_reader_t *self);
+MB1R_API mstats_t *mb1r_reader_get_stats(mb1r_reader_t *self);
 const char ***mb1r_reader_get_statlabels();
 
 msock_socket_t *mb1r_reader_sockif(mb1r_reader_t *self);
 mfile_file_t *mb1r_reader_fileif(mb1r_reader_t *self);
-void mb1r_reader_show(mb1r_reader_t *self, bool verbose, uint16_t indent);
-const char *mb1r_strstate(mb1r_state_t state);
+MB1R_API void mb1r_reader_show(mb1r_reader_t *self, bool verbose, uint16_t indent);
+MB1R_API const char *mb1r_strstate(mb1r_state_t state);
 bool mb1r_reader_issub(mb1r_reader_t *self, uint32_t record_type);
 void mb1r_reader_reset_socket(mb1r_reader_t *self);
 int mb1r_reader_set_file(mb1r_reader_t *self, mfile_file_t *file);
 void mb1r_reader_flush(mb1r_reader_t *self, uint32_t len, int32_t retries, uint32_t tmout_ms);
-void mb1r_reader_purge(mb1r_reader_t *self);
+MB1R_API void mb1r_reader_purge(mb1r_reader_t *self);
 
-int64_t mb1r_read_frame(mb1r_reader_t *self, byte *dest, uint32_t len, mb1r_flags_t flags, double newer_than, uint32_t timeout_msec, uint32_t *sync_bytes);
+MB1R_API int64_t mb1r_read_frame(mb1r_reader_t *self, byte *dest, uint32_t len, mb1r_flags_t flags, double newer_than, uint32_t timeout_msec, uint32_t *sync_bytes);
 const char *mb1r_ctx_strstate(mb1r_parse_state_t state);
 const char *mb1r_ctx_straction(mb1r_parse_action_t state);
 
@@ -336,7 +337,7 @@ bool mb1r_peer_vcmp(void *item, void *value);
 #endif // WITH_MB1R_PEER_CMP
 
 #ifdef WITH_MB1R_TEST
-int mb1r_test(int argc, char **argv);
+MB1R_API int mb1r_test(int argc, char **argv);
 #endif // WITH_MB1R_TEST
 
 #endif // MB1_READER_H

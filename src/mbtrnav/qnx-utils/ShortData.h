@@ -15,6 +15,7 @@
 /****************************************************************************/
 #ifndef _SHORTDATA_H
 #define _SHORTDATA_H
+#include "trn_export.h"
 
 #include "DataField.h"
 
@@ -31,7 +32,7 @@ Wrapper class for 'short' data type
 AUTHOR
 Tom O'Reilly
 */
-class ShortData : public DataField {
+class QNX_API ShortData : public DataField {
 
 public:
 

@@ -1,5 +1,6 @@
 #ifndef OctreeSupport_H
 #define OctreeSupport_H
+#include "trn_export.h"
 
 #include <ostream>
 
@@ -9,7 +10,7 @@ These structs are designed to be used by/with Octree and OctreeNode classes.
 For documentation, go look at the top of Octree.hpp
 */
 
-struct zGrid{
+struct TNAV_API zGrid{
 	zGrid(): zValues(NULL), numXValues(0), numYValues(0), xIndexFirst(false) {}
 	zGrid(float* const z, unsigned int numX, unsigned int numY, bool xFirst): zValues(z), numXValues(numX), numYValues(numY), xIndexFirst(xFirst){}
 	double getZ(unsigned int xIndex, unsigned int yIndex) const;
@@ -30,7 +31,7 @@ struct Path {
 
 /****************************************************************************/
 
-struct Vector {
+struct TNAV_API Vector {
 	double x, y, z;
 	Vector(const Vector& V): x(V.x), y(V.y), z(V.z) {}
 	Vector(const double X, const double Y, const double Z): x(X), y(Y), z(Z) {}
@@ -67,9 +68,9 @@ struct Vector {
 	void Print(void) const;
 };
 
-Vector operator+ (Vector U, const Vector& V);
-Vector operator- (Vector U, const Vector& V);
-Vector operator* (Vector U, double multiplyBy);
+TNAV_API Vector operator+(Vector U, const Vector& V);
+TNAV_API Vector operator-(Vector U, const Vector& V);
+TNAV_API Vector operator*(Vector U, double multiplyBy);
 Vector operator/ (Vector U, double divideBy);
 /****************************************************************************/
 //for Octree.cpp

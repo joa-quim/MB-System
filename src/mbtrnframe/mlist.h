@@ -64,6 +64,7 @@
 /// @def MLIST_H
 /// @brief include guard
 #define MLIST_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -160,26 +161,26 @@ struct mlist_s
 extern "C" {
 #endif
     
-    mlist_t *mlist_new();
-    void mlist_destroy(mlist_t **pself);
+    MBTRNFRAME_API mlist_t *mlist_new();
+    MBTRNFRAME_API void mlist_destroy(mlist_t **pself);
     void mlist_free(void *pself);
-    void *mlist_head(mlist_t *self);
+    MBTRNFRAME_API void *mlist_head(mlist_t *self);
     void *mlist_tail(mlist_t *self);
-    void *mlist_first(mlist_t *self);
+    MBTRNFRAME_API void *mlist_first(mlist_t *self);
     void *mlist_last(mlist_t *self);
-    void *mlist_next(mlist_t *self);
+    MBTRNFRAME_API void *mlist_next(mlist_t *self);
     void *mlist_element(mlist_t *self, uint32_t index);
-    int mlist_add(mlist_t *self, void *item);
-    void mlist_remove(mlist_t *self, void *item);
+    MBTRNFRAME_API int mlist_add(mlist_t *self, void *item);
+    MBTRNFRAME_API void mlist_remove(mlist_t *self, void *item);
     int mlist_push(mlist_t *self, void *item);
     void *mlist_pop(mlist_t *self);
     void *mlist_item(mlist_t *self, void *item);
-    void *mlist_vlookup(mlist_t *self, void *value, mlist_ival_fn vcompare);
+    MBTRNFRAME_API void *mlist_vlookup(mlist_t *self, void *value, mlist_ival_fn vcompare);
     void mlist_sort(mlist_t *self, mlist_cmp_fn compare);
     void mlist_purge(mlist_t *self);
-    void mlist_autofree(mlist_t *self, mlist_free_fn fn);
+    MBTRNFRAME_API void mlist_autofree(mlist_t *self, mlist_free_fn fn);
     void mlist_freefn(mlist_t *self, void *item, mlist_free_fn fn);
-    size_t mlist_size(mlist_t *self);
+    MBTRNFRAME_API size_t mlist_size(mlist_t *self);
     int mlist_test();
     
 #ifdef __cplusplus

@@ -63,6 +63,7 @@
 // Always do this
 #ifndef MSWAP_H
 #define MSWAP_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -109,14 +110,14 @@ extern "C" {
     /// @brief byte-swap arbitrary length byte arrays (in place)
     /// @param[n] src values to swap
     /// @param[n] len number of bytes (>0, even)
-    int  mswap_bytes(void *src, size_t len);
+    MBTRNFRAME_API int  mswap_bytes(void *src, size_t len);
     
     /// @fn int mswap_bytes_mem(void *dest, void *src, size_t len)
     /// @brief byte-swap arbitrary length byte arrays
     /// @param[n] dest output array
     /// @param[n] src values to swap
     /// @param[n] len number of bytes (>0, even)
-    int  mswap_bytes_mem(void *dest, void *src, size_t len);
+    MBTRNFRAME_API int  mswap_bytes_mem(void *dest, void *src, size_t len);
     
 #ifdef WITH_MSWAP_TEST
     /// @fn int mswap_test(int verbose)

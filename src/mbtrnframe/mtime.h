@@ -64,6 +64,7 @@
 /// @def MTIME_H
 /// @brief include guard
 #define MTIME_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes
@@ -227,11 +228,11 @@ extern "C" {
     /// @brief get system time as a double
     /// @return system time as double, with usec precision
     ///  if supported by platform
-	double mtime_dtime();
+	MBTRNFRAME_API double mtime_dtime();
     /// @fn double mtime_etime()
     /// @brief get epoch time as a double
     /// @return system time as double, with precision of real time clock
-    double mtime_etime();
+    MBTRNFRAME_API double mtime_etime();
     /// @fn double mtime_mdtime(double mod)
     /// @brief get system time as a double
     /// @return system time as double, with usec precision
@@ -246,7 +247,7 @@ extern "C" {
     /// @brief delay for specified period
     /// @param[in] msec delay period (msec)
     /// @return none
-    void mtime_delay_ms(uint32_t msec);
+    MBTRNFRAME_API void mtime_delay_ms(uint32_t msec);
     /// @fn void mtime_alloc_splits(mtime_stopwatch_t *self, unsigned int n)
     /// @brief (re)allocate split times array
     /// @param[in] n number of split times

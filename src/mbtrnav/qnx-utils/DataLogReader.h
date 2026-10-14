@@ -15,6 +15,7 @@
 /****************************************************************************/
 #ifndef _DATALOGREADER_H
 #define _DATALOGREADER_H
+#include "trn_export.h"
 
 #include "DataLog.h"
 
@@ -28,7 +29,7 @@ Reads data log created by DataLogWriter subclass.
 AUTHOR
 Tom O'Reilly
 */
-class DataLogReader : public DataLog {
+class QNX_API DataLogReader : public DataLog {
 
 public:
   

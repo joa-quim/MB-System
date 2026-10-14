@@ -18,6 +18,7 @@
 
 #ifndef _TNavBankFilter_h
 #define _TNavBankFilter_h
+#include "trn_export.h"
 
 #include <math.h>
 #include <fstream>
@@ -198,7 +199,7 @@ class TNavPFLog;
  *               tNavFilter->computeMLE(mlePose)
  *               tNavFilter->computeMMSE(mmsePose)
  */
-class TNavBankFilter : public TNavFilter
+class TNAV_API TNavBankFilter : public TNavFilter
 {
  public:
 

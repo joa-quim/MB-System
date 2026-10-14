@@ -66,6 +66,7 @@
 /// @def MLOG_H
 /// @brief include guard
 #define MLOG_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -301,30 +302,30 @@ typedef int32_t mlog_id_t;
 extern "C" {
 #endif
     
-    mlog_config_t *mlog_config_new(const char *tfmt,const char *del,
+    MBTRNFRAME_API mlog_config_t *mlog_config_new(const char *tfmt,const char *del,
                                    mlog_flags_t flags, mlog_oset_t dest,
                                    int32_t lim_b, int32_t lim_s, int32_t lim_t);
     
-    void mlog_config_destroy(mlog_config_t **pself);
+    MBTRNFRAME_API void mlog_config_destroy(mlog_config_t **pself);
     
-    mlog_id_t mlog_get_instance(const char *file_path, mlog_config_t *config, char *name);
-    void mlog_delete_instance(mlog_id_t id);
+    MBTRNFRAME_API mlog_id_t mlog_get_instance(const char *file_path, mlog_config_t *config, char *name);
+    MBTRNFRAME_API void mlog_delete_instance(mlog_id_t id);
     void mlog_delete_list(bool delete_logs);
     
-    int mlog_open(mlog_id_t id,mfile_flags_t flags, mfile_mode_t mode);
-    int mlog_close(mlog_id_t id);
-    const char *mlog_path(mlog_id_t id);
+    MBTRNFRAME_API int mlog_open(mlog_id_t id,mfile_flags_t flags, mfile_mode_t mode);
+    MBTRNFRAME_API int mlog_close(mlog_id_t id);
+    MBTRNFRAME_API const char *mlog_path(mlog_id_t id);
     int mlog_delete(mlog_id_t id);
     mlog_t *mlog_get(mlog_id_t id);
-    void mlog_show(mlog_id_t, bool verbose, uint16_t indent);
+    MBTRNFRAME_API void mlog_show(mlog_id_t, bool verbose, uint16_t indent);
     
-    void mlog_set_dest(mlog_id_t log, mlog_oset_t dest);
-    mlog_oset_t mlog_get_dest(mlog_id_t log);
+    MBTRNFRAME_API void mlog_set_dest(mlog_id_t log, mlog_oset_t dest);
+    MBTRNFRAME_API mlog_oset_t mlog_get_dest(mlog_id_t log);
     
     int mlog_flush(mlog_id_t id);
-    int mlog_write(mlog_id_t id, byte *data, uint32_t len);
+    MBTRNFRAME_API int mlog_write(mlog_id_t id, byte *data, uint32_t len);
     int mlog_printf(mlog_id_t id, char *fmt, ...);
-    int mlog_tprintf(mlog_id_t id, const char *fmt, ...);
+    MBTRNFRAME_API int mlog_tprintf(mlog_id_t id, const char *fmt, ...);
     int mlog_xtprintf(mlog_id_t id, const char *channel, int level, const char *fmt, ...);
     int mlog_vprintf(mlog_id_t id, char *fmt, va_list args);
     int mlog_vtprintf(mlog_id_t id, const char *fmt, va_list args);

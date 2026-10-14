@@ -35,6 +35,7 @@
   99 = User defined
 */
 
+#include "trn_export.h"
 /* Define projection codes */
 #define GEO 0
 #define UTM 1
@@ -164,7 +165,7 @@ long equiinv(double x, double y, double *lon, double *lat);
 void for_init(long outsys, long outzone, double *outparm, long outspheroid,
 	char *fn27, char *fn83, long *iflg,
 	long (*for_trans[])(double lon, double lat, double *x, double *y));
-void gctp(double *incoor, long *insys, long *inzone, double *inparm,
+GEOLIB_API void gctp(double *incoor, long *insys, long *inzone, double *inparm,
 	long *inunit, long *inspheroid, long *ipr, char *efile, long *jpr,
 	char *pfile, double *outcoor, long *outsys, long *outzone,
 	double *outparm, long *outunit, long *outspheroid, char fn27[],

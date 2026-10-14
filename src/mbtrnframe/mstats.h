@@ -89,6 +89,7 @@
 // Always do this
 #ifndef MSTATS_H
 #define MSTATS_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -300,17 +301,17 @@ extern "C" {
 
 	extern bool g_mstat_test_quit;
     // mbtrn stats API
-    mstats_t *mstats_new(uint32_t ev_counters, uint32_t status_counters, uint32_t tm_channels, const char ***labels);
-    void mstats_destroy(mstats_t **pself);
-    int mstats_update_stats(mstats_t *stats, uint32_t channels, mstats_flags flags);
-    void mstats_reset_pstats(mstats_t *stats, uint32_t channels);
-    void mstats_set_period(mstats_t *self, double period_start, double period_sec);
-    int mstats_log_stats(mstats_t *stats, double now, mlog_id_t log_id, mstats_flags flags);
+    MBTRNFRAME_API mstats_t *mstats_new(uint32_t ev_counters, uint32_t status_counters, uint32_t tm_channels, const char ***labels);
+    MBTRNFRAME_API void mstats_destroy(mstats_t **pself);
+    MBTRNFRAME_API int mstats_update_stats(mstats_t *stats, uint32_t channels, mstats_flags flags);
+    MBTRNFRAME_API void mstats_reset_pstats(mstats_t *stats, uint32_t channels);
+    MBTRNFRAME_API void mstats_set_period(mstats_t *self, double period_start, double period_sec);
+    MBTRNFRAME_API int mstats_log_stats(mstats_t *stats, double now, mlog_id_t log_id, mstats_flags flags);
     int mstats_log_timing(mlog_id_t log_id, mstats_metstats_t *stats,  double timestamp, char *type_str, const char **labels, int channels);
     int mstats_log_counts(mlog_id_t log_id, uint32_t *counts, double timestamp, char *type_str, const char **labels, int channels);
     double mstats_dtime();
-    mstats_profile_t *mstats_profile_new(uint32_t ev_counters, uint32_t status_counters, uint32_t tm_channels, const char ***channel_labels, double pstart, double psec);
-void mstats_profile_destroy(mstats_profile_t **pself);
+    MBTRNFRAME_API mstats_profile_t *mstats_profile_new(uint32_t ev_counters, uint32_t status_counters, uint32_t tm_channels, const char ***channel_labels, double pstart, double psec);
+MBTRNFRAME_API void mstats_profile_destroy(mstats_profile_t **pself);
 
 #if defined(WITH_MSTATS_TEST)
     int mstats_test();

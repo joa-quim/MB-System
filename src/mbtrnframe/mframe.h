@@ -295,15 +295,8 @@
 // Macros
 /////////////////////////
 
-#if defined(_MSC_VER)
-#  ifdef mbtrnframe_EXPORTS
-#    define MF_EXPORT __declspec(dllexport)
-#  else
-#    define MF_EXPORT __declspec(dllimport)
-#  endif
-#else
-#  define MF_EXPORT
-#endif
+/* MBTRNFRAME_API and the other TRN libraries' export macros */
+#include "trn_export.h"
 
 /* Legacy macro retained for source compatibility — only Cygwin builds asked
    for dllimport here; native MSVC keeps it neutral. */

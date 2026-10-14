@@ -64,6 +64,7 @@
 /// @def MBTRN_RESON_7K_H
 /// @brief include guard
 #define MBTRN_RESON_7K_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes
@@ -733,31 +734,31 @@ typedef enum{
 
 // R7K utility API
 
-int  r7k_subscribe(msock_socket_t *s, r7k_device_t device_id, uint32_t *records, uint32_t len);
+R7KR_API int  r7k_subscribe(msock_socket_t *s, r7k_device_t device_id, uint32_t *records, uint32_t len);
 int  r7k_unsubscribe(msock_socket_t *s);
-int r7k_req_config(msock_socket_t *s);
-r7k_device_t r7k_parse_devid(const char *key);
-const char *r7k_devidstr(int dev_id);
+R7KR_API int r7k_req_config(msock_socket_t *s);
+R7KR_API r7k_device_t r7k_parse_devid(const char *key);
+R7KR_API const char *r7k_devidstr(int dev_id);
 
-uint16_t r7k_txid();
+R7KR_API uint16_t r7k_txid();
 uint32_t r7k_checksum(byte *pdata, uint32_t len);
 void r7k_update_time(r7k_time_t *t7k);
-void r7k_hex_show(byte *data, uint32_t len, uint16_t cols, bool show_offsets, uint16_t indent);
-int r7k_stream_show(msock_socket_t *s, int sz, uint32_t tmout_ms, int cycles, bool *interrupt);
+R7KR_API void r7k_hex_show(byte *data, uint32_t len, uint16_t cols, bool show_offsets, uint16_t indent);
+R7KR_API int r7k_stream_show(msock_socket_t *s, int sz, uint32_t tmout_ms, int cycles, bool *interrupt);
 
 // R7K packet frame (DRF/NF) API
-double r7k_7ktime2d(r7k_time_t *r7kt);
+R7KR_API double r7k_7ktime2d(r7k_time_t *r7kt);
 
 r7k_nf_t  *r7k_nf_new();
 void r7k_nf_destroy(r7k_nf_t **pself);
 void r7k_drf_init(r7k_drf_t *drf, bool erase);
-void r7k_drf_show(r7k_drf_t *self, bool verbose, uint16_t indent);
+R7KR_API void r7k_drf_show(r7k_drf_t *self, bool verbose, uint16_t indent);
 r7k_checksum_t r7k_drf_get_checksum(r7k_drf_t *self);
 
 r7k_drf_t *r7k_drf_new();
 void r7k_drf_destroy(r7k_drf_t **pself);
 r7k_nf_t * r7k_nf_init(r7k_nf_t **pnf, bool erase);
-void r7k_nf_show(r7k_nf_t *self, bool verbose, uint16_t indent);
+R7KR_API void r7k_nf_show(r7k_nf_t *self, bool verbose, uint16_t indent);
 
 // DRF container API
 
@@ -785,13 +786,13 @@ r7k_drf_t* r7k_drfcon_next(r7k_drf_container_t *self);
 
 // r7k_msg API (used by mbtrn_server)
 
-r7k_msg_t *r7k_msg_new(uint32_t data_len);
-void r7k_msg_destroy(r7k_msg_t **pself);
-void r7k_msg_show(r7k_msg_t *self, bool verbose, uint16_t indent);
+R7KR_API r7k_msg_t *r7k_msg_new(uint32_t data_len);
+R7KR_API void r7k_msg_destroy(r7k_msg_t **pself);
+R7KR_API void r7k_msg_show(r7k_msg_t *self, bool verbose, uint16_t indent);
 uint32_t r7k_msg_size(r7k_msg_t *self);
-uint32_t r7k_msg_set_checksum(r7k_msg_t *self);
+R7KR_API uint32_t r7k_msg_set_checksum(r7k_msg_t *self);
 byte* r7k_msg_serialize(r7k_msg_t *self);
-int r7k_msg_send(msock_socket_t *s, r7k_msg_t *self);
+R7KR_API int r7k_msg_send(msock_socket_t *s, r7k_msg_t *self);
 int r7k_msg_receive(msock_socket_t *s, r7k_msg_t **dest, uint32_t timeout_msec);
 
 // unit tests

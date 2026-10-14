@@ -15,6 +15,7 @@
 /****************************************************************************/
 #ifndef _DATALOG_H
 #define _DATALOG_H
+#include "trn_export.h"
 
 #include <string>
 #include <stdio.h>
@@ -49,7 +50,7 @@ FileData object.
 AUTHOR
 Tom O'Reilly
 */
-class DataLog {
+class QNX_API DataLog {
 
 public:
 

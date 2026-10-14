@@ -62,6 +62,7 @@
 // Always do this
 #ifndef MB1_MSG_H
 #define MB1_MSG_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -285,13 +286,13 @@ extern "C" {
 /// mb1 messages  must be explicitly serialized before sending.
 /// @param[in] beams number of bathymetry beams
 /// @return new message reference on success, NULL otherwise.
-mb1_t *mb1_new(uint32_t beams);
+MB1_API mb1_t *mb1_new(uint32_t beams);
 
 /// @fn void mb1_destroy(mb1_t ** pself)
 /// @brief release message structure resources.
 /// @param[in] pself pointer to message reference
 /// @return none
-void mb1_destroy(mb1_t **pself);
+MB1_API void mb1_destroy(mb1_t **pself);
 
 /// @fn mb1_t *mb1_resize(mb1_t **pself, uint32_t beams,  int flags)
 /// @brief resize an exsiting sounding
@@ -299,7 +300,7 @@ void mb1_destroy(mb1_t **pself);
 /// @param[in] beams number of bathymetry beams
 /// @param[in] flags flags indicating what fields to zero
 /// @return new sounding reference on success, NULL otherwise.
-mb1_t *mb1_resize(mb1_t **pself, uint32_t beams,  int flags);
+MB1_API mb1_t *mb1_resize(mb1_t **pself, uint32_t beams,  int flags);
 
 /// @fn int mb1_zero(mb1_t *self, int flags)
 /// @brief clear (set to zero) all/part of a sounding
@@ -307,7 +308,7 @@ mb1_t *mb1_resize(mb1_t **pself, uint32_t beams,  int flags);
 /// @param[in] flags flags indicating what fields to zero
 /// @return 0 on success, -1 otherwise.
 int mb1_zero(mb1_t *self, int flags);
-int mb1_zero_len(mb1_t *self, size_t len);
+MB1_API int mb1_zero_len(mb1_t *self, size_t len);
 
 /// @fn void mb1_show(mb1_t * self, _Bool verbose, uint16_t indent)
 /// @brief output mb1 message parameter summary to stderr.
@@ -315,25 +316,25 @@ int mb1_zero_len(mb1_t *self, size_t len);
 /// @param[in] verbose use verbose output
 /// @param[in] indent output indent spaces
 /// @return none
-void mb1_show(mb1_t *self, bool verbose, uint16_t indent);
+MB1_API void mb1_show(mb1_t *self, bool verbose, uint16_t indent);
 
 /// @fn uint32_t mb1_calc_checksum(mb1_t *self)
 /// @brief return mb1 checksum for data.
 /// @param[in] self mb1 message reference
 /// @return mb1 checksum value (sum of bytes).
-uint32_t mb1_calc_checksum(mb1_t *self);
+MB1_API uint32_t mb1_calc_checksum(mb1_t *self);
 
 /// @fn uint32_t mb1_set_checksum(mb1_t * self)
 /// @brief set the checksum for an mb1 message structure.
 /// @param[in] self mb1 message reference
 /// @return previous checksum value.
-uint32_t mb1_set_checksum(mb1_t *self);
+MB1_API uint32_t mb1_set_checksum(mb1_t *self);
 
 /// @fn int mb1_validate_checksum(mb1_t * self)
 /// @brief validate the checksum for an mb1 message structure.
 /// @param[in] self mb1 message reference
 /// @return 0 if valid, -1 otherwise
-int mb1_validate_checksum(mb1_t *self);
+MB1_API int mb1_validate_checksum(mb1_t *self);
 
 /// @fn byte * mb1_serialize(mb1_t * self)
 /// @brief serialize mb1 message into new buffer.
@@ -360,7 +361,7 @@ uint32_t mb1_checksum_u32(byte *pdata, uint32_t len);
 /// @param[in] show_offsets show starting offset for each row
 /// @param[in] indent output indent spaces
 /// @return none
-void mb1_hex_show(byte *data, uint32_t len, uint16_t cols, bool show_offsets, uint16_t indent);
+MB1_API void mb1_hex_show(byte *data, uint32_t len, uint16_t cols, bool show_offsets, uint16_t indent);
 
 // Tests
 

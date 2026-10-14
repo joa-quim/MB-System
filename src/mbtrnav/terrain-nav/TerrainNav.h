@@ -18,6 +18,7 @@
 
 #ifndef _TerrainNav_h
 #define _TerrainNav_h
+#include "trn_export.h"
 
 #include "structDefs.h"
 #include "myOutput.h"
@@ -158,7 +159,7 @@ class TrnLog;
  * measurement comes in, at which point all collected measurements are added
  * into the navigation filter in sequence.
  */
-class TerrainNav
+class TNAV_API TerrainNav
 {
 public:
 

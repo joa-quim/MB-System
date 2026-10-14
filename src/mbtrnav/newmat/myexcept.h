@@ -48,6 +48,7 @@
 
 #ifndef EXCEPTION_LIB
 #define EXCEPTION_LIB
+#include "trn_export.h"
 
 #include "include.h"
 
@@ -63,7 +64,7 @@ void Terminate();
 
 class BaseException;
 
-class Tracer                             // linked list showing how
+class NEWMAT_API Tracer                             // linked list showing how
 {                                        // we got here
    const char* entry;
    Tracer* previous;
@@ -78,7 +79,7 @@ public:
 };
 
 
-class BaseException                          // The base exception class
+class NEWMAT_API BaseException                          // The base exception class
 {
 protected:
    static char* what_error;              // error message
@@ -116,14 +117,14 @@ inline void Tracer::ReName(const char* e) { entry=e; }
 class JumpItem;
 class Janitor;
 
-class JumpBase         // pointer to a linked list of jmp_buf s
+class NEWMAT_API JumpBase         // pointer to a linked list of jmp_buf s
 {
 public:
    static JumpItem *jl;
    static jmp_buf env;
 };
 
-class JumpItem         // an item in a linked list of jmp_buf s
+class NEWMAT_API JumpItem         // an item in a linked list of jmp_buf s
 {
 public:
    JumpItem *ji;
@@ -156,7 +157,7 @@ inline void Throw(const BaseException&) { Throw(); }
 
 //****************** cleanup heap following Throw ***********************//
 
-class Janitor
+class NEWMAT_API Janitor
 {
 protected:
    static bool do_not_link;                  // set when new is called
@@ -173,7 +174,7 @@ public:
 // this is needed for classes derived from Janitor which have objects
 // declared globally
 
-class JanitorInitializer
+class NEWMAT_API JanitorInitializer
 {
 public:
    JanitorInitializer();
@@ -213,7 +214,7 @@ inline void Throw(const BaseException&) { Terminate(); }
 
 #ifndef SimulateExceptions            // ! SimulateExceptions
 
-class Janitor                         // a dummy version
+class NEWMAT_API Janitor                         // a dummy version
 {
 public:
    virtual void CleanUp() {}
@@ -231,7 +232,7 @@ public:
 
 class FreeCheck;
 
-class FreeCheckLink
+class NEWMAT_API FreeCheckLink
 {
 protected:
    FreeCheckLink* next;
@@ -241,7 +242,7 @@ protected:
    friend class FreeCheck;
 };
 
-class FCLClass : public FreeCheckLink         // for registering objects
+class NEWMAT_API FCLClass : public FreeCheckLink         // for registering objects
 {
    char* ClassName;
    FCLClass(void* t, char* name);
@@ -249,7 +250,7 @@ class FCLClass : public FreeCheckLink         // for registering objects
    friend class FreeCheck;
 };
 
-class FCLRealArray : public FreeCheckLink     // for registering real arrays
+class NEWMAT_API FCLRealArray : public FreeCheckLink     // for registering real arrays
 {
    char* Operation;
    int size;
@@ -258,7 +259,7 @@ class FCLRealArray : public FreeCheckLink     // for registering real arrays
    friend class FreeCheck;
 };
 
-class FCLIntArray : public FreeCheckLink     // for registering int arrays
+class NEWMAT_API FCLIntArray : public FreeCheckLink     // for registering int arrays
 {
    char* Operation;
    int size;
@@ -268,7 +269,7 @@ class FCLIntArray : public FreeCheckLink     // for registering int arrays
 };
 
 
-class FreeCheck
+class NEWMAT_API FreeCheck
 {
    static FreeCheckLink* next;
    static int BadDelete;
@@ -354,42 +355,42 @@ public:                                                                    \
 
 //********************* derived exceptions ******************************//
 
-class Logic_error : public BaseException
+class NEWMAT_API Logic_error : public BaseException
 {
 public:
    static unsigned long Select;
    Logic_error(const char* a_what = 0);
 };
 
-class Runtime_error : public BaseException
+class NEWMAT_API Runtime_error : public BaseException
 {
 public:
    static unsigned long Select;
    Runtime_error(const char* a_what = 0);
 };
 
-class Domain_error : public Logic_error
+class NEWMAT_API Domain_error : public Logic_error
 {
 public:
    static unsigned long Select;
    Domain_error(const char* a_what = 0);
 };
 
-class Invalid_argument : public Logic_error
+class NEWMAT_API Invalid_argument : public Logic_error
 {
 public:
    static unsigned long Select;
    Invalid_argument(const char* a_what = 0);
 };
 
-class Length_error : public Logic_error
+class NEWMAT_API Length_error : public Logic_error
 {
 public:
    static unsigned long Select;
    Length_error(const char* a_what = 0);
 };
 
-class Out_of_range : public Logic_error
+class NEWMAT_API Out_of_range : public Logic_error
 {
 public:
    static unsigned long Select;
@@ -410,21 +411,21 @@ public:
 //   Bad_typeid(const char* a_what = 0);
 //};
 
-class Range_error : public Runtime_error
+class NEWMAT_API Range_error : public Runtime_error
 {
 public:
    static unsigned long Select;
    Range_error(const char* a_what = 0);
 };
 
-class Overflow_error : public Runtime_error
+class NEWMAT_API Overflow_error : public Runtime_error
 {
 public:
    static unsigned long Select;
    Overflow_error(const char* a_what = 0);
 };
 
-class Bad_alloc : public BaseException
+class NEWMAT_API Bad_alloc : public BaseException
 {
 public:
    static unsigned long Select;

@@ -130,6 +130,7 @@
 
 #ifndef TRN_LOG_H
 #define TRN_LOG_H
+#include "trn_export.h"
 
 // ring buffer size for
 // messages logged before
@@ -186,7 +187,7 @@ struct TLModule_s{
 };
 typedef struct TLModule_s TLModule;
 
-extern TLModule *tl_modules;
+extern TNAV_API TLModule *tl_modules;
 
 
 #define TL_OMASK(mid,dfl) ( (dfl | tl_modules[mid].g_en) & (~tl_modules[mid].g_di))
@@ -208,12 +209,12 @@ extern TLModule *tl_modules;
 
 // logs sends output to one or more streams
 // specified by ORing TLStreams enum values
-void logs(int strmask, const char* format, ...) ;
+TNAV_API void logs(int strmask, const char* format, ...) ;
 
 // create a new log file (should only be called by trn_server)
-void tl_new_logfile(const char* directory);
+TNAV_API void tl_new_logfile(const char* directory);
 
-void tl_mconfig(TLModuleID id, TLStreams s_en, TLStreams s_di);
-void tl_release();
+TNAV_API void tl_mconfig(TLModuleID id, TLStreams s_en, TLStreams s_di);
+TNAV_API void tl_release();
 
 #endif

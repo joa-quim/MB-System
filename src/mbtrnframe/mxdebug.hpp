@@ -109,6 +109,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include "trn_export.h"
 #include <iostream>
 #include <iomanip>
 #include <cstdlib>
@@ -783,7 +784,7 @@ protected:
 #endif
 
 #ifdef MXDEBUG_C_API
-EXTERNC void mxd_setModule(int id, int level, int suspend, const char *name)
+EXTERNC MBTRNFRAME_API void mxd_setModule(int id, int level, int suspend, const char *name)
 {
     MXDebug::setModule( id,  level, suspend, name);
 }
@@ -798,7 +799,7 @@ EXTERNC void mxd_autoNewline(bool enable)
     MXDebug::autoNewline(enable);
 }
 
-EXTERNC void mxd_release()
+EXTERNC MBTRNFRAME_API void mxd_release()
 {
     MXDebug::release();
 }
@@ -808,7 +809,7 @@ EXTERNC void mxd_destroy()
     MXDebug::destroy();
 }
 
-EXTERNC void mxd_show()
+EXTERNC MBTRNFRAME_API void mxd_show()
 {
     MXDebug::show(NULL, 0);
 }
@@ -828,7 +829,7 @@ EXTERNC void mxd_setName(int id, const char *name)
     MXDebug::setName(id, name);
 }
 
-EXTERNC int mxd_level(int id)
+EXTERNC MBTRNFRAME_API int mxd_level(int id)
 {
     return MXDebug::level(id);
 }
@@ -838,12 +839,12 @@ EXTERNC void mxd_setLevel(int id, int level)
     MXDebug::setLevel(id, level);
 }
 
-EXTERNC bool mxd_testModule(int id, int level)
+EXTERNC MBTRNFRAME_API bool mxd_testModule(int id, int level)
 {
     return MXDebug::testModule(id, level);
 }
 
-EXTERNC bool mxd_nTestModule(int *id, int len, int level)
+EXTERNC MBTRNFRAME_API bool mxd_nTestModule(int *id, int len, int level)
 {
     return MXDebug::nTestModule(id, len, level);
 }
@@ -873,17 +874,17 @@ EXTERNC int mxd_suspended(int id)
     return MXDebug::suspended(id);
 }
 
-EXTERNC mx_module_t *mxd_save(int id)
+EXTERNC MBTRNFRAME_API mx_module_t *mxd_save(int id)
 {
     return MXDebug::save(id);
 }
 
-EXTERNC void mxd_restore(int id, mx_module_t *src)
+EXTERNC MBTRNFRAME_API void mxd_restore(int id, mx_module_t *src)
 {
     return MXDebug::restore(id, src);
 }
 
-EXTERNC void mxd_dprint(const char *fmt, ...)
+EXTERNC MBTRNFRAME_API void mxd_dprint(const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -891,7 +892,7 @@ EXTERNC void mxd_dprint(const char *fmt, ...)
     va_end(args);
 }
 
-EXTERNC void mxd_mdprint(int id, const char *fmt, ...)
+EXTERNC MBTRNFRAME_API void mxd_mdprint(int id, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -899,7 +900,7 @@ EXTERNC void mxd_mdprint(int id, const char *fmt, ...)
     va_end(args);
 }
 
-EXTERNC void mxd_geprint(int id, int lvl, const char *fmt, ...)
+EXTERNC MBTRNFRAME_API void mxd_geprint(int id, int lvl, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -907,7 +908,7 @@ EXTERNC void mxd_geprint(int id, int lvl, const char *fmt, ...)
     va_end(args);
 }
 
-EXTERNC void mxd_nzprint(int id, const char *fmt, ...)
+EXTERNC MBTRNFRAME_API void mxd_nzprint(int id, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);

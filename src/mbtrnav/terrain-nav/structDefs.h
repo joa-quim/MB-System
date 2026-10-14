@@ -14,6 +14,7 @@
 
 #ifndef _structDefs_h_
 #define _structDefs_h_
+#include "trn_export.h"
 
 #include "matrixArrayCalcs.h"
 #include "genFilterDefs.h"
@@ -43,7 +44,7 @@
 // instance. Calling reinitFilter is currently the only
 // way to change the values, ensuring that the values are not changed
 // while the filter is running.
-class InitVars{
+class TNAV_API InitVars{
 public:
     // TODO: incorporate other parameters?
     // default CTOR
@@ -97,7 +98,7 @@ struct mapT {
 //!The poseT struct stores vehicle pose information.
 //#define N_COVAR 36               //XYZ, phi, theta, psi, wy, wz covariance
 #define N_COVAR 45               //XYZ, phi, theta, psi, wy, wz covariance
-struct poseT {
+struct TNAV_API poseT {
 
     double x, y, z;                //North, East, Down position (m)
     double vx, vy, vz, ve;         //Vehicle velocity wrto iceberg, coordinatized in Body Frame(m/s)
@@ -128,7 +129,7 @@ struct poseT {
 };
 
 //!The measT struct stores sonar measurement information.
-struct measT {
+struct TNAV_API measT {
     double time;	//Measurement time (s)
     int dataType; //1: DVL, 2: Multibeam, 3: Single Beam,
     //4: Homer Relative Measurement, 5: Imagenex multibeam, 6: Side-looking DVL
@@ -186,7 +187,7 @@ struct sensorT
 };
 
 //!The vehicleT struct stores vehicle-specific information.
-struct vehicleT
+struct TNAV_API vehicleT
 {
     char name[256];
     int numSensors;
@@ -227,7 +228,7 @@ struct vehicleT
 //     if (my_ct.msg_type == TRN_NACK);            // Problem
 //   }
 //
-struct commsT
+struct TNAV_API commsT
 {
     char msg_type;
     int  parameter;

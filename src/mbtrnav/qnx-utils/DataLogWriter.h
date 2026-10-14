@@ -15,6 +15,7 @@
 /****************************************************************************/
 #ifndef _DATALOGWRITER_H
 #define _DATALOGWRITER_H
+#include "trn_export.h"
 
 #include "DataLog.h"
 #include "TimeTag.h"
@@ -49,7 +50,7 @@ Navigation, which uses NavigationLog.
 AUTHOR
 Tom O'Reilly
 */
-class DataLogWriter : public DataLog {
+class QNX_API DataLogWriter : public DataLog {
 
 public:
 

@@ -2,6 +2,7 @@
 //#error Do not include Octree.tcc directly, instead include Octree.hpp
 //#endif
 #include "Octree.hpp"
+#include "trn_export.h"
 
 
 #include "OctreeSupport.hpp"
@@ -1401,4 +1402,4 @@ ExpandOctreeToIncludePoint(const Vector& PointToInclude) {
 }
 
 
-template class Octree<bool>;
+template class TNAV_API Octree<bool>;

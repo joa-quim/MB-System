@@ -10,6 +10,7 @@
 
 #ifndef TerrainNavLog_H
 #define TerrainNavLog_H
+#include "trn_export.h"
 
 #define TerrainNavLogName  "TerrainNav"
 #define TerrainNavMnemName "ta"
@@ -20,7 +21,7 @@
 #include "TimeTag.h"
 #include "structDefs.h"
 
-class TerrainNavLog: public DataLogWriter {
+class TNAV_API TerrainNavLog: public DataLogWriter {
 
 public:
 

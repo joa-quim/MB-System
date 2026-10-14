@@ -15,6 +15,7 @@
 /****************************************************************************/
 #ifndef _DOUBLEDATA_H
 #define _DOUBLEDATA_H
+#include "trn_export.h"
 
 #include "DataField.h"
 
@@ -31,7 +32,7 @@ Wrapper class for 'double' data type
 AUTHOR
 Tom O'Reilly
 */
-class DoubleData : public DataField {
+class QNX_API DoubleData : public DataField {
 
 public:
 

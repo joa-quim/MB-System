@@ -62,6 +62,7 @@
 // Always do this
 #ifndef TRNU_CLI_H
 #define TRNU_CLI_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -364,22 +365,22 @@ extern "C" {
     // flags: blocking and other flags
     // hbeat_to_sec : heartbeat timeout (s)
     // returns new instance
-    trnucli_t *trnucli_new(update_callback_fn update_fn, trnucli_flags_t flags, double hbeat_to_sec);
+    TRNUCLI_API trnucli_t *trnucli_new(update_callback_fn update_fn, trnucli_flags_t flags, double hbeat_to_sec);
 
     // release trnu_cli instance resources
     // pself : pointer to instance pointer
     // return: none, instance pointer set to NULL
-    void trnucli_destroy(trnucli_t **pself);
+    TRNUCLI_API void trnucli_destroy(trnucli_t **pself);
 
     // connect to trnusvr
     // host: host name or IP address
     // port: port number
     // returns 0 on success, -1 otherwise
-    int trnucli_connect(trnucli_t *self, char *host, int port);
+    TRNUCLI_API int trnucli_connect(trnucli_t *self, char *host, int port);
 
     // disconnect from trnusvr
     // returns 0 on success, -1 otherwise
-    int trnucli_disconnect(trnucli_t *self);
+    TRNUCLI_API int trnucli_disconnect(trnucli_t *self);
 
     // connect to trnumsvr (multicast UDP)
     // host: host name or IP address
@@ -392,23 +393,23 @@ extern "C" {
     // when an update is received
     // func: optional update callback (may be NULL)
     // returns 0 on success, -1 otherwise
-    int trnucli_set_callback(trnucli_t *self, update_callback_fn func);
+    TRNUCLI_API int trnucli_set_callback(trnucli_t *self, update_callback_fn func);
 
     // listen for updates, invoke callback if set
     // returns 0 on success (instance update current), -1 otherwise (instance update empty)
-    int trnucli_listen(trnucli_t *self, bool callback_en);
+    TRNUCLI_API int trnucli_listen(trnucli_t *self, bool callback_en);
 
     // issue TRN reset request
     // must check subsequent update reinit count to confirm
     // returns 0 on request ACK, -1 otherwise
-    int trnucli_reset_trn(trnucli_t *self);
-    int trnucli_reset_ofs_trn(trnucli_t *self, double ofs_x, double ofs_y, double ofs_z);
-    int trnucli_reset_box_trn(trnucli_t *self, double ofs_x, double ofs_y, double ofs_z, double sx, double sy, double sz);
+    TRNUCLI_API int trnucli_reset_trn(trnucli_t *self);
+    TRNUCLI_API int trnucli_reset_ofs_trn(trnucli_t *self, double ofs_x, double ofs_y, double ofs_z);
+    TRNUCLI_API int trnucli_reset_box_trn(trnucli_t *self, double ofs_x, double ofs_y, double ofs_z, double sx, double sy, double sz);
 
     // issue heartbeat request
     // caller must manage timing
     // returns 0 on request ACK, -1 otherwise
-    int trnucli_hbeat(trnucli_t *self);
+    TRNUCLI_API int trnucli_hbeat(trnucli_t *self);
 
     // convert update to formatted string
     // caller must free destination
@@ -416,7 +417,7 @@ extern "C" {
     // len: size of buffer (<=0 if *dest==NULL)
     // fmt: format flags
     // return length of string or -1 on error
-    int trnucli_update_str(trnu_pub_t *self, char **dest, int len, trnuc_fmt_t fmt);
+    TRNUCLI_API int trnucli_update_str(trnu_pub_t *self, char **dest, int len, trnuc_fmt_t fmt);
 
     // get update measurement data timestamp (mb1_time epoch sec)
     double trnucli_update_mb1time(trnu_pub_t *update);
@@ -446,7 +447,7 @@ extern "C" {
     // enodata_delay_ms : delay if no data available (msec)
     // update_fn        : optional update callback (NULL to disable)
     // returns new instance
-    trnucli_ctx_t *trnucli_ctx_new(char *host,
+    TRNUCLI_API trnucli_ctx_t *trnucli_ctx_new(char *host,
                                    int port,
                                    int ttl,
                                    trnuctx_flags_t ctx_flags,
@@ -461,11 +462,11 @@ extern "C" {
     // release trnu_ctx instance resources
     // pself : pointer to instance pointer
     // return: none, instance pointer set to NULL
-    void trnucli_ctx_destroy(trnucli_ctx_t **pself);
+    TRNUCLI_API void trnucli_ctx_destroy(trnucli_ctx_t **pself);
 
     // start async trncli thread
     // return: 0 on success, -1 otherwise
-    int trnucli_ctx_start(trnucli_ctx_t *self);
+    TRNUCLI_API int trnucli_ctx_start(trnucli_ctx_t *self);
 
     // stop async trncli thread (disconnects from data host)
     // return: 0 on success, -1 otherwise
@@ -479,40 +480,40 @@ extern "C" {
     // set period for stats logging (<=0.0 to disable)
     // interval_sec : stats log period (sec)
     // return: 0 on success, -1 otherwise
-    int trnucli_ctx_set_stats_log_period(trnucli_ctx_t *self, double interval_sec);
+    TRNUCLI_API int trnucli_ctx_set_stats_log_period(trnucli_ctx_t *self, double interval_sec);
 
     // copy latest update and (optionally) age (time since arrival, sec)
     //    dest: pointer to destination update structure
     // age_sec: return update age if non-NULL (optional)
     // return: 0 on success, -1 otherwise
-    int trnucli_ctx_last_update(trnucli_ctx_t *self, trnu_pub_t *dest, double *age_sec);
+    TRNUCLI_API int trnucli_ctx_last_update(trnucli_ctx_t *self, trnu_pub_t *dest, double *age_sec);
 
     // get arrival time of latest update (epoch sec)
-    double trnucli_ctx_update_arrtime(trnucli_ctx_t *self);
+    TRNUCLI_API double trnucli_ctx_update_arrtime(trnucli_ctx_t *self);
 
     // get arrival age of latest update (time since arrival, sec)
-    double trnucli_ctx_update_arrage(trnucli_ctx_t *self);
+    TRNUCLI_API double trnucli_ctx_update_arrage(trnucli_ctx_t *self);
 
     // get update measurement data timestamp (mb1_time, epoch sec)
-    double trnucli_ctx_update_mb1time(trnucli_ctx_t *self);
+    TRNUCLI_API double trnucli_ctx_update_mb1time(trnucli_ctx_t *self);
 
     // get update measurement age (system time - mb1_time, sec)
-    double trnucli_ctx_update_mb1age(trnucli_ctx_t *self);
+    TRNUCLI_API double trnucli_ctx_update_mb1age(trnucli_ctx_t *self);
 
     // get host timestamp (time processed, server host system time, epoch sec)
-    double trnucli_ctx_update_hosttime(trnucli_ctx_t *self);
+    TRNUCLI_API double trnucli_ctx_update_hosttime(trnucli_ctx_t *self);
 
     // get host age (sec, system time - server host system time, sec)
-    double trnucli_ctx_update_hostage(trnucli_ctx_t *self);
+    TRNUCLI_API double trnucli_ctx_update_hostage(trnucli_ctx_t *self);
 
     // get number of updates since last read (trnucli_ctx_last_update)
-    uint32_t trnucli_ctx_new_count(trnucli_ctx_t *self);
+    TRNUCLI_API uint32_t trnucli_ctx_new_count(trnucli_ctx_t *self);
 
     // issue TRN update
     // return: 0 on success, -1 otherwise
-    int trnucli_ctx_reset_trn(trnucli_ctx_t *self);
-    int trnucli_ctx_reset_ofs_trn(trnucli_ctx_t *self, double ofs_x, double ofs_y, double ofs_z);
-    int trnucli_ctx_reset_box_trn(trnucli_ctx_t *self, double ofs_x, double ofs_y, double ofs_z, double sx, double sy, double sz);
+    TRNUCLI_API int trnucli_ctx_reset_trn(trnucli_ctx_t *self);
+    TRNUCLI_API int trnucli_ctx_reset_ofs_trn(trnucli_ctx_t *self, double ofs_x, double ofs_y, double ofs_z);
+    TRNUCLI_API int trnucli_ctx_reset_box_trn(trnucli_ctx_t *self, double ofs_x, double ofs_y, double ofs_z, double sx, double sy, double sz);
 
     // disconnect and reconnect to server host
     // return: 0 on success, -1 otherwise
@@ -532,15 +533,15 @@ extern "C" {
     // dest - pointer to stats buffer reference
     // dynamically allocate if stats buffer reference is NULL - caller must release
     // return: 0 connected, -1 otherwise
-    int trnucli_ctx_stats(trnucli_ctx_t *self, trnucli_stats_t **pdest);
+    TRNUCLI_API int trnucli_ctx_stats(trnucli_ctx_t *self, trnucli_stats_t **pdest);
 
     // output summary of context to stderr
     // return: number of bytes written
-    int trnucli_ctx_show(trnucli_ctx_t *self,bool verbose, int indent);
+    TRNUCLI_API int trnucli_ctx_show(trnucli_ctx_t *self,bool verbose, int indent);
 
     // output summary of context stats to stderr
     // return: number of bytes written
-    int trnucli_ctx_stat_show(trnucli_stats_t *self,bool verbose, int indent);
+    TRNUCLI_API int trnucli_ctx_stat_show(trnucli_stats_t *self,bool verbose, int indent);
 
     // log stats
     // return: number of bytes written

@@ -64,6 +64,7 @@
 // Always do this.
 #ifndef MBBUF_H
 #define MBBUF_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -91,8 +92,8 @@ typedef struct mbbuf_s mbbuf_t;
 // Exports
 /////////////////////////
 
-mbbuf_t *mbb_new(off_t capacity, byte *data, off_t size);
-void mbb_destroy(mbbuf_t **p_self);
+MBTRNFRAME_API mbbuf_t *mbb_new(off_t capacity, byte *data, off_t size);
+MBTRNFRAME_API void mbb_destroy(mbbuf_t **p_self);
 void mbb_free(void *self);
 
 mbbuf_t *mbb_dup(mbbuf_t *self);
@@ -108,13 +109,13 @@ int mbbuf_trim(mbbuf_t *self);
 int mbb_append(mbbuf_t *self, byte *data, off_t size);
 int mbb_push(mbbuf_t *self,byte *data, off_t size);
 byte *mbb_pop(mbbuf_t *self, off_t len);
-byte *mbb_read(mbbuf_t *self, off_t len);
+MBTRNFRAME_API byte *mbb_read(mbbuf_t *self, off_t len);
 int mbb_write(mbbuf_t *self, byte *data, off_t size);
-int mbb_printf(mbbuf_t *self, const char *fmt,...);
-byte *mbb_head(mbbuf_t *self);
+MBTRNFRAME_API int mbb_printf(mbbuf_t *self, const char *fmt,...);
+MBTRNFRAME_API byte *mbb_head(mbbuf_t *self);
 
 off_t mbb_capacity(mbbuf_t *self);
-off_t mbb_length(mbbuf_t *self);
+MBTRNFRAME_API off_t mbb_length(mbbuf_t *self);
 off_t mbb_available(mbbuf_t *self);
 off_t mbb_iavailable(mbbuf_t *self);
 off_t mbb_icursor(mbbuf_t *self);

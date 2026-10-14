@@ -22,6 +22,7 @@
 
 #ifndef _TerrainNavClient_h
 #define _TerrainNavClient_h
+#include "trn_export.h"
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -36,7 +37,7 @@
  * 
  */
 
-class TerrainNavClient : public TerrainNav
+class TRNCLI_API TerrainNavClient : public TerrainNav
 {
  public:
 

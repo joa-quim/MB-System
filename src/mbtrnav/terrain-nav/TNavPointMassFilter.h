@@ -24,6 +24,7 @@
 
 #ifndef _TNavPointMassFilter_h
 #define _TNavPointMassFilter_h
+#include "trn_export.h"
 
 #include "TNavFilter.h"
 #include "genFilterDefs.h"
@@ -83,7 +84,7 @@
  *               tNavFilter->computeMLE(mlePose)
  *               tNavFilter->computeMMSE(mmsePose)
  */
-class TNavPointMassFilter : public TNavFilter
+class TNAV_API TNavPointMassFilter : public TNavFilter
 {
  public:
  

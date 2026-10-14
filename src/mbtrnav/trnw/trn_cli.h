@@ -62,6 +62,7 @@
 // Always do this
 #ifndef TRN_CLI_H
 #define TRN_CLI_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -99,18 +100,18 @@ typedef struct trncli_s{
 #ifdef __cplusplus
 extern "C" {
 #endif
-    trncli_t *trncli_new(long int utm_zone);
+    TRNWCLI_API trncli_t *trncli_new(long int utm_zone);
     trncli_t *trncli_gcnew(wgeocon_t *gcon);
-    void trncli_destroy(trncli_t **pself);
-    int trncli_connect(trncli_t *self, char *host, int port);
-    int trncli_disconnect(trncli_t *self);
+    TRNWCLI_API void trncli_destroy(trncli_t **pself);
+    TRNWCLI_API int trncli_connect(trncli_t *self, char *host, int port);
+    TRNWCLI_API int trncli_disconnect(trncli_t *self);
 
     /// High-level API
     // translate MB1 to meas/pose, update motion. update meas
-    int trncli_send_update(trncli_t *self, mb1_t *src, wposet_t **pt_out, wmeast_t **mt_out);
+    TRNWCLI_API int trncli_send_update(trncli_t *self, mb1_t *src, wposet_t **pt_out, wmeast_t **mt_out);
 
     // mle estimate, mmse estimates, if last meas valid, fill _out structs
-    int trncli_get_bias_estimates(trncli_t *self, wposet_t *pt, pt_cdata_t **pt_out, pt_cdata_t **mle_out, pt_cdata_t **mse_out);
+    TRNWCLI_API int trncli_get_bias_estimates(trncli_t *self, wposet_t *pt, pt_cdata_t **pt_out, pt_cdata_t **mle_out, pt_cdata_t **mse_out);
 
     // return commsT parameter value for specified message
     // for boolean messages, 1: true 0: false
@@ -134,7 +135,7 @@ extern "C" {
 
     /// Control API
     // init TRN
-    int32_t trncli_init_trn(trncli_t *self, trn_config_t *cfg);
+    TRNWCLI_API int32_t trncli_init_trn(trncli_t *self, trn_config_t *cfg);
     // filter reinit
     int trncli_reinit_filter(trncli_t *self);
     // filter reinit w/ offset
@@ -145,9 +146,9 @@ extern "C" {
                         double offset_x, double offset_y, double offset_z,
                         double sdev_x, double sdev_y, double sdev_z);
     // get filter type
-    int trncli_get_filter_type(trncli_t *self);
+    TRNWCLI_API int trncli_get_filter_type(trncli_t *self);
     // get filter state
-    int trncli_get_filter_state(trncli_t *self);
+    TRNWCLI_API int trncli_get_filter_state(trncli_t *self);
     // set filter reinit
     int trncli_set_filter_reinit(trncli_t *self, int value);
     // set modified weighting
@@ -174,15 +175,15 @@ extern "C" {
 	/// Status API
 
     // last meas successful
-    bool trncli_last_meas_succesful(trncli_t *self);
+    TRNWCLI_API bool trncli_last_meas_succesful(trncli_t *self);
     // num reinits
-    int trncli_reinit_count(trncli_t *self);
+    TRNWCLI_API int trncli_reinit_count(trncli_t *self);
     // outstanding meas
-    bool trncli_outstanding_meas(trncli_t *self);
+    TRNWCLI_API bool trncli_outstanding_meas(trncli_t *self);
     // is converged
-    bool trncli_is_converged(trncli_t *self);
+    TRNWCLI_API bool trncli_is_converged(trncli_t *self);
     // is intialized
-    bool trncli_is_intialized(trncli_t *self);
+    TRNWCLI_API bool trncli_is_intialized(trncli_t *self);
     // ping
     bool trncli_ping(trncli_t *self);
     // ack

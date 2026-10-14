@@ -15,6 +15,7 @@
 /****************************************************************************/
 #ifndef _INTEGERDATA_H
 #define _INTEGERDATA_H
+#include "trn_export.h"
 
 #include "DataField.h"
 
@@ -31,7 +32,7 @@ Wrapper class for 'int' data type
 AUTHOR
 Tom O'Reilly
 */
-class IntegerData : public DataField {
+class QNX_API IntegerData : public DataField {
 
 public:
 

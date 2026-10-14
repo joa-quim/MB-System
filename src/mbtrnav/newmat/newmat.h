@@ -4,6 +4,7 @@
 
 #ifndef NEWMAT_LIB
 #define NEWMAT_LIB 0
+#include "trn_export.h"
 
 #include "include.h"
 
@@ -49,7 +50,7 @@ class GeneralMatrix;
 
 void MatrixErrorNoSpace(void*);                 // no space handler
 
-class LogAndSign
+class NEWMAT_API LogAndSign
 // Return from LogDeterminant function
 //    - value of the log plus the sign (+, - or 0)
 {
@@ -76,7 +77,7 @@ public:
 
 #ifdef DO_REPORT
 
-class ExeCounter
+class NEWMAT_API ExeCounter
 {
    int line;                                    // code line number
    int fileid;                                  // file identifier
@@ -101,7 +102,7 @@ class GeneralMatrix;                            // defined later
 class BaseMatrix;                               // defined later
 class MatrixInput;                              // defined later
 
-class MatrixType
+class NEWMAT_API MatrixType
 {
 public:
    enum Attribute {  Valid     = 1,
@@ -193,7 +194,7 @@ public:
 
 // *********************** class MatrixBandWidth ***********************/
 
-class MatrixBandWidth
+class NEWMAT_API MatrixBandWidth
 {
 public:
    int lower;
@@ -219,7 +220,7 @@ public:
 //   ColumnVector(int)
 // being used for conversions
 
-class ArrayLengthSpecifier
+class NEWMAT_API ArrayLengthSpecifier
 {
    int value;
 public:
@@ -278,7 +279,7 @@ class GenericMatrix;
 //static MatrixType MatrixTypeUnSp(MatrixType::US);
 //						// AT&T needs this
 
-class BaseMatrix : public Janitor               // base of all matrix classes
+class NEWMAT_API BaseMatrix : public Janitor               // base of all matrix classes
 {
 protected:
    virtual int search(const BaseMatrix*) const = 0;
@@ -418,7 +419,7 @@ public:
 
 // ***************************** working classes **************************/
 
-class GeneralMatrix : public BaseMatrix         // declarable matrix types
+class NEWMAT_API GeneralMatrix : public BaseMatrix         // declarable matrix types
 {
    virtual GeneralMatrix* Image() const;        // copy of matrix
 protected:
@@ -566,7 +567,7 @@ public:
 
 
 
-class Matrix : public GeneralMatrix             // usual rectangular matrix
+class NEWMAT_API Matrix : public GeneralMatrix             // usual rectangular matrix
 {
    GeneralMatrix* Image() const;                // copy of matrix
 public:
@@ -608,7 +609,7 @@ public:
    NEW_DELETE(Matrix)
 };
 
-class nricMatrix : public Matrix                // for use with Numerical
+class NEWMAT_API nricMatrix : public Matrix                // for use with Numerical
                                                 // Recipes in C
 {
    GeneralMatrix* Image() const;                // copy of matrix
@@ -637,7 +638,7 @@ public:
    NEW_DELETE(nricMatrix)
 };
 
-class SymmetricMatrix : public GeneralMatrix
+class NEWMAT_API SymmetricMatrix : public GeneralMatrix
 {
    GeneralMatrix* Image() const;                // copy of matrix
 public:
@@ -673,7 +674,7 @@ public:
    NEW_DELETE(SymmetricMatrix)
 };
 
-class UpperTriangularMatrix : public GeneralMatrix
+class NEWMAT_API UpperTriangularMatrix : public GeneralMatrix
 {
    GeneralMatrix* Image() const;                // copy of matrix
 public:
@@ -711,7 +712,7 @@ public:
    NEW_DELETE(UpperTriangularMatrix)
 };
 
-class LowerTriangularMatrix : public GeneralMatrix
+class NEWMAT_API LowerTriangularMatrix : public GeneralMatrix
 {
    GeneralMatrix* Image() const;                // copy of matrix
 public:
@@ -749,7 +750,7 @@ public:
    NEW_DELETE(LowerTriangularMatrix)
 };
 
-class DiagonalMatrix : public GeneralMatrix
+class NEWMAT_API DiagonalMatrix : public GeneralMatrix
 {
    GeneralMatrix* Image() const;                // copy of matrix
 public:
@@ -795,7 +796,7 @@ public:
    NEW_DELETE(DiagonalMatrix)
 };
 
-class RowVector : public Matrix
+class NEWMAT_API RowVector : public Matrix
 {
    GeneralMatrix* Image() const;                // copy of matrix
 public:
@@ -833,7 +834,7 @@ public:
    NEW_DELETE(RowVector)
 };
 
-class ColumnVector : public Matrix
+class NEWMAT_API ColumnVector : public Matrix
 {
    GeneralMatrix* Image() const;                // copy of matrix
 public:
@@ -865,7 +866,7 @@ public:
    NEW_DELETE(ColumnVector)
 };
 
-class CroutMatrix : public GeneralMatrix        // for LU decomposition
+class NEWMAT_API CroutMatrix : public GeneralMatrix        // for LU decomposition
 {
    int* indx;
    bool d;
@@ -892,7 +893,7 @@ public:
 
 // ***************************** band matrices ***************************/
 
-class BandMatrix : public GeneralMatrix         // band matrix
+class NEWMAT_API BandMatrix : public GeneralMatrix         // band matrix
 {
    GeneralMatrix* Image() const;                // copy of matrix
 protected:
@@ -954,7 +955,7 @@ public:
    NEW_DELETE(BandMatrix)
 };
 
-class UpperBandMatrix : public BandMatrix       // upper band matrix
+class NEWMAT_API UpperBandMatrix : public BandMatrix       // upper band matrix
 {
    GeneralMatrix* Image() const;                // copy of matrix
 public:
@@ -987,7 +988,7 @@ public:
    NEW_DELETE(UpperBandMatrix)
 };
 
-class LowerBandMatrix : public BandMatrix       // upper band matrix
+class NEWMAT_API LowerBandMatrix : public BandMatrix       // upper band matrix
 {
    GeneralMatrix* Image() const;                // copy of matrix
 public:
@@ -1020,7 +1021,7 @@ public:
    NEW_DELETE(LowerBandMatrix)
 };
 
-class SymmetricBandMatrix : public GeneralMatrix
+class NEWMAT_API SymmetricBandMatrix : public GeneralMatrix
 {
    GeneralMatrix* Image() const;                // copy of matrix
    void CornerClear() const;                    // set unused elements to zero
@@ -1073,7 +1074,7 @@ public:
    NEW_DELETE(SymmetricBandMatrix)
 };
 
-class BandLUMatrix : public GeneralMatrix
+class NEWMAT_API BandLUMatrix : public GeneralMatrix
 // for LU decomposition of band matrix
 {
    int* indx;
@@ -1104,7 +1105,7 @@ public:
 
 // ************************** special matrices ****************************
 
-class IdentityMatrix : public GeneralMatrix
+class NEWMAT_API IdentityMatrix : public GeneralMatrix
 {
    GeneralMatrix* Image() const;          // copy of matrix
 public:
@@ -1144,7 +1145,7 @@ public:
 
 // ************************** GenericMatrix class ************************/
 
-class GenericMatrix : public BaseMatrix
+class NEWMAT_API GenericMatrix : public BaseMatrix
 {
    GeneralMatrix* gm;
    int search(const BaseMatrix* bm) const;
@@ -1176,7 +1177,7 @@ public:
 
 // *************************** temporary classes *************************/
 
-class MultipliedMatrix : public BaseMatrix
+class NEWMAT_API MultipliedMatrix : public BaseMatrix
 {
 protected:
    // if these union statements cause problems, simply remove them
@@ -1197,7 +1198,7 @@ public:
    NEW_DELETE(MultipliedMatrix)
 };
 
-class AddedMatrix : public MultipliedMatrix
+class NEWMAT_API AddedMatrix : public MultipliedMatrix
 {
 protected:
    AddedMatrix(const BaseMatrix* bm1x, const BaseMatrix* bm2x)
@@ -1213,7 +1214,7 @@ public:
    NEW_DELETE(AddedMatrix)
 };
 
-class SPMatrix : public AddedMatrix
+class NEWMAT_API SPMatrix : public AddedMatrix
 {
 protected:
    SPMatrix(const BaseMatrix* bm1x, const BaseMatrix* bm2x)
@@ -1228,15 +1229,15 @@ public:
    MatrixBandWidth BandWidth() const;
 
 #ifndef TEMPS_DESTROYED_QUICKLY
-   friend SPMatrix SP(const BaseMatrix&, const BaseMatrix&);
+   friend NEWMAT_API SPMatrix SP(const BaseMatrix&, const BaseMatrix&);
 #else
-   friend SPMatrix& SP(const BaseMatrix&, const BaseMatrix&);
+   friend NEWMAT_API SPMatrix& SP(const BaseMatrix&, const BaseMatrix&);
 #endif
 
    NEW_DELETE(SPMatrix)
 };
 
-class KPMatrix : public MultipliedMatrix
+class NEWMAT_API KPMatrix : public MultipliedMatrix
 {
 protected:
    KPMatrix(const BaseMatrix* bm1x, const BaseMatrix* bm2x)
@@ -1257,7 +1258,7 @@ public:
    NEW_DELETE(KPMatrix)
 };
 
-class ConcatenatedMatrix : public MultipliedMatrix
+class NEWMAT_API ConcatenatedMatrix : public MultipliedMatrix
 {
 protected:
    ConcatenatedMatrix(const BaseMatrix* bm1x, const BaseMatrix* bm2x)
@@ -1273,7 +1274,7 @@ public:
    NEW_DELETE(ConcatenatedMatrix)
 };
 
-class StackedMatrix : public ConcatenatedMatrix
+class NEWMAT_API StackedMatrix : public ConcatenatedMatrix
 {
 protected:
    StackedMatrix(const BaseMatrix* bm1x, const BaseMatrix* bm2x)
@@ -1288,7 +1289,7 @@ public:
    NEW_DELETE(StackedMatrix)
 };
 
-class SolvedMatrix : public MultipliedMatrix
+class NEWMAT_API SolvedMatrix : public MultipliedMatrix
 {
    SolvedMatrix(const BaseMatrix* bm1x, const BaseMatrix* bm2x)
       : MultipliedMatrix(bm1x,bm2x) {}
@@ -1301,7 +1302,7 @@ public:
    NEW_DELETE(SolvedMatrix)
 };
 
-class SubtractedMatrix : public AddedMatrix
+class NEWMAT_API SubtractedMatrix : public AddedMatrix
 {
    SubtractedMatrix(const BaseMatrix* bm1x, const BaseMatrix* bm2x)
       : AddedMatrix(bm1x,bm2x) {}
@@ -1314,7 +1315,7 @@ public:
    NEW_DELETE(SubtractedMatrix)
 };
 
-class ShiftedMatrix : public BaseMatrix
+class NEWMAT_API ShiftedMatrix : public BaseMatrix
 {
 protected:
    union { const BaseMatrix* bm; GeneralMatrix* gm; };
@@ -1334,7 +1335,7 @@ public:
    NEW_DELETE(ShiftedMatrix)
 };
 
-class NegShiftedMatrix : public ShiftedMatrix
+class NEWMAT_API NegShiftedMatrix : public ShiftedMatrix
 {
 protected:
    NegShiftedMatrix(Real fx, const BaseMatrix* bmx) : ShiftedMatrix(bmx,fx) {}
@@ -1352,7 +1353,7 @@ public:
    NEW_DELETE(NegShiftedMatrix)
 };
 
-class ScaledMatrix : public ShiftedMatrix
+class NEWMAT_API ScaledMatrix : public ShiftedMatrix
 {
    ScaledMatrix(const BaseMatrix* bmx, Real fx) : ShiftedMatrix(bmx,fx) {}
    friend class BaseMatrix;
@@ -1369,7 +1370,7 @@ public:
    NEW_DELETE(ScaledMatrix)
 };
 
-class NegatedMatrix : public BaseMatrix
+class NEWMAT_API NegatedMatrix : public BaseMatrix
 {
 protected:
    union { const BaseMatrix* bm; GeneralMatrix* gm; };
@@ -1384,7 +1385,7 @@ public:
    NEW_DELETE(NegatedMatrix)
 };
 
-class TransposedMatrix : public NegatedMatrix
+class NEWMAT_API TransposedMatrix : public NegatedMatrix
 {
    TransposedMatrix(const BaseMatrix* bmx) : NegatedMatrix(bmx) {}
    friend class BaseMatrix;
@@ -1395,7 +1396,7 @@ public:
    NEW_DELETE(TransposedMatrix)
 };
 
-class ReversedMatrix : public NegatedMatrix
+class NEWMAT_API ReversedMatrix : public NegatedMatrix
 {
    ReversedMatrix(const BaseMatrix* bmx) : NegatedMatrix(bmx) {}
    friend class BaseMatrix;
@@ -1405,7 +1406,7 @@ public:
    NEW_DELETE(ReversedMatrix)
 };
 
-class InvertedMatrix : public NegatedMatrix
+class NEWMAT_API InvertedMatrix : public NegatedMatrix
 {
    InvertedMatrix(const BaseMatrix* bmx) : NegatedMatrix(bmx) {}
 public:
@@ -1423,7 +1424,7 @@ public:
    NEW_DELETE(InvertedMatrix)
 };
 
-class RowedMatrix : public NegatedMatrix
+class NEWMAT_API RowedMatrix : public NegatedMatrix
 {
    RowedMatrix(const BaseMatrix* bmx) : NegatedMatrix(bmx) {}
    friend class BaseMatrix;
@@ -1434,7 +1435,7 @@ public:
    NEW_DELETE(RowedMatrix)
 };
 
-class ColedMatrix : public NegatedMatrix
+class NEWMAT_API ColedMatrix : public NegatedMatrix
 {
    ColedMatrix(const BaseMatrix* bmx) : NegatedMatrix(bmx) {}
    friend class BaseMatrix;
@@ -1445,7 +1446,7 @@ public:
    NEW_DELETE(ColedMatrix)
 };
 
-class DiagedMatrix : public NegatedMatrix
+class NEWMAT_API DiagedMatrix : public NegatedMatrix
 {
    DiagedMatrix(const BaseMatrix* bmx) : NegatedMatrix(bmx) {}
    friend class BaseMatrix;
@@ -1456,7 +1457,7 @@ public:
    NEW_DELETE(DiagedMatrix)
 };
 
-class MatedMatrix : public NegatedMatrix
+class NEWMAT_API MatedMatrix : public NegatedMatrix
 {
    int nr, nc;
    MatedMatrix(const BaseMatrix* bmx, int nrx, int ncx)
@@ -1469,7 +1470,7 @@ public:
    NEW_DELETE(MatedMatrix)
 };
 
-class ReturnMatrixX : public BaseMatrix    // for matrix return
+class NEWMAT_API ReturnMatrixX : public BaseMatrix    // for matrix return
 {
    GeneralMatrix* gm;
    int search(const BaseMatrix*) const;
@@ -1491,7 +1492,7 @@ public:
 
 // ************************** submatrices ******************************/
 
-class GetSubMatrix : public NegatedMatrix
+class NEWMAT_API GetSubMatrix : public NegatedMatrix
 {
    int row_skip;
    int row_number;
@@ -1531,7 +1532,7 @@ public:
 
 // ******************** linear equation solving ****************************/
 
-class LinearEquationSolver : public BaseMatrix
+class NEWMAT_API LinearEquationSolver : public BaseMatrix
 {
    GeneralMatrix* gm;
    int search(const BaseMatrix*) const { return 0; }
@@ -1546,7 +1547,7 @@ public:
 };
 
 // ************************** matrix input *******************************/
-class MatrixInput          // for reading a list of values into a matrix
+class NEWMAT_API MatrixInput          // for reading a list of values into a matrix
                            // the difficult part is detecting a mismatch
                            // in the number of elements
 {
@@ -1568,7 +1569,7 @@ public:
 // A minimal array class to imitate a C style array but giving dynamic storage
 // mostly intended for internal use by newmat
 
-class SimpleIntArray : public Janitor
+class NEWMAT_API SimpleIntArray : public Janitor
 {
 protected:
    int* a;                    // pointer to the array
@@ -1597,14 +1598,14 @@ public:
 
 // *************************** exceptions ********************************/
 
-class NPDException : public Runtime_error     // Not positive definite
+class NEWMAT_API NPDException : public Runtime_error     // Not positive definite
 {
 public:
    static unsigned long Select;          // for identifying exception
    NPDException(const GeneralMatrix&);
 };
 
-class ConvergenceException : public Runtime_error
+class NEWMAT_API ConvergenceException : public Runtime_error
 {
 public:
    static unsigned long Select;          // for identifying exception
@@ -1612,21 +1613,21 @@ public:
    ConvergenceException(const char* c);
 };
 
-class SingularException : public Runtime_error
+class NEWMAT_API SingularException : public Runtime_error
 {
 public:
    static unsigned long Select;          // for identifying exception
    SingularException(const GeneralMatrix& A);
 };
 
-class OverflowException : public Runtime_error
+class NEWMAT_API OverflowException : public Runtime_error
 {
 public:
    static unsigned long Select;          // for identifying exception
    OverflowException(const char* c);
 };
 
-class ProgramException : public Logic_error
+class NEWMAT_API ProgramException : public Logic_error
 {
 protected:
    ProgramException();
@@ -1638,7 +1639,7 @@ public:
    ProgramException(const char* c, MatrixType, MatrixType);
 };
 
-class IndexException : public Logic_error
+class NEWMAT_API IndexException : public Logic_error
 {
 public:
    static unsigned long Select;          // for identifying exception
@@ -1649,7 +1650,7 @@ public:
    IndexException(int i, int j, const GeneralMatrix& A, bool);
 };
 
-class VectorException : public Logic_error    // cannot convert to vector
+class NEWMAT_API VectorException : public Logic_error    // cannot convert to vector
 {
 public:
    static unsigned long Select;          // for identifying exception
@@ -1657,21 +1658,21 @@ public:
    VectorException(const GeneralMatrix& A);
 };
 
-class NotSquareException : public Logic_error
+class NEWMAT_API NotSquareException : public Logic_error
 {
 public:
    static unsigned long Select;          // for identifying exception
    NotSquareException(const GeneralMatrix& A);
 };
 
-class SubMatrixDimensionException : public Logic_error
+class NEWMAT_API SubMatrixDimensionException : public Logic_error
 {
 public:
    static unsigned long Select;          // for identifying exception
    SubMatrixDimensionException();
 };
 
-class IncompatibleDimensionsException : public Logic_error
+class NEWMAT_API IncompatibleDimensionsException : public Logic_error
 {
 public:
    static unsigned long Select;          // for identifying exception
@@ -1679,14 +1680,14 @@ public:
    IncompatibleDimensionsException(const GeneralMatrix&, const GeneralMatrix&);
 };
 
-class NotDefinedException : public Logic_error
+class NEWMAT_API NotDefinedException : public Logic_error
 {
 public:
    static unsigned long Select;          // for identifying exception
    NotDefinedException(const char* op, const char* matrix);
 };
 
-class CannotBuildException : public Logic_error
+class NEWMAT_API CannotBuildException : public Logic_error
 {
 public:
    static unsigned long Select;          // for identifying exception
@@ -1694,7 +1695,7 @@ public:
 };
 
 
-class InternalException : public Logic_error
+class NEWMAT_API InternalException : public Logic_error
 {
 public:
    static unsigned long Select;          // for identifying exception
@@ -1730,13 +1731,13 @@ bool Rectangular(MatrixType a, MatrixType b, MatrixType c);
 bool Compare(const MatrixType&, MatrixType&);
 Real DotProduct(const Matrix& A, const Matrix& B);
 #ifndef TEMPS_DESTROYED_QUICKLY
-   SPMatrix SP(const BaseMatrix&, const BaseMatrix&);
+   NEWMAT_API SPMatrix SP(const BaseMatrix&, const BaseMatrix&);
    KPMatrix KP(const BaseMatrix&, const BaseMatrix&);
    ShiftedMatrix operator+(Real f, const BaseMatrix& BM);
    NegShiftedMatrix operator-(Real, const BaseMatrix&);
    ScaledMatrix operator*(Real f, const BaseMatrix& BM);
 #else
-   SPMatrix& SP(const BaseMatrix&, const BaseMatrix&);
+   NEWMAT_API SPMatrix& SP(const BaseMatrix&, const BaseMatrix&);
    KPMatrix& KP(const BaseMatrix&, const BaseMatrix&);
    NegShiftedMatrix& operator-(Real, const BaseMatrix&);
 #endif

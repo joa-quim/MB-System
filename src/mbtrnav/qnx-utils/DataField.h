@@ -15,6 +15,7 @@
 /****************************************************************************/
 #ifndef _DATAFIELD_H
 #define _DATAFIELD_H
+#include "trn_export.h"
 
 #include <stdio.h>
 
@@ -39,7 +40,7 @@ AUTHOR
 Tom O'Reilly
 */
 
-class DataField {
+class QNX_API DataField {
 
 public:
 

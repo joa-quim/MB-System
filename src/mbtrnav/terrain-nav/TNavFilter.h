@@ -17,6 +17,7 @@
 
 #ifndef _TNavFilter_h
 #define _TNavFilter_h
+#include "trn_export.h"
 
 #include "TerrainMap.h"
 #include "matrixArrayCalcs.h"
@@ -127,7 +128,7 @@ struct corrT {
  *               tNavFilter->computeMMSE(mmsePose)
  */
 
-class TNavFilter
+class TNAV_API TNavFilter
 {
  public:
 

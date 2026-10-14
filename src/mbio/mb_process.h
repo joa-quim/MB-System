@@ -1068,7 +1068,7 @@ MBIO_API int mb_pr_update_svp(int verbose, char *file, int mbp_svp_mode, char *m
                      int *error);
 MBIO_API int mb_pr_update_static(int verbose, char *file, int mbp_static_mode, char *mbp_staticfile, int *error);
 MBIO_API int mb_pr_update_navadj(int verbose, char *file, int mbp_navadj_mode, char *mbp_navadjfile, int mbp_navadj_algorithm, int *error);
-int mb_pr_update_nav(int verbose, char *file, int mbp_nav_mode, char *mbp_navfile, int mbp_nav_format, int mbp_nav_heading,
+MBIO_API int mb_pr_update_nav(int verbose, char *file, int mbp_nav_mode, char *mbp_navfile, int mbp_nav_format, int mbp_nav_heading,
                      int mbp_nav_speed, int mbp_nav_draft, int mbp_nav_attitude, int mbp_nav_algorithm, double mbp_nav_timeshift,
                      int *error);
 int mb_pr_update_attitude(int verbose, char *file, int mbp_attitude_mode, char *mbp_attitudefile, int mbp_attitude_format,

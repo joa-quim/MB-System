@@ -16,6 +16,7 @@
 /****************************************************************************/
 #ifndef _TRN_CLIENT_H_
 #define _TRN_CLIENT_H_
+#include "trn_export.h"
 
 #include <sys/stat.h>
 #ifdef _MSC_VER
@@ -62,7 +63,7 @@ typedef enum {
     SID_LOC,
 }SIDTime;
 
-class TrnClient : public TerrainNavClient {
+class TRNCLI_API TrnClient : public TerrainNavClient {
     
 public:
     

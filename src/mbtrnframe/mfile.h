@@ -64,6 +64,7 @@
 /// @def MFLAG_H
 /// @brief include guard
 #define MFLAG_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -149,21 +150,21 @@ typedef enum{MFILE_SET=0, MFILE_CUR, MFILE_END} mfile_whence_t;
 extern "C" {
 #endif
 
-mfile_file_t *mfile_file_new(const char *path);
-void mfile_file_destroy(mfile_file_t **pself);
+MBTRNFRAME_API mfile_file_t *mfile_file_new(const char *path);
+MBTRNFRAME_API void mfile_file_destroy(mfile_file_t **pself);
 void mfile_file_show(mfile_file_t *self, bool verbose, uint16_t indent);
 
-int mfile_open(mfile_file_t *self,mfile_flags_t flags);
-int mfile_close(mfile_file_t *self);
-int mfile_mopen(mfile_file_t *self,mfile_flags_t flags,mfile_mode_t mode );
-int64_t mfile_seek(mfile_file_t *self, uint32_t ofs, mfile_whence_t whence);
-int64_t mfile_read(mfile_file_t *self, byte *dest, uint32_t len);
-int64_t mfile_write(mfile_file_t *self, byte *src, uint32_t len);
+MBTRNFRAME_API int mfile_open(mfile_file_t *self,mfile_flags_t flags);
+MBTRNFRAME_API int mfile_close(mfile_file_t *self);
+MBTRNFRAME_API int mfile_mopen(mfile_file_t *self,mfile_flags_t flags,mfile_mode_t mode );
+MBTRNFRAME_API int64_t mfile_seek(mfile_file_t *self, uint32_t ofs, mfile_whence_t whence);
+MBTRNFRAME_API int64_t mfile_read(mfile_file_t *self, byte *dest, uint32_t len);
+MBTRNFRAME_API int64_t mfile_write(mfile_file_t *self, byte *src, uint32_t len);
 int mfile_ftruncate(mfile_file_t *self, uint32_t len);
-int mfile_fprintf(mfile_file_t *self, const char *fmt, ...);
+MBTRNFRAME_API int mfile_fprintf(mfile_file_t *self, const char *fmt, ...);
 int mfile_vfprintf(mfile_file_t *self, const char *fmt, va_list args);
 int mfile_flush(mfile_file_t *self);
-int64_t mfile_fsize(mfile_file_t *self);
+MBTRNFRAME_API int64_t mfile_fsize(mfile_file_t *self);
 time_t mfile_mtime(const char *path);
 int mfile_rename(mfile_file_t *self,const char *path);
 int mfile_fd(mfile_file_t *self);    

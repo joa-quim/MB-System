@@ -19,30 +19,30 @@ namespace NEWMAT {
 
 /**************************** input/output *****************************/
 
-ostream& operator<<(ostream&, const BaseMatrix&);
+NEWMAT_API ostream& operator<<(ostream&, const BaseMatrix&);
 
-ostream& operator<<(ostream&, const GeneralMatrix&);
+NEWMAT_API ostream& operator<<(ostream&, const GeneralMatrix&);
 
 
 /*  Use in some old versions of G++ without complete iomanipulators
 
-class Omanip_precision
+class NEWMAT_API Omanip_precision
 {
    int x;
 public:
    Omanip_precision(int i) : x(i) {}
-   friend ostream& operator<<(ostream& os, Omanip_precision i);
+   friend NEWMAT_API ostream& operator<<(ostream& os, Omanip_precision i);
 };
 
 
 Omanip_precision setprecision(int i);
 
-class Omanip_width
+class NEWMAT_API Omanip_width
 {
    int x;
 public:
    Omanip_width(int i) : x(i) {}
-   friend ostream& operator<<(ostream& os, Omanip_width i);
+   friend NEWMAT_API ostream& operator<<(ostream& os, Omanip_width i);
 };
 
 Omanip_width setw(int i);

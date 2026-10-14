@@ -82,6 +82,7 @@
 // Always do this
 #ifndef TRNW_H
 #define TRNW_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes
@@ -162,8 +163,8 @@ typedef struct trn_config_s{
 extern "C" {
 #endif
     // TRN config API
-    trn_config_t *trncfg_dnew();
-    trn_config_t *trncfg_new(char *host, int port,
+    TRNW_API trn_config_t *trncfg_dnew();
+    TRNW_API trn_config_t *trncfg_new(char *host, int port,
                              bool use_proj,
                              int projection,
                              char *trn_crs,
@@ -185,110 +186,110 @@ extern "C" {
                              double max_easting_err
                              );
 
-    void trncfg_destroy(trn_config_t **pself);
-    void trncfg_show(trn_config_t *obj, bool verbose, int indent);
+    TRNW_API void trncfg_destroy(trn_config_t **pself);
+    TRNW_API void trncfg_show(trn_config_t *obj, bool verbose, int indent);
 
     // TerrainNav API
-    wtnav_t *wtnav_dnew();
-    wtnav_t *wtnav_new(trn_config_t *cfg);
-    void wtnav_destroy(wtnav_t *self);
+    TRNW_API wtnav_t *wtnav_dnew();
+    TRNW_API wtnav_t *wtnav_new(trn_config_t *cfg);
+    TRNW_API void wtnav_destroy(wtnav_t *self);
 
-    void wtnav_estimate_pose(wtnav_t *self, wposet_t *estimate, const int type);
-    void wtnav_meas_update(wtnav_t *self, wmeast_t *incomingMeas, const int type);
-    void wtnav_motion_update(wtnav_t *self, wposet_t *incomingNav);
-    bool wtnav_last_meas_successful(wtnav_t *self);
-    bool wtnav_outstanding_meas(wtnav_t *self);
-    bool wtnav_initialized(wtnav_t *self);
-    bool wtnav_is_converged(wtnav_t *self);
-    void wtnav_set_est_nav_offset(wtnav_t *self, double ofs_x, double ofs_y, double ofs_z);
-    d_triplet_t *wtnav_get_est_nav_offset(wtnav_t *self, d_triplet_t *dest);
-    void wtnav_set_init_stddev_xyz(wtnav_t *self, double sdev_x, double sdev_y, double sdev_z);
-    d_triplet_t *wtnav_get_init_stddev_xyz(wtnav_t *self, d_triplet_t *dest);
-    void wtnav_reinit_filter(wtnav_t *self, bool lowInfoTransition);
+    TRNW_API void wtnav_estimate_pose(wtnav_t *self, wposet_t *estimate, const int type);
+    TRNW_API void wtnav_meas_update(wtnav_t *self, wmeast_t *incomingMeas, const int type);
+    TRNW_API void wtnav_motion_update(wtnav_t *self, wposet_t *incomingNav);
+    TRNW_API bool wtnav_last_meas_successful(wtnav_t *self);
+    TRNW_API bool wtnav_outstanding_meas(wtnav_t *self);
+    TRNW_API bool wtnav_initialized(wtnav_t *self);
+    TRNW_API bool wtnav_is_converged(wtnav_t *self);
+    TRNW_API void wtnav_set_est_nav_offset(wtnav_t *self, double ofs_x, double ofs_y, double ofs_z);
+    TRNW_API d_triplet_t *wtnav_get_est_nav_offset(wtnav_t *self, d_triplet_t *dest);
+    TRNW_API void wtnav_set_init_stddev_xyz(wtnav_t *self, double sdev_x, double sdev_y, double sdev_z);
+    TRNW_API d_triplet_t *wtnav_get_init_stddev_xyz(wtnav_t *self, d_triplet_t *dest);
+    TRNW_API void wtnav_reinit_filter(wtnav_t *self, bool lowInfoTransition);
     void wtnav_reinit_filter_offset(wtnav_t *self, bool lowInfoTransition,
                              double ofs_x, double ofs_y, double ofs_z);
-    void wtnav_reinit_filter_box(wtnav_t *self, bool lowInfoTransition,
+    TRNW_API void wtnav_reinit_filter_box(wtnav_t *self, bool lowInfoTransition,
                              double ofs_x, double ofs_y, double ofs_z,
                              double sdev_x, double sdev_y, double sdev_z);
-    int  wtnav_get_filter_type(wtnav_t *self);
-    int  wtnav_get_filter_state(wtnav_t *self);
-    void wtnav_use_highgrade_filter(wtnav_t *self);
-    void wtnav_use_lowgrade_filter(wtnav_t *self);
-    int  wtnav_get_num_reinits(wtnav_t *self);
-    void wtnav_set_filter_reinit(wtnav_t *self, const bool allow);
-    void wtnav_set_interp_meas_attitude(wtnav_t *self, const bool set);
-    void wtnav_set_map_interp_method(wtnav_t *self, const int type);
-    void wtnav_set_vehicle_drift_rate(wtnav_t *self, const double driftRate);
-    void wtnav_set_modified_weighting(wtnav_t *self, const int use);
+    TRNW_API int  wtnav_get_filter_type(wtnav_t *self);
+    TRNW_API int  wtnav_get_filter_state(wtnav_t *self);
+    TRNW_API void wtnav_use_highgrade_filter(wtnav_t *self);
+    TRNW_API void wtnav_use_lowgrade_filter(wtnav_t *self);
+    TRNW_API int  wtnav_get_num_reinits(wtnav_t *self);
+    TRNW_API void wtnav_set_filter_reinit(wtnav_t *self, const bool allow);
+    TRNW_API void wtnav_set_interp_meas_attitude(wtnav_t *self, const bool set);
+    TRNW_API void wtnav_set_map_interp_method(wtnav_t *self, const int type);
+    TRNW_API void wtnav_set_vehicle_drift_rate(wtnav_t *self, const double driftRate);
+    TRNW_API void wtnav_set_modified_weighting(wtnav_t *self, const int use);
     void wtnav_release_map(wtnav_t *self);
     void *wtnav_obj_addr(wtnav_t *self);
 
     // comms (msg) API
     wcommst_t *wcommst_dnew();
-    void wcommst_destroy(wcommst_t *self);
-    void wcommst_show(wcommst_t *self, bool verbose, int indent);
+    TRNW_API void wcommst_destroy(wcommst_t *self);
+    TRNW_API void wcommst_show(wcommst_t *self, bool verbose, int indent);
 
     ct_cdata_t *wcommst_cdata_new();
-    void wcommst_cdata_destroy(ct_cdata_t **pself);
+    TRNW_API void wcommst_cdata_destroy(ct_cdata_t **pself);
     uint32_t  wcommst_cdata_serialize(char *dest, ct_cdata_t *src, int len);
-    int  wcommst_cdata_unserialize(ct_cdata_t **dest, char *src);
+    TRNW_API int  wcommst_cdata_unserialize(ct_cdata_t **dest, char *src);
     int wcommst_get_pt(wposet_t **dest, wcommst_t *src);
     int wcommst_set_pt(wcommst_t *self, wposet_t *wpt);
     int wcommst_get_mt(wmeast_t **dest, wcommst_t *src);
     int wcommst_set_mt(wcommst_t *self, wmeast_t *wmt);
-    int wcommst_get_parameter(wcommst_t *self);
-    float wcommst_get_vdr(wcommst_t *self);
-    d_triplet_t *wcommst_get_xyz_sdev(wcommst_t *self, d_triplet_t *dest);
-    d_triplet_t *wcommst_get_est_nav_offset(wcommst_t *self, d_triplet_t *dest);
-    char wcommst_get_msg_type(wcommst_t *self);
-    int  wcommst_serialize(char **dest, wcommst_t *src, int len);
-    int  wcommst_unserialize(wcommst_t **dest, char *src, int len);
+    TRNW_API int wcommst_get_parameter(wcommst_t *self);
+    TRNW_API float wcommst_get_vdr(wcommst_t *self);
+    TRNW_API d_triplet_t *wcommst_get_xyz_sdev(wcommst_t *self, d_triplet_t *dest);
+    TRNW_API d_triplet_t *wcommst_get_est_nav_offset(wcommst_t *self, d_triplet_t *dest);
+    TRNW_API char wcommst_get_msg_type(wcommst_t *self);
+    TRNW_API int  wcommst_serialize(char **dest, wcommst_t *src, int len);
+    TRNW_API int  wcommst_unserialize(wcommst_t **dest, char *src, int len);
 
-    void commst_meas_update(wtnav_t *self, wcommst_t *msg);
-    void commst_motion_update(wtnav_t *self, wcommst_t *msg);
-    void commst_estimate_pose(wtnav_t *self, wcommst_t *msg, const int type);
-    void commst_initialize(wtnav_t *self, wcommst_t *msg);
+    TRNW_API void commst_meas_update(wtnav_t *self, wcommst_t *msg);
+    TRNW_API void commst_motion_update(wtnav_t *self, wcommst_t *msg);
+    TRNW_API void commst_estimate_pose(wtnav_t *self, wcommst_t *msg, const int type);
+    TRNW_API void commst_initialize(wtnav_t *self, wcommst_t *msg);
 
     // pose API
-    wposet_t *wposet_dnew();
-    void wposet_destroy(wposet_t *self);
+    TRNW_API wposet_t *wposet_dnew();
+    TRNW_API void wposet_destroy(wposet_t *self);
     void wposet_show(wposet_t *self, bool verbose, int indent);
-    int  wposet_cdata_to_pose(wposet_t **dest, pt_cdata_t *src);
-    int  wposet_pose_to_cdata(pt_cdata_t **dest, wposet_t *src);
+    TRNW_API int  wposet_cdata_to_pose(wposet_t **dest, pt_cdata_t *src);
+    TRNW_API int  wposet_pose_to_cdata(pt_cdata_t **dest, wposet_t *src);
     // int  wposet_mb1_to_pose(wposet_t **dest, mb1_t *src, long int utmZone);
-    int  wposet_mb1_to_pose(wposet_t **dest, mb1_t *src, wgeocon_t *geocon);
-    int  wposet_mb1_to_pose_cb(wposet_t **dest, mb1_t *src, GeoToTMCallback geocon);
-    int  wposet_msg_to_pose(wposet_t **dest, char *src);
+    TRNW_API int  wposet_mb1_to_pose(wposet_t **dest, mb1_t *src, wgeocon_t *geocon);
+    TRNW_API int  wposet_mb1_to_pose_cb(wposet_t **dest, mb1_t *src, GeoToTMCallback geocon);
+    TRNW_API int  wposet_msg_to_pose(wposet_t **dest, char *src);
     int  wposet_serialize(char **dest, wposet_t *src, int len);
     int  wposet_unserialize(wposet_t **dest, char *src, int len);
 
     // measurement API
     wmeast_t *wmeast_dnew();
     wmeast_t *wmeast_new(unsigned int size);
-    void wmeast_destroy(wmeast_t *self);
+    TRNW_API void wmeast_destroy(wmeast_t *self);
     void wmeast_show(wmeast_t *self, bool verbose, int indent);
-    int  wmeast_cdata_to_meas(wmeast_t **dest, mt_cdata_t *src);
+    TRNW_API int  wmeast_cdata_to_meas(wmeast_t **dest, mt_cdata_t *src);
     int  wmeast_meas_to_cdata(mt_cdata_t **dest, wmeast_t *src);
     // int  wmeast_mb1_to_meas(wmeast_t **dest, mb1_t *src, long int utmZone);
-    int  wmeast_mb1_to_meas(wmeast_t **dest, mb1_t *src, wgeocon_t *geocon);
-    int  wmeast_mb1_to_meas_cb(wmeast_t **dest, mb1_t *src, GeoToTMCallback geocon);
+    TRNW_API int  wmeast_mb1_to_meas(wmeast_t **dest, mb1_t *src, wgeocon_t *geocon);
+    TRNW_API int  wmeast_mb1_to_meas_cb(wmeast_t **dest, mb1_t *src, GeoToTMCallback geocon);
     int  wmeast_msg_to_meas(wmeast_t **dest, char *src);
     int  wmeast_serialize(char **dest, wmeast_t *src, int len);
-    int  wmeast_unserialize(wmeast_t **dest, char *src, int len);
+    TRNW_API int  wmeast_unserialize(wmeast_t **dest, char *src, int len);
     int  wmeast_get_nmeas(wmeast_t *self);
 
     // message API
-    int32_t trnw_meas_msg(char **dest, wmeast_t *src, int msg_type, int param);
-    int32_t trnw_pose_msg(char **dest, wposet_t *src, char msg_type);
-    int32_t trnw_init_msg(char **dest, trn_config_t *cfg);
-    int32_t trnw_ptype_msg(char **dest, char msg_type, int param);
-    int32_t trnw_type_msg(char **dest, char type);
-    int32_t trnw_ack_msg(char **dest);
-    int32_t trnw_nack_msg(char **dest);
-    int32_t trnw_triplet_msg(char **dest, char msg_type, d_triplet_t *src);
-    int32_t trnw_reinit_offset_msg(char **dest, char msg_type, bool lowInfoTransition,
+    TRNW_API int32_t trnw_meas_msg(char **dest, wmeast_t *src, int msg_type, int param);
+    TRNW_API int32_t trnw_pose_msg(char **dest, wposet_t *src, char msg_type);
+    TRNW_API int32_t trnw_init_msg(char **dest, trn_config_t *cfg);
+    TRNW_API int32_t trnw_ptype_msg(char **dest, char msg_type, int param);
+    TRNW_API int32_t trnw_type_msg(char **dest, char type);
+    TRNW_API int32_t trnw_ack_msg(char **dest);
+    TRNW_API int32_t trnw_nack_msg(char **dest);
+    TRNW_API int32_t trnw_triplet_msg(char **dest, char msg_type, d_triplet_t *src);
+    TRNW_API int32_t trnw_reinit_offset_msg(char **dest, char msg_type, bool lowInfoTransition,
                                 double offset_x, double offset_y, double offset_z );
-    int32_t trnw_reinit_box_msg(char **dest, char msg_type, bool lowInfoTransition,
+    TRNW_API int32_t trnw_reinit_box_msg(char **dest, char msg_type, bool lowInfoTransition,
                                 double offset_x, double offset_y, double offset_z,
                                 double sdev_x, double sdev_y, double sdev_z );
     void trnw_msg_show(char *msg, bool verbose, int indent);

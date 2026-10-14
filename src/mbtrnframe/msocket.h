@@ -64,6 +64,7 @@
 /// @def MSOCKET_H
 /// @brief include guard
 #define MSOCKET_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes 
@@ -269,44 +270,44 @@ extern "C" {
     
     // socket API
     
-    msock_socket_t *msock_socket_new(const char *host, int port, msock_socket_ctype type);
-    void msock_socket_destroy(msock_socket_t **pself);
+    MBTRNFRAME_API msock_socket_t *msock_socket_new(const char *host, int port, msock_socket_ctype type);
+    MBTRNFRAME_API void msock_socket_destroy(msock_socket_t **pself);
     // pass in NULL socket to create dynamically
     int msock_configure(msock_socket_t *s, const char *host, int port, msock_socket_ctype type);
-    int msock_set_blocking(msock_socket_t *s, bool enabled);
-    int msock_bind(msock_socket_t *s);
-    int msock_connect(msock_socket_t *s);
-    int msock_listen(msock_socket_t *s, int queue);
-    int msock_accept(msock_socket_t *s, msock_addr_t *addr);
+    MBTRNFRAME_API int msock_set_blocking(msock_socket_t *s, bool enabled);
+    MBTRNFRAME_API int msock_bind(msock_socket_t *s);
+    MBTRNFRAME_API int msock_connect(msock_socket_t *s);
+    MBTRNFRAME_API int msock_listen(msock_socket_t *s, int queue);
+    MBTRNFRAME_API int msock_accept(msock_socket_t *s, msock_addr_t *addr);
     
-    int64_t msock_send(msock_socket_t *s,byte *buf, uint32_t len);
-    int64_t msock_recv(msock_socket_t *s, byte *buf, uint32_t len,int flags);
-    int64_t msock_sendto(msock_socket_t *s, msock_addr_t *addr, byte *buf, uint32_t len, int32_t flags);
-    int64_t msock_recvfrom(msock_socket_t *s, msock_addr_t *addr, byte *buf, uint32_t len,int flags);
-    int64_t msock_read_tmout(msock_socket_t *s, byte *buf, uint32_t len, uint32_t timeout_msec);
-    char *msock_addr2str(msock_socket_t *s, char *dest, size_t len);
+    MBTRNFRAME_API int64_t msock_send(msock_socket_t *s,byte *buf, uint32_t len);
+    MBTRNFRAME_API int64_t msock_recv(msock_socket_t *s, byte *buf, uint32_t len,int flags);
+    MBTRNFRAME_API int64_t msock_sendto(msock_socket_t *s, msock_addr_t *addr, byte *buf, uint32_t len, int32_t flags);
+    MBTRNFRAME_API int64_t msock_recvfrom(msock_socket_t *s, msock_addr_t *addr, byte *buf, uint32_t len,int flags);
+    MBTRNFRAME_API int64_t msock_read_tmout(msock_socket_t *s, byte *buf, uint32_t len, uint32_t timeout_msec);
+    MBTRNFRAME_API char *msock_addr2str(msock_socket_t *s, char *dest, size_t len);
     int msock_close(msock_socket_t *self);
-    msock_socket_t *msock_wrap_fd(int fd);
+    MBTRNFRAME_API msock_socket_t *msock_wrap_fd(int fd);
     int msock_fd(msock_socket_t *self);
     
     msock_addr_t *msock_addr_new();
     void msock_addr_destroy(msock_addr_t **pself);
     void msock_addr_init(msock_addr_t *self);
-    msock_connection_t *msock_connection_new();
-    void msock_connection_destroy(msock_connection_t **pself);
-    void msock_connection_free(void *pself);
+    MBTRNFRAME_API msock_connection_t *msock_connection_new();
+    MBTRNFRAME_API void msock_connection_destroy(msock_connection_t **pself);
+    MBTRNFRAME_API void msock_connection_free(void *pself);
     
-    int msock_connection_addr2str(msock_connection_t *self);
+    MBTRNFRAME_API int msock_connection_addr2str(msock_connection_t *self);
     
     void msock_pstats_show(msock_pstats_t *self, bool verbose, uint16_t indent);
     
     void msock_set_debug(int level);
     
-    int msock_get_opt(msock_socket_t *self, int opt_name, void *optval, socklen_t *optlen);
-    int msock_set_opt(msock_socket_t *self, int opt_name, const void *optval, socklen_t optlen);
+    MBTRNFRAME_API int msock_get_opt(msock_socket_t *self, int opt_name, void *optval, socklen_t *optlen);
+    MBTRNFRAME_API int msock_set_opt(msock_socket_t *self, int opt_name, const void *optval, socklen_t optlen);
 
     int msock_lget_opt(msock_socket_t *self, int opt_level, int opt_name, void *optval, socklen_t *optlen);
-    int msock_lset_opt(msock_socket_t *self, int opt_level, int opt_name, const void *optval, socklen_t optlen);
+    MBTRNFRAME_API int msock_lset_opt(msock_socket_t *self, int opt_level, int opt_name, const void *optval, socklen_t optlen);
 
     int msock_test();
     

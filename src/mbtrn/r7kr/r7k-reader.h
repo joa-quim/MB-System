@@ -66,6 +66,7 @@
 /// @def R7K_READER_H
 /// @brief TBD
 #define R7K_READER_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes
@@ -323,32 +324,32 @@ typedef struct r7kr_reader_s
 
 
 // r7krn reader API
-r7kr_reader_t *r7kr_reader_new(r7k_device_t device, const char *host, int port, uint32_t capacity, uint32_t *slist,  uint32_t slist_len);
-r7kr_reader_t *r7kr_freader_new(mfile_file_t *file, uint32_t capacity, uint32_t *slist,  uint32_t slist_len);
-void r7kr_reader_destroy(r7kr_reader_t **pself);
-int r7kr_reader_connect(r7kr_reader_t *self, bool replace_socket);
-void r7kr_reader_set_log(r7kr_reader_t *self, mlog_id_t id);
+R7KR_API r7kr_reader_t *r7kr_reader_new(r7k_device_t device, const char *host, int port, uint32_t capacity, uint32_t *slist,  uint32_t slist_len);
+R7KR_API r7kr_reader_t *r7kr_freader_new(mfile_file_t *file, uint32_t capacity, uint32_t *slist,  uint32_t slist_len);
+R7KR_API void r7kr_reader_destroy(r7kr_reader_t **pself);
+R7KR_API int r7kr_reader_connect(r7kr_reader_t *self, bool replace_socket);
+R7KR_API void r7kr_reader_set_log(r7kr_reader_t *self, mlog_id_t id);
 void r7kr_reader_set_logstream(r7kr_reader_t *self, FILE *log);
-mstats_t *r7kr_reader_get_stats(r7kr_reader_t *self);
+R7KR_API mstats_t *r7kr_reader_get_stats(r7kr_reader_t *self);
 const char ***r7kr_reader_get_statlabels();
 
 msock_socket_t *r7kr_reader_sockif(r7kr_reader_t *self);
 mfile_file_t *r7kr_reader_fileif(r7kr_reader_t *self);
-void r7kr_reader_show(r7kr_reader_t *self, bool verbose, uint16_t indent);
-const char *r7kr_strstate(r7kr_state_t state);
-bool r7kr_reader_issub(r7kr_reader_t *self, uint32_t record_type);
+R7KR_API void r7kr_reader_show(r7kr_reader_t *self, bool verbose, uint16_t indent);
+R7KR_API const char *r7kr_strstate(r7kr_state_t state);
+R7KR_API bool r7kr_reader_issub(r7kr_reader_t *self, uint32_t record_type);
 void r7kr_reader_reset_socket(r7kr_reader_t *self);
-int r7kr_reader_set_file(r7kr_reader_t *self, mfile_file_t *file);
+R7KR_API int r7kr_reader_set_file(r7kr_reader_t *self, mfile_file_t *file);
 void r7kr_reader_flush(r7kr_reader_t *self, uint32_t len, int32_t retries, uint32_t tmout_ms);
 
 int64_t r7kr_read_nf(r7kr_reader_t *self, byte *dest, uint32_t len, r7kr_flags_t flags, double newer_than, uint32_t timeout_msec, uint32_t *sync_bytes);
 int64_t r7kr_read_drf(r7kr_reader_t *self, byte *dest, uint32_t len, r7kr_flags_t flags, double newer_than, uint32_t timeout_msec, uint32_t *sync_bytes);
-int64_t r7kr_read_frame(r7kr_reader_t *self, byte *dest, uint32_t len, r7kr_flags_t flags, double newer_than, uint32_t timeout_msec, uint32_t *sync_bytes);
-int64_t r7kr_read_stripped_frame(r7kr_reader_t *self, byte *dest, uint32_t len, r7kr_flags_t flags, double newer_than, uint32_t timeout_msec, uint32_t *sync_bytes );
+R7KR_API int64_t r7kr_read_frame(r7kr_reader_t *self, byte *dest, uint32_t len, r7kr_flags_t flags, double newer_than, uint32_t timeout_msec, uint32_t *sync_bytes);
+R7KR_API int64_t r7kr_read_stripped_frame(r7kr_reader_t *self, byte *dest, uint32_t len, r7kr_flags_t flags, double newer_than, uint32_t timeout_msec, uint32_t *sync_bytes );
 
 int64_t r7kr_reader_seek(r7kr_reader_t *self, uint32_t ofs);
 int64_t r7kr_reader_tell(r7kr_reader_t *self);
-void r7kr_reader_purge(r7kr_reader_t *self);
+R7KR_API void r7kr_reader_purge(r7kr_reader_t *self);
 r7k_drf_t    *r7kr_reader_next(r7kr_reader_t *self);
 r7k_drf_t *r7kr_reader_enumerate(r7kr_reader_t *self);
 uint32_t r7kr_reader_frames(r7kr_reader_t *self);
@@ -358,10 +359,10 @@ int64_t r7kr_reader_read(r7kr_reader_t *self, byte *dest, uint32_t len);
 // used in r7krnpreprocess
 
 bool r7kr_peer_cmp(void *a, void *b);
-bool r7kr_peer_vcmp(void *item, void *value);
+R7KR_API bool r7kr_peer_vcmp(void *item, void *value);
 
 #ifdef WITH_R7KR_TEST
-int r7kr_test(int argc, char **argv);
+R7KR_API int r7kr_test(int argc, char **argv);
 #endif // WITH_R7KR_TEST
 
 // include guard

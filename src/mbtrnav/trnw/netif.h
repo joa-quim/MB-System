@@ -62,6 +62,7 @@
 // Always do this
 #ifndef NETIF_H
 #define NETIF_H
+#include "trn_export.h"
 
 /////////////////////////
 // Includes
@@ -214,7 +215,7 @@ extern "C" {
     /// @param[in] handle_fn message handler
     /// @param[in] pub_fn publish function
     /// @return new instance on success, NULL otherwise
-    netif_t *netif_new(char *name, char *host, int port,
+    NETIF_API netif_t *netif_new(char *name, char *host, int port,
                        msock_socket_ctype ctype,
                        netif_mode_t mode,
                        double hbto,
@@ -222,7 +223,7 @@ extern "C" {
                        netif_msg_handle_fn handle_fn,
                        netif_msg_pub_fn pub_fn);
 
-    netif_t *netif_mcast_new(char *name, char *host, int port,
+    NETIF_API netif_t *netif_mcast_new(char *name, char *host, int port,
                              msock_socket_ctype ctype,
                              netif_mode_t mode,
                              int ttl,
@@ -246,7 +247,7 @@ extern "C" {
     /// @brief release netif_t resources
     /// @param[in] pself pointer to instance
     /// @return none
-    void netif_destroy(netif_t **pself);
+    NETIF_API void netif_destroy(netif_t **pself);
 
     /// @fn void netif_show(netif_t *pself, bool verbose, int indent)
     /// @brief print instance summary to console
@@ -254,7 +255,7 @@ extern "C" {
     /// @param[in] verbose enable verbose output
     /// @param[in] indent number of spaces to indent output
     /// @return none
-    void netif_show(netif_t *self, bool verbose, int indent);
+    NETIF_API void netif_show(netif_t *self, bool verbose, int indent);
 
     /// @fn int netif_start(netif_t *self)
     /// @brief start netif (req/res mode)
@@ -281,14 +282,14 @@ extern "C" {
     /// @param[in] self netif_t instance
     /// @param[in] log_dir log output directory path
     /// @return 0 on success, -1 otherwise
-    int netif_init_log(netif_t *self, char *log_name, char *log_dir, char *session_str);
+    NETIF_API int netif_init_log(netif_t *self, char *log_name, char *log_dir, char *session_str);
 
     /// @fn int netif_configure_debug(netif_t *self, int level)
     /// @brief set debug configuration
     /// @param[in] self netif_t instance
     /// @param[in] level output level (0-5)
     /// @return 0 on success, -1 otherwise
-    int netif_configure_debug(netif_t *self, int level);
+    NETIF_API int netif_configure_debug(netif_t *self, int level);
 
     /// @fn int netif_test()
     /// @brief unit test
@@ -296,29 +297,29 @@ extern "C" {
     /// @return 0 on success, -1 otherwise
     int netif_test();
 
-    void netif_set_reqres_res(netif_t *self, void *res);
+    NETIF_API void netif_set_reqres_res(netif_t *self, void *res);
     void netif_set_pub_res(netif_t *self, void *res);
 
-    int netif_connect(netif_t *self);
-    int netif_update_connections(netif_t *self);
+    NETIF_API int netif_connect(netif_t *self);
+    NETIF_API int netif_update_connections(netif_t *self);
     int netif_connections(netif_t *self);
 
-    int netif_reqres(netif_t *self);
-    int netif_pub(netif_t *self, char *output_buffer, size_t len, size_t *r_iobytes);
+    NETIF_API int netif_reqres(netif_t *self);
+    NETIF_API int netif_pub(netif_t *self, char *output_buffer, size_t len, size_t *r_iobytes);
     /// @fn const char *netif_get_version()
     /// @brief get build string.
     /// @return version string
-    const char *netif_get_version();
+    NETIF_API const char *netif_get_version();
 
     /// @fn const char *netif_get_build()
     /// @brief get build string.
     /// @return version string
-    const char *netif_get_build();
+    NETIF_API const char *netif_get_build();
 
     void netif_init_mmd();
 
-    mstats_t *netif_stats(netif_t *self);
-    mlog_id_t netif_log(netif_t *self);
+    NETIF_API mstats_t *netif_stats(netif_t *self);
+    NETIF_API mlog_id_t netif_log(netif_t *self);
 
 #ifdef __cplusplus
 }

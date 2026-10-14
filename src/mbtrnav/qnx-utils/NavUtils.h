@@ -1,5 +1,6 @@
 #ifndef _NAVUTILS_H
 #define _NAVUTILS_H
+#include "trn_export.h"
 
 // Use temporarily!!!
 #define MontereyUTM 10
@@ -15,7 +16,7 @@ AUTHOR
 Tom O'Reilly
 */
 
-class NavUtils {
+class QNX_API NavUtils {
 
 public:
 

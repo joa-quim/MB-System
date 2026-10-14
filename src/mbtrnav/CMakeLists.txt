@@ -54,15 +54,9 @@ message("In src/mbtrnav")
 # they include the substitutes unistd_w.h / dirent_w.h from src/mbio, and the
 # BSD-socket headers (sys/socket.h, arpa/inet.h, netinet/*, netdb.h) plus
 # libgen.h come from the Winsock-backed shims in src/mbtrnframe/win32.
+# trn_export.h (the TRN libraries' export macros) lives in src/mbtrnframe
+include_directories(${CMAKE_SOURCE_DIR}/src/mbtrnframe)
 if(WIN32)
-  # Build the TRN libraries static on Windows. Several of them export data
-  # (mbtrnframe me_errno, newmat BaseException::what_error), and data crossing
-  # a DLL boundary needs explicit dllexport/dllimport annotations these
-  # sources do not carry. They are internal libraries, so linking them in
-  # directly is the simpler and safer answer.
-  set(BUILD_SHARED_LIBS OFF)
-  # tells the headers not to mark their exports dllimport/dllexport
-  add_compile_definitions(TRNW_STATIC)
   include_directories(${CMAKE_SOURCE_DIR}/src/mbio
                       ${CMAKE_SOURCE_DIR}/src/mbtrnframe/win32)
   # Force-include the compat header, as the top-level build already does for
@@ -599,13 +593,12 @@ target_include_directories(mcsub PRIVATE BEFORE
 #  build mb1rs
 
 add_executable(mb1rs
-    ${TRNW_SRC_DIR}/mb1_msg.c
     ${TRNW_SRC_DIR}/mb1rs.c
     ${TRNW_SRC_DIR}/mb1rs-app.c
 )
 
 # specify include paths and libraries
-target_link_libraries(mb1rs PRIVATE mbtrnframe ${MB_SYSLIBS})
+target_link_libraries(mb1rs PRIVATE mb1 mbtrnframe ${MB_SYSLIBS})
 
 target_include_directories(mb1rs PRIVATE BEFORE
     ${LIBTRNAV_INCLUDES}
@@ -621,7 +614,6 @@ add_executable(trn-player
     ${TRNPLAYER_SRC_DIR}/TrnPlayer.cpp
     ${TRNPLAYER_SRC_DIR}/TrnPlayerCtx.hpp
     ${TRNPLAYER_SRC_DIR}/trn-player.cpp
-    ${TNAV_SRC_DIR}/TerrainNav.cpp
 )
 
 # specify include paths and libraries
@@ -643,7 +635,6 @@ ${MBTRN_CXX_STD_OPT}
 add_executable(replay
     ${DORADO_SRC_DIR}/Replay.cpp
     ${DORADO_SRC_DIR}/trn_replay.cpp
-    ${UTILS_SRC_DIR}/TerrainNavClient.cpp
 )
 
 # specify include paths and libraries
@@ -665,8 +656,6 @@ ${MBTRN_CXX_STD_OPT}
 # specify build target
 add_executable(mb1log-player
     ${UTILS_SRC_DIR}/mb1log_player.cpp
-    ${UTILS_SRC_DIR}/TrnClient.cpp
-    ${UTILS_SRC_DIR}/TerrainNavClient.cpp
 )
 
 # specify include paths and libraries
@@ -688,9 +677,6 @@ ${MBTRN_CXX_STD_OPT}
 # specify build target
 add_executable(trnlog-player
     ${UTILS_SRC_DIR}/trnlog_player.cpp
-    ${UTILS_SRC_DIR}/TrnClient.cpp
-    ${UTILS_SRC_DIR}/TerrainNavClient.cpp
-    ${UTILS_SRC_DIR}/TrnAttr.cpp
 )
 
 # specify include paths and libraries
@@ -712,9 +698,6 @@ ${MBTRN_CXX_STD_OPT}
 # specify build target
 add_executable(csvlog-player
     ${UTILS_SRC_DIR}/csvlog_player.cpp
-    ${UTILS_SRC_DIR}/TrnClient.cpp
-    ${UTILS_SRC_DIR}/TerrainNavClient.cpp
-    ${UTILS_SRC_DIR}/TrnAttr.cpp
 )
 
 # specify include paths and libraries
@@ -768,13 +751,10 @@ target_include_directories(trnu-svr PRIVATE BEFORE
 # specify build target
 add_executable(trn-client
     ${UTILS_SRC_DIR}/trn-client.cpp
-    ${UTILS_SRC_DIR}/TrnClient.cpp
-    ${UTILS_SRC_DIR}/TerrainNavClient.cpp
-    ${UTILS_SRC_DIR}/TrnAttr.cpp
 )
 
 # specify include paths and libraries
-target_link_libraries(trn-client PRIVATE tnav newmat qnx NetCDF::NetCDF pthread)
+target_link_libraries(trn-client PRIVATE trncli tnav newmat qnx NetCDF::NetCDF $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:pthread>)
 
 target_include_directories(trn-client PRIVATE BEFORE
     ${LIBTRNAV_INCLUDES}
@@ -791,7 +771,6 @@ ${MBTRN_CXX_STD_OPT}
 
 add_executable(trn-cli
     ${TRNW_SRC_DIR}/trn-cli.c
-    ${TRNW_SRC_DIR}/mb1_msg.c
 )
 
 # specify include paths and libraries
@@ -970,8 +949,6 @@ target_include_directories(transoct PRIVATE BEFORE
 # specify build target
 add_executable(test-trnif
     ${TRNW_SRC_DIR}/trnif_test.c
-    ${TRNW_SRC_DIR}/trnif_proto.c
-    ${TRNW_SRC_DIR}/trnif_msg.c
 )
 
 # specify include paths and libraries
@@ -1040,7 +1017,6 @@ ${MBTRN_CXX_STD_OPT}
 # specify build target
 add_executable(test-trnattr
     ${UTILS_SRC_DIR}/trnattr_test.cpp
-    ${UTILS_SRC_DIR}/TrnAttr.cpp
 )
 
 # specify include paths and libraries

@@ -234,17 +234,8 @@ typedef pt_cdata_t trn_mmse_t;
 // Exports
 /////////////////////////
 
-/* TRNW_STATIC is defined by the TRN CMakeLists on Windows, where these
- * libraries are built static; dllimport/dllexport would then be wrong. */
-#if defined(_MSC_VER) && !defined(TRNW_STATIC)
-#  ifdef trnw_EXPORTS
-#    define TRNW_API __declspec(dllexport)
-#  else
-#    define TRNW_API __declspec(dllimport)
-#  endif
-#else
-#  define TRNW_API
-#endif
+/* TRNW_API: see trn_export.h */
+#include "trn_export.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -253,25 +244,25 @@ extern "C" {
 
     // message API
     trnmsg_t *trnmsg_new(trnmsg_id_t id, byte *data, uint32_t data_len);
-    trnmsg_t *trnmsg_new_type_msg(trnmsg_id_t id, int parameter);
+    TRNW_API trnmsg_t *trnmsg_new_type_msg(trnmsg_id_t id, int parameter);
     trnmsg_t *trnmsg_new_vdr_msg(trnmsg_id_t id, int parameter, float vdr);
     trnmsg_t *trnmsg_new_pose_msg(trnmsg_id_t id, wposet_t *pt);
-    trnmsg_t *trnmsg_new_meas_msg(trnmsg_id_t id, int parameter, wmeast_t *mt);
+    TRNW_API trnmsg_t *trnmsg_new_meas_msg(trnmsg_id_t id, int parameter, wmeast_t *mt);
     trnmsg_t *trnmsg_new_init_msg(trnmsg_id_t id, int parameter, char *map, char *cfg, char *particles, char *logdir);
     trnmsg_t *trnmsg_new_triplet_msg(trnmsg_id_t id, int parameter, double x, double y, double z);
 
-    void trnmsg_destroy(trnmsg_t **pself);
-    void trnmsg_show(trnmsg_t *self, bool verbose, int indent);
-    int32_t trnmsg_len(trnmsg_t *self);
+    TRNW_API void trnmsg_destroy(trnmsg_t **pself);
+    TRNW_API void trnmsg_show(trnmsg_t *self, bool verbose, int indent);
+    TRNW_API int32_t trnmsg_len(trnmsg_t *self);
     trnmsg_t *trnmsg_realloc(trnmsg_t **dest, trnmsg_id_t id, byte *data, uint32_t data_len);
-    int32_t trnmsg_deserialize(trnmsg_t **dest, byte *src, uint32_t len);
+    TRNW_API int32_t trnmsg_deserialize(trnmsg_t **dest, byte *src, uint32_t len);
     int32_t trnmsg_serialize(byte **dest, uint32_t len);
     const char *trnmsg_idstr(int id);
 
     void trnmsg_hex_show(byte *data, uint32_t len, uint16_t cols, bool show_offsets, uint16_t indent);
     uint32_t trnmsg_checksum(byte *pdata, uint32_t len);
 
-    byte *TRNIF_PDATA(void *msg);
+    TRNW_API byte *TRNIF_PDATA(void *msg);
     
 #ifdef __cplusplus
 }

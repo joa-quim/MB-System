@@ -4,6 +4,7 @@
 
 #ifndef NEWMATAP_LIB
 #define NEWMATAP_LIB 0
+#include "trn_export.h"
 
 #include "newmat.h"
 
@@ -49,7 +50,7 @@ void Jacobi(const SymmetricMatrix&, DiagonalMatrix&);
 
 void Jacobi(const SymmetricMatrix&, DiagonalMatrix&, SymmetricMatrix&);
 
-void Jacobi(const SymmetricMatrix&, DiagonalMatrix&, Matrix&);
+NEWMAT_API void Jacobi(const SymmetricMatrix&, DiagonalMatrix&, Matrix&);
 
 void Jacobi(const SymmetricMatrix&, DiagonalMatrix&, SymmetricMatrix&,
    Matrix&, bool=true);
@@ -60,7 +61,7 @@ void EigenValues(const SymmetricMatrix&, DiagonalMatrix&, SymmetricMatrix&);
 
 void EigenValues(const SymmetricMatrix&, DiagonalMatrix&, Matrix&);
 
-class SymmetricEigenAnalysis
+class NEWMAT_API SymmetricEigenAnalysis
 // not implemented yet
 {
 public:
@@ -78,7 +79,7 @@ void SortDescending(GeneralMatrix&);
 
 
 // class for deciding which fft to use and containing new fft function
-class FFT_Controller
+class NEWMAT_API FFT_Controller
 {
 public:
    static bool OnlyOldFFT;
@@ -126,7 +127,7 @@ void DST_inverse(const ColumnVector&, ColumnVector&);
 // Swap is true if reverse is less than counter
 // Finish is true when we have done a complete cycle and are back at zero
 
-class MultiRadixCounter
+class NEWMAT_API MultiRadixCounter
 {
    const SimpleIntArray& Radix;
                               // radix of each digit
