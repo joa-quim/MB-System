@@ -17,6 +17,11 @@
  * _crt_atexit() registers in the process-wide atexit table that exit()
  * runs (a plain atexit() in a DLL would only run at DLL unload, too late),
  * so the flush happens before the process tears down its DLLs.
+ *
+ * That table outlives the DLL: when mbaux is loaded on demand and unloaded
+ * again (GMT FreeLibrary's the mbsystem plugin, and mbaux with it, at the end
+ * of a session), exit() would call the handler in unmapped code and crash.
+ * So mbaux pins itself in the process once the handler is registered.
  */
 
 #ifdef _WIN32
@@ -33,8 +38,12 @@ static void __cdecl mb_exitflush_streams(void) {
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
 	(void)instance;
 	(void)reserved;
-	if (reason == DLL_PROCESS_ATTACH)
+	if (reason == DLL_PROCESS_ATTACH) {
+		HMODULE self;
 		_crt_atexit(mb_exitflush_streams);
+		GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+		                   (LPCWSTR)mb_exitflush_streams, &self);
+	}
 	return TRUE;
 }
 
