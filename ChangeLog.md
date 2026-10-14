@@ -21,6 +21,7 @@ or beta, are equally accessible as tarballs through the Github interface.
 ---
 ### MB-System Version 5.8 Releases and Release Notes:
 ---
+- Version 5.8.3beta25    October 14, 2026
 - Version 5.8.3beta24    October 5, 2026
 - Version 5.8.3beta23    October 3, 2026
 - Version 5.8.3beta22    September 19, 2026
@@ -78,6 +79,216 @@ or beta, are equally accessible as tarballs through the Github interface.
 - Version 5.8.1beta02    February 7, 2024
 - Version 5.8.1beta01    February 1, 2024
 - **Version 5.8.0          January 22, 2024**
+
+---
+
+#### 5.8.3beta25 (October 14, 2026)
+
+Build system (Linux): fixed a link failure of the TRN utility trn-client
+reported in issue #1627, in which linking failed with "undefined reference to
+symbol 'sem\_close@@GLIBC\_2.2.5'" and "libpthread.so.0: error adding symbols: DSO
+missing from command line". The program src/mbtrnav/utils/trn-client.cpp, added
+in 5.8.3beta10, calls the POSIX semaphore functions sem\_open() and sem\_close(),
+but its target in src/mbtrnav/CMakeLists.txt did not link the pthread library.
+With glibc 2.34 and later (e.g. stock Ubuntu 22.04 with glibc 2.35) these
+functions are part of libc and the omission is harmless, but with older glibc
+versions they reside only in libpthread, which was reaching the link only as an
+indirect dependency of another library, and modern linkers do not resolve
+symbols through such indirect dependencies. The trn-client target now links
+pthread explicitly, as the trnw library target already did.
+
+MBIO library: fixed a segmentation fault in mbpreprocess for every format that
+does not have its own format-specific preprocess function (e.g. format 51 for
+old Simrad EM1000 data). In 5.8.3beta17 mb\_preprocess() was changed to fall back
+on the new generic preprocessing function mb\_preprocess\_generic() for such
+formats, but this fallback was also invoked by the "pre-read" call that
+mbpreprocess makes before reading any data, in which the data storage pointer is
+NULL, so the generic function dereferenced a NULL pointer. The generic fallback
+is now used only when there is a data record to process, and
+mb\_preprocess\_generic() itself now returns immediately if passed a NULL store.
+
+Program mbpreprocess: fixed processing of data from the old Simrad multibeam
+formats 51, 53, and 54 (MBF\_EMOLDRAW, MBF\_EM12IFRM, MBF\_EM12DARW), reported
+in issue #1626. These formats use the
+mbsys\_simrad data structure but are output by mbpreprocess in format 57
+(MBF\_EM300MBA), which uses the mbsys\_simrad2 data structure. Previously
+mbpreprocess passed the old structure directly to the format 57 writer, causing
+a segmentation fault. The translation function previously found only in mbcopy
+has been moved into the MBIO library as mbsys\_simrad2\_from\_simrad() (in
+mbsys\_simrad2.c), and is now used by both mbcopy and mbpreprocess. Also fixed a
+heap overflow in mbpreprocess in which the arrays used to extract records from
+the output file were sized for the input format (121 beams for format 51) rather
+than the output format (up to 256 beams for format 57); these arrays are now
+sized for the larger of the two. Also fixed the mbpreprocess summary of records
+read in pass 2, which included the comment, navigation, and attitude records
+counted in pass 1. Tests of mbpreprocess on the format 51 and format 54 test data
+files, checking that the format 57 output reads back completely, have been added
+to test/utilities/mbpreprocess\_test.py.
+
+MBIO library, format 57 (MBF\_EM300MBA, src/mbio/mbr\_em300mba.c): fixed reading
+of format 57 files converted from old Simrad data (EM12S, EM12D, EM121, EM100,
+EM1000), also reported in issue #1626. The reader determines the byte order of
+the data from the sonar model in the first datagram, but the list of models used
+for this test in mbr\_em300mba\_chk\_label() included only the newer sonars, so a
+converted file that did not begin with a record from one of those models (e.g.
+mbcopy -F51/57 -N output, or mbpreprocess output beginning with a position
+record) read back as containing no records. The old Simrad models have been
+added to the byte order test.
+
+MBIO library, format 71 (MBF\_MBLDEOIH, src/mbio/mbsys\_ldeoih.c):
+mbsys\_ldeoih\_insert() now sets the amplitude of null beams to zero, as it already
+did for their bathymetry. Previously these values were left unset, so in a long
+running process (a library caller, or a program processing several files) stale
+memory contents could be written to \*.fbt files and format 71 output. Reported
+in issue #1626.
+
+Programs mbcopy and mbpreprocess: when translating old Simrad (format 51, 53, 54)
+data to format 57, soundings that lie at or above the transducer depth (which
+are not physically possible) previously wrapped around in the unsigned depth
+values stored in format 57, producing spurious depths of about 1313 m for the
+EM1000. Such soundings now have their depth set to zero and are flagged as
+sonar-flagged rather than appearing as good, deep soundings.
+
+MBIO library, formats 56 and 57 (MBF\_EM300RAW, MBF\_EM300MBA,
+src/mbio/mbr\_em300raw.c, src/mbio/mbr\_em300mba.c, src/mbio/mbsys\_simrad2.c):
+fixed a heap buffer overflow in mbsys\_simrad2\_extract(), reported in issue #1631,
+that caused programs such as mblist to abort with "double free or corruption" on
+Linux when reading EM120, EM300, EM1002, EM2000, and EM3000 data. In 5.8.3beta13
+the maximum number of beams in the mbsys\_simrad2 data structure
+(MBSYS\_SIMRAD2\_MAXBEAMS) was increased from 254 to 256, but the format info
+functions mbr\_info\_em300raw() and mbr\_info\_em300mba() still declared a maximum
+of 254 beams, so the bathymetry and amplitude arrays allocated by programs held
+254 values while mbsys\_simrad2\_extract() cleared 256 values for every ping. The
+info functions now declare MBSYS\_SIMRAD2\_MAXBEAMS beams, as proposed in the
+issue, and the format descriptions now give up to 256 beams. A related overflow
+for dual head EM3002 data was also fixed: mbsys\_simrad2\_extract() cleared the
+beams of the second head up to twice the maximum number of beams (512) regardless
+of the array size, which is set from the sum of the beam counts of the two heads
+reported by mbsys\_simrad2\_dimensions(); it now clears only the second head's
+beams. The output for the file from the issue (PANGAEA dataset 965070) is
+unchanged, and it now reads without memory errors.
+
+MBIO library, format 181 (MBF\_SAMESURF, src/mbio/mbsys\_surf.h,
+src/mbio/mbsys\_surf.c, src/mbio/mbr\_samesurf.c): fixed a segmentation fault in
+mbinfo, mblist, and other programs reading SAM Electronics SURF files containing
+sidescan data, reported in issue #1630 for Hydrosweep DS-2 data from PANGAEA. The
+SURF library header src/surf/mb\_sapi.h declares the variable length arrays of
+the SURF records (beam angles, sound velocity profile values, receive and transmit
+parameter sets, and sidescan samples) with a dimension of one, and the
+mbsys\_surf\_struct data structure followed each of these records with a reserved
+array to hold the remaining values, which were then accessed by indexing past the
+declared dimension. This is undefined behavior in C, and GCC at the -O3
+optimization level of Release builds uses the declared dimension to shorten the
+loops making these accesses: the port sidescan loop in mbsys\_surf\_extract() ran
+past the end of the output arrays, causing the crash reported in the issue, and
+the beam angle and sound velocity profile loops in mbsys\_surf\_ttimes() and
+mbsys\_surf\_extract\_svp() were reduced to their first value only, so that
+travel time and angle data used by mbprocess raytracing were silently wrong (the
+Clang builds used on MacOS were not affected). The reserved arrays have been
+replaced by properly dimensioned arrays in mbsys\_surf\_struct, into which
+mbr\_rt\_samesurf() now copies the variable length data, and all uses of these
+values now refer to these arrays. Also fixed: the port sidescan loop in
+mbsys\_surf\_extract() omitted one sample, leaving the outermost port pixel of
+every ping zero; mbsys\_surf\_insert() wrote the starboard sidescan starting at
+the starboard sample count rather than after the port samples; the number of
+port samples and of sound velocity profile values is now limited to the array
+dimensions; and the verbose debug output listed the wrong number of sidescan
+samples. The issue's pointer based patch was not used, since it relied on the
+same undefined behavior. For the file from the issue, bathymetry output is
+unchanged and the only change in the sidescan output is that the outermost port
+pixel of each of the 892 pings now has its recorded value instead of zero.
+
+Programs mbnavadjust and mbnavadjustmerge: when swath data are imported into an
+mbnavadjust project, the ancillary files (\*.inf, \*.fnv) are now created for
+each of the section files written by mbnavadjust\_import\_file() in
+src/mbnavadjust/mbnavadjust\_io.c, by calling mb\_make\_info() after each section
+file is closed.
+
+Program mbeditviz: fixed the regeneration of missing or out of date reverse edit
+save files (\*.resf) when loading processed swath files. When a \*.resf file was
+needed, mbeditviz ran "mbprocess -P" on the file after it had already locked the
+file for editing, so mbprocess always declined to process the locked file and the
+\*.resf file was never created. The \*.resf file is now checked, and mbprocess run
+if necessary, before mbeditviz locks the file, so the processed file then read by
+mbeditviz is the one the \*.resf file corresponds to. The \*.resf file is now also
+regenerated if it is older than the processed file, the path passed to mbprocess
+is quoted, and a warning is printed if the \*.resf file still could not be
+generated, in which case the beam flags of the processed file are treated as the
+original states.
+
+Development documentation: added two files to the top level of the source
+distribution for developers using the AI coding assistant Claude Code. CLAUDE.md
+holds the shared project instructions that Claude Code reads at the start of every
+session, including the MBIO architecture and coding conventions, the requirement
+that both the CMake and Autotools builds be maintained, the test suite policy,
+portability rules for Linux and Windows MinGW-w64 builds, the rule that code synced
+from other projects (TRN, GSF, and vendored third party code) is not edited without
+asking, the ChangeLog and version numbering procedures, the commit message style,
+and the requirement that AI assistance be disclosed in the ChangeLog and in commit
+messages. MB-System\_Claude\_Code\_Guide.md explains how to set up and use Claude
+Code for MB-System development, including an example macOS and Homebrew build
+setup, use of the Claude desktop app and Remote Control, worktrees, the
+investigate, build, test, and document working loop, and permission settings. The
+guide is based on drafts by Christian Ferreira. Personal settings for each developer
+go in a CLAUDE.local.md file, which, together with the personal and runtime files
+Claude Code writes under .claude/, is now excluded by .gitignore.
+
+Build system (Autotools): repaired the Autotools build, which had fallen out of
+step with the CMake build and failed at several stages. The Qt based prototype
+programs (src/qt-\*) are no longer referenced by configure.ac or src/Makefile.am;
+these are built only by CMake (-DbuildQt=ON), and the stale reference to the
+removed directory src/qt-mbgrdviz-2 caused automake to fail. Because Autoconf 2.72
+and later compile in C23 mode when possible, which rejects the K&R style function
+definitions in the GCTP code in src/mbtrnav/gctp, configure now skips the C23
+check so that the compiler's default C mode is used, as in the CMake build. The
+OpenCV checks now work with OpenCV 5, which removed the C API function cvCopy()
+that configure tested for and split the calib3d library into calib, geometry, and
+stereo; the opencv5 pkg-config package is also recognized. When PROJ, FFTW, or
+OpenCV are found through pkg-config, the compiler and linker flags it reports are
+now used, which is necessary when these packages are not in the default search
+path (e.g. Homebrew in /opt/homebrew on Apple Silicon). On MacOS with Homebrew,
+configure now finds X11, Motif, and OpenGL without location options, using the
+mb-mesa and mb-mesa-glu formulae from the dwcaress/mbsystem tap for OpenGL when
+both are installed (as with -DmacosUseMbMesa=ON in CMake); locations given with
+--with-... options still take precedence. The Makefile.am files have been brought
+up to date with the CMake build: src/mbnavadjust now builds the
+libmbnavadjust\_core library and always builds mbnavadjustmerge, building the
+mbnavadjust GUI only when Motif and OpenGL are available; the programs
+mbfnv2navlab, mbnavlab2fnv, mbusbl2fnv, and mbmapscale are now built, and the
+mbmakedatalist source is now found; mbgrd2gltf no longer references the removed
+compression.cpp and now compiles the bundled Draco encoder sources with C++17;
+src/mbmesh is now configured, and its unit tests (now four, as in CMake) link;
+the TRN Makefile.am files in src/mbtrnav use the renamed source files of the TRN
+client and test programs and include TrnAttr.cpp in libtrncli; and src/mbtrn
+refers to the TRN libraries in the build tree rather than the source tree. On
+MacOS 26 Tahoe with Homebrew, ./configure with the TRN, OpenCV, and test options,
+followed by make, make check, and make install, now succeeds.
+
+Documentation: BuildAndInstall.md has been updated to match the installation
+instructions on the MB-System web site
+(https://www.mbari.org/technology/mb-system/installation/), including MacOS
+installation with Homebrew (now recommended) or MacPorts, Ubuntu 24.04, Debian 13,
+the OTPS tidal model setup, and the list of installed files, and it now describes
+building with the Autotools on MacOS with Homebrew. BuildAndInstall.pdf is now
+generated from BuildAndInstall.md by a new optional CMake target, buildandinstall
+(cmake --build . --target buildandinstall), using pandoc and weasyprint in the same
+way as the changelog target, with the print style overrides in
+src/htmlsrc/BuildAndInstall\_print.css.
+
+This work was done with the assistance of the AI coding assistant Claude Opus 5.5
+(Anthropic, model claude-opus-5-5), operating as Claude Code under developer
+supervision and review, which diagnosed the cause of the link failure reported in
+issue #1627, diagnosed the mbpreprocess segmentation faults and the format 57
+depth wraparound encountered with old Simrad EM1000 data, checked the remaining
+problems reported in issue #1626 against the code and test data, diagnosed the mbeditviz
+\*.resf file locking conflict, confirmed and reproduced the format 56 and 57 heap
+buffer overflow reported in issue #1631 and found the related dual head EM3002
+overflow, confirmed the cause of the format 181 SURF crash reported in issue #1630
+and found the related silent beam angle and sound velocity profile errors and
+sidescan off-by-one errors, diagnosed and repaired the failures of the Autotools build, implemented
+the fixes, and verified the builds and results, and which
+reviewed the draft Claude Code instructions and guide against project practice and
+revised them and updated BuildAndInstall.md to match the web site.
 
 ---
 

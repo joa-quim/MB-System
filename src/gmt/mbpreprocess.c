@@ -63,7 +63,8 @@
 #include "mb_status.h"
 #include "mb_gmt_opts.h"
 #include "mbsys_ldeoih.h"
-#include "mb_gmt_simrad.h"
+#include "mbsys_simrad.h"
+#include "mbsys_simrad2.h"
 
 const int MBPREPROCESS_ALLOC_CHUNK = 1000;
 
@@ -1836,8 +1837,8 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 			/* call preprocess function with pars settings before reading any data
 					- for some formats this can set special read behavior
 					- passing store_ptr == NULL indicates this is the pre-reading call
-					- if a preprocess function does not exist for this format then
-						standard preprocessing will be done - reset the error */
+					- if this format has no preprocess function of its own then this
+						call does nothing - reset the error on any failure */
 			if (mb_preprocess(verbose, imbio_ptr, NULL, NULL, (void *)&preprocess_pars, &error) == MB_FAILURE) {
 				status = MB_SUCCESS;
 				error = MB_ERROR_NO_ERROR;
@@ -2769,6 +2770,15 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 	int n_rf_att3 = 0;
 	int n_rf_dup_timestamp = 0;
 	n_rt_data = 0;
+	n_rt_comment = 0;
+	n_rt_nav = 0;
+	n_rt_nav1 = 0;
+	n_rt_nav2 = 0;
+	n_rt_nav3 = 0;
+	n_rt_att = 0;
+	n_rt_att1 = 0;
+	n_rt_att2 = 0;
+	n_rt_att3 = 0;
 	n_rt_files = 0;
 	n_rt_dup_timestamp = 0;
 
@@ -2928,8 +2938,8 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 			/* call preprocess function with pars settings before reading any data
 					- for some formats this can set special read behavior
 					- passing store_ptr == NULL indicates this is the pre-reading call
-					- if a preprocess function does not exist for this format then
-						standard preprocessing will be done - reset the error */
+					- if this format has no preprocess function of its own then this
+						call does nothing - reset the error on any failure */
 			if (mb_preprocess(verbose, imbio_ptr, NULL, NULL, (void *)&preprocess_pars, &error) == MB_FAILURE) {
 				status = MB_SUCCESS;
 				error = MB_ERROR_NO_ERROR;
@@ -2950,12 +2960,12 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 				Return(GMT_RUNTIME_ERROR);
 			}
 
-			/* An old Simrad file (formats 51, 53, 54) is written as MBF_EM300MBA (format 57) above,
-			   whose store is a Simrad2 one: each record is translated into the output's own store
-			   (mb_gmt_simrad_to_simrad2, as mbcopy does) rather than handing the Simrad store to the
-			   Simrad2 writer, which crashes (the program's bug, see UPSTREAM_mbpreprocess_simrad.md). */
-			const bool simrad_to_simrad2 = ((struct mb_io_struct *)imbio_ptr)->system == MB_SYS_SIMRAD &&
-			                               oformat == MBF_EM300MBA;
+			/* data from the old Simrad formats (51, 53, 54: mbsys_simrad) are written
+			   in format 57 (MBF_EM300MBA: mbsys_simrad2), so each record must be
+			   translated into the output store before writing */
+			struct mb_io_struct *omb_io_ptr = (struct mb_io_struct *)ombio_ptr;
+			const bool translate_simrad_to_simrad2 =
+				((struct mb_io_struct *)imbio_ptr)->system == MB_SYS_SIMRAD && omb_io_ptr->system == MB_SYS_SIMRAD2;
 
 			/* initialize writing the output fast bathymetry *fbt file */
 			bool make_fbt = false;
@@ -3036,6 +3046,12 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 				status = mb_register_array(verbose, imbio_ptr, MB_MEM_TYPE_SIDESCAN, sizeof(double), (void **)&ssacrosstrack, &error);
 			if (error == MB_ERROR_NO_ERROR)
 				status = mb_register_array(verbose, imbio_ptr, MB_MEM_TYPE_SIDESCAN, sizeof(double), (void **)&ssalongtrack, &error);
+
+			/* these arrays are also used to extract records from the output file
+			   (e.g. format 57 with up to 256 beams written from format 51 with
+			   121 beams), so make sure they are large enough for the output format */
+			if (error == MB_ERROR_NO_ERROR)
+				status = mb_update_arrays(verbose, imbio_ptr, obeams_bath, obeams_amp, opixels_ss, &error);
 
 			/* if error initializing memory then quit */
 			if (error != MB_ERROR_NO_ERROR) {
@@ -3502,15 +3518,16 @@ int GMT_mbpreprocess(void *V_API, int mode, void *args) {
 				if (kind == MB_DATA_DATA)
 					time_prior_d = time_d;
 
+				/* translate the record into the output data structure if needed */
+				void *ostore_ptr = istore_ptr;
+				if (translate_simrad_to_simrad2 && error == MB_ERROR_NO_ERROR && output_ok) {
+					ostore_ptr = omb_io_ptr->store_data;
+					status = mbsys_simrad2_from_simrad(verbose, (struct mbsys_simrad_struct *)istore_ptr,
+					                                   (struct mbsys_simrad2_struct *)ostore_ptr, &error);
+				}
+
 				/* write some data */
 				if (error == MB_ERROR_NO_ERROR && output_ok) {
-					/* the store the output is written from: the input's own, or its Simrad2 translation */
-					void *ostore_ptr = istore_ptr;
-					if (simrad_to_simrad2) {
-						ostore_ptr = ((struct mb_io_struct *)ombio_ptr)->store_data;
-						status = mb_gmt_simrad_to_simrad2(API, verbose, (struct mbsys_simrad_struct *)istore_ptr,
-						                                  (struct mbsys_simrad2_struct *)ostore_ptr, &error);
-					}
 					status = mb_put_all(verbose, ombio_ptr, ostore_ptr, false, kind, time_i, time_d, navlon, navlat, speed, heading,
 										obeams_bath, obeams_amp, opixels_ss, beamflag, bath, amp, bathacrosstrack, bathalongtrack, ss,
 										ssacrosstrack, ssalongtrack, comment, &error);

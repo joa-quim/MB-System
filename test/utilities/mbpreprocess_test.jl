@@ -33,5 +33,33 @@ const CMD = mbprog("utilities", "mbpreprocess")
 		@test occursin("--kluge-fix-wissl-timestamps", output)
 	end
 
-	# TODO(schwehr): Add tests of actual usage.
+	# Old Simrad formats (51, 53, 54) are written by mbpreprocess as format 57; check that the
+	# conversion runs and that the output reads back fully (see github issue #1626)
+	function check_old_simrad_to_format57(src_dir, src_name, iformat, records, good_beams)
+		cmd = abspath(CMD)
+		mbinfo = abspath(mbprog("utilities", "mbinfo"))
+		src = abspath(joinpath("testdata", src_dir, src_name))
+		env = mbenv()
+		env["PATH"] = join([dirname(cmd), get(env, "PATH", "")], Sys.iswindows() ? ';' : ':')
+		mktempdir() do tmpdir
+			cp(src, joinpath(tmpdir, src_name))
+			cd(tmpdir) do
+				mbcheck([cmd, "--input=" * src_name, "--format=$iformat"]; stderr_to_stdout = true, env)
+				ofile = splitext(src_name)[1] * ".mb57"
+				@test isfile(ofile)
+				output = unixlines(mbcheck([mbinfo, "-F57", "-I" * ofile]; stderr_to_stdout = true, env))
+				@test occursin(Regex("Number of Records: +$records
+"), output)
+				@test occursin(Regex("Number of Good Beams: +$good_beams "), output)
+			end
+		end
+	end
+
+	@testset "OldSimradFormat51" begin
+		check_old_simrad_to_format57("mb51", "tahoe_98_134.0.em1000.mb51", 51, 2, 120)
+	end
+
+	@testset "OldSimradFormat54" begin
+		check_old_simrad_to_format57("mb54", "TN136HS.309.snipped.mb54", 54, 2, 115)
+	end
 end

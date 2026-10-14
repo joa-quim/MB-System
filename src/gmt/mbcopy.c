@@ -80,7 +80,6 @@ static const char program_name[] = "MBcopy";
 #include "mbsys_simrad.h"
 #include "mbsys_simrad2.h"
 #include "mbsys_xse.h"
-#include "mb_gmt_simrad.h"
 
 #ifndef MBC_MIN
 #define MBC_MIN(a,b) (((a)<(b))?(a):(b))
@@ -1988,8 +1987,8 @@ int GMT_mbcopy(void *V_API, int mode, void *args) {
 		}
 		else if (copymode == MBCOPY_SIMRAD_TO_SIMRAD2 && record_ok) {
 			ostore_ptr = omb_io_ptr->store_data;
-			status = mb_gmt_simrad_to_simrad2(API, verbose, (struct mbsys_simrad_struct *)istore_ptr,
-											  (struct mbsys_simrad2_struct *)ostore_ptr, &error);
+			status = mbsys_simrad2_from_simrad(verbose, (struct mbsys_simrad_struct *)istore_ptr,
+											   (struct mbsys_simrad2_struct *)ostore_ptr, &error);
 		}
 #ifdef ENABLE_GSF
 		else if (copymode == MBCOPY_RESON8K_TO_GSF && record_ok) {
