@@ -21,6 +21,7 @@ or beta, are equally accessible as tarballs through the Github interface.
 ---
 ### MB-System Version 5.8 Releases and Release Notes:
 ---
+- Version 5.8.3beta26    October 16, 2026
 - Version 5.8.3beta25    October 14, 2026
 - Version 5.8.3beta24    October 5, 2026
 - Version 5.8.3beta23    October 3, 2026
@@ -79,6 +80,95 @@ or beta, are equally accessible as tarballs through the Github interface.
 - Version 5.8.1beta02    February 7, 2024
 - Version 5.8.1beta01    February 1, 2024
 - **Version 5.8.0          January 22, 2024**
+
+---
+
+#### 5.8.3beta26 (October 16, 2026)
+
+MBIO library, format 181 (MBF\_SAMESURF, src/mbio/mbr\_samesurf.c,
+src/mbio/mbsys\_surf.c): fixed three errors in reading SAM Electronics (Atlas)
+SURF files, found while testing the example data distributed with the Atlas SURF
+API. First, SURF files that store positions as projected eastings and northings
+in meters (e.g. Gauss-Krueger coordinates in the Fansweep 20 example) had their
+navigation inverse projected twice, once by the format 181 reader and again by the
+MBIO library, so that the data were placed near 4.5E 0.0N instead of near 8.9E
+53.0N. The reader now leaves the SURF positions in meters and sets up the
+projection so that the MBIO library alone converts the navigation to and from
+longitude and latitude, as is done for other formats with projected
+coordinates. The SURF header data are no longer modified in place.
+The projection is now a transverse Mercator projection defined
+from the SURF header (reference meridian, ellipsoid, a scale factor of 1.0 for
+Gauss-Krueger or 0.9996 for UTM, and false easting), rather than a WGS84 UTM zone.
+SURF files do not specify a datum shift, so no datum
+transformation is applied. Second, pings were discarded when the altitude
+could not be calculated, which happened for every ping of single beam (vertical
+sounder) SURF files, so that none of their data could be read, and for multibeam
+pings without valid beams near nadir. The altitude is now taken from the single
+beam depth, or from the unflagged beam nearest nadir when the near nadir depth fit
+fails, and pings without a valid depth are kept with zero altitude. A division by zero
+in the near nadir depth fit has also been fixed. Third, beams marked as deleted in
+the SURF data were returned as null beams, which cannot be unflagged in
+the editors, and beams of soundings marked as deleted were not flagged at all.
+Both are now returned as manually flagged beams. The two Atlas example files now
+read completely (141 of 141 and 403 of 403 pings, previously 123 and 0), and the
+beam positions agree with those reported by the original Atlas SURF API example
+program.
+
+MBIO library (src/mbio/mb\_status.h, src/mbio/mb\_error.c): fixed the count of
+data record types (MB\_DATA\_KINDS), which was 74 although the highest record type
+is MB\_DATA\_DATUM (75), the Kongsberg #SPD sensor position datum record from
+format 261 (MBF\_KEMKMALL) files. Because of this, #SPD records were never counted
+in the data record notices reported by mbinfo and had no notice message. The
+count is now 75, a notice message for MB\_DATA\_DATUM has been added, and the
+notice slots for nonfatal errors and data problems move up by one accordingly.
+All programs must be rebuilt against the new library. Bug reported by
+Christian Ferreira.
+
+MBIO library platform files (src/mbio/mb\_platform.c): fixed the reading of
+platform files by mb\_platform\_read(), which silently ignored the subbottom
+and camera data source lines. The SOURCE\_SUBBOTTOM keywords were compared using
+lengths two characters longer than the keywords, so that they never matched, and
+the reader looked for SOURCE\_SUBCAMERA keywords while the writer and the platform
+file template use SOURCE\_CAMERA. As a result these sources were lost when
+platform files were read, and when mbmakeplatform modified an existing platform
+file. SOURCE\_CAMERA is now the defined keyword; the SOURCE\_SUBCAMERA spelling
+is still accepted when reading. Also, the platform name, organization and
+documentation URL and the sensor model, manufacturer and serial number are now
+read in full including embedded spaces (previously only the first word was kept),
+are limited to the size of their fields (previously long values could overflow
+them), and empty values are read as empty strings rather than as uninitialized
+memory. A read before the start of the line buffer for one character lines has also
+been fixed. Bug reported by Christian Ferreira.
+
+Program mbtrnpp (src/mbtrnutils/mbtrnpp.c): added a bounds check before counting
+the data record types read, which wrote past the end of two arrays for record types
+beyond MB\_DATA\_KINDS (such as the #SPD records in kmall data), and the periodic
+summary of non-survey records now includes the last record type. The same change
+has been provided as a patch to the TRN developers.
+
+Documentation (src/man/man1/mbnavlist.1, mbkongsbergpreprocess.1, mbrolltimelag.1,
+mbpreprocess.1, src/mbtrn/tools/README-test.md): updated the data record type
+tables and examples to the current record type identifiers. The identifiers in the
+mbnavlist and mbkongsbergpreprocess manual pages did not account for
+MB\_DATA\_SINGLE\_BEAM\_PING (27), so that all of those from 27 upward
+were one too small, including the mbkongsbergpreprocess examples for using the
+secondary navigation (now -S1/31 -S2/31) and the second attitude system (now
+-S3/57). The mbnavlist table now lists all record types up to MB\_DATA\_DATUM (75).
+MB\_DATA\_SONARDEPTH has been corrected to MB\_DATA\_SENSORDEPTH.
+
+
+This work was done with the assistance of the AI coding assistant Claude Opus 5.5
+(Anthropic, model claude-opus-5-5), operating as Claude Code under developer
+supervision and review, which scoped the effort required for full read and write
+support of the SURF format, built the original Atlas SURF API as an independent
+reference reader, diagnosed the double projection of SURF navigation, the
+discarded pings, and the deleted beam and sounding flag handling, implemented the
+fixes, and verified the results. Claude also evaluated the bug reports on the
+record type count and on reading platform files, confirmed both in the source code
+and the platform file problems by reproducing them, implemented the fixes and the
+documentation corrections, and verified them with builds, the test suite,
+platform file round trips through mbmakeplatform, and a check of the notice
+messages, with the MBIO library sources also compiled for Windows with MinGW-w64.
 
 ---
 
@@ -264,6 +354,17 @@ refers to the TRN libraries in the build tree rather than the source tree. On
 MacOS 26 Tahoe with Homebrew, ./configure with the TRN, OpenCV, and test options,
 followed by make, make check, and make install, now succeeds.
 
+GSF library (src/gsf/gsf\_indx.c): fixed a compile failure reported in issue
+\#1605, in which building on Linux with the compiler in strict ISO C mode (e.g.
+CC=c99 or -std=c99) failed with "'S\_IFDIR' undeclared" in the function
+is\_path(). In strict mode the glibc header sys/stat.h does not define the file
+type constant S\_IFDIR, but it always defines the POSIX macro S\_ISDIR(); builds
+in the compiler's default GNU C mode, as used by the CMake and Autotools builds,
+were not affected. The directory test now uses S\_ISDIR(), which is also correct
+for sockets and block devices, whose file type bits include those of S\_IFDIR. This
+is a local change to the Leidos GSF library code, and must be reapplied when the
+source from a future GSF release is imported.
+
 Documentation: BuildAndInstall.md has been updated to match the installation
 instructions on the MB-System web site
 (https://www.mbari.org/technology/mb-system/installation/), including MacOS
@@ -275,6 +376,44 @@ generated from BuildAndInstall.md by a new optional CMake target, buildandinstal
 way as the changelog target, with the print style overrides in
 src/htmlsrc/BuildAndInstall\_print.css.
 
+MBIO library, formats 261 (MBF\_KEMKMALL), 58 and 59 (MBF\_EM710RAW,
+MBF\_EM710MBA), 89 (MBF\_RESON7K3), and 191 and 192 (MBF\_IMAGE83P,
+MBF\_IMAGEMBA) (src/mbio/mbsys\_kmbes.c, src/mbio/mbsys\_simrad3.c,
+src/mbio/mbsys\_reson7k3.c, src/mbio/mbsys\_image83p.c): fixed the test for
+reverse mounted transmit and receive arrays in the preprocess functions used by
+mbpreprocess, which caused processed bathymetry to have depths of zero for
+Kongsberg EM124 kmall data from the R/V Maria S. Merian. The preprocess functions
+treat an array as reverse mounted (rotated 180 degrees) if its mount heading is
+more than 100 degrees from zero, but the test did not allow for headings
+reported in the range 0 to 360 degrees, so a forward mounted array with a
+heading of 359.83 degrees, as for the Merian's EM124 transmit array, was treated
+as reverse mounted. Its heading was then rotated by 180 degrees and its steering
+angles reversed in sign, so that for kmall data mbpreprocess wrote beam takeoff
+angles of about 120 degrees from vertical into the MB-System XMT datagrams.
+When mbprocess recalculated the bathymetry by raytracing, these upward directed
+rays reached the sea surface, producing depths of zero and acrosstrack distances
+about one thousandth of the correct values. Because the processed files then
+had a maximum altitude of zero, mbgrid also failed to grid them when no grid cell
+size was specified, since its default cell size is derived from the altitude.
+The mount headings are now mapped to the range -180 to 180 degrees before the
+test. Data preprocessed with earlier versions in which an array mount heading
+is between 260 and 360 degrees must be preprocessed again. For the Merian data,
+the bathymetry recalculated by raytracing now agrees with the Kongsberg realtime
+soundings to within a mean of -3 to -6 m and an rms of 9 to 12 m in water depths
+of about 4600 m.
+
+Python plotting macros mbpy\_grdplot, mbpy\_grd3dplot, mbpy\_histplot, and
+mbpy\_xyplot (src/macros/mbpy\_\*, src/macros/python/mbpy\_misc.py): option values
+beginning with a minus sign that are not plain negative numbers, such as
+--zbounds "-30/0" for an amplitude mosaic in dB or --region -125/-120/30/35 for
+a region with negative longitudes, are now accepted. Previously the Python
+argparse module treated such a value as another option, so the command failed
+with "argument -Z/--zbounds: expected one argument". A new function
+join\_dash\_values() in mbpy\_misc.py now attaches such a value to the option that
+takes it (e.g. --zbounds=-30/0 or -Z-30/0) before the command line is parsed; a
+following argument that is itself one of the program's options is still treated
+as an option.
+
 This work was done with the assistance of the AI coding assistant Claude Opus 5.5
 (Anthropic, model claude-opus-5-5), operating as Claude Code under developer
 supervision and review, which diagnosed the cause of the link failure reported in
@@ -285,7 +424,11 @@ problems reported in issue #1626 against the code and test data, diagnosed the m
 buffer overflow reported in issue #1631 and found the related dual head EM3002
 overflow, confirmed the cause of the format 181 SURF crash reported in issue #1630
 and found the related silent beam angle and sound velocity profile errors and
-sidescan off-by-one errors, diagnosed and repaired the failures of the Autotools build, implemented
+sidescan off-by-one errors, diagnosed the strict C99 compile failure in the GSF
+library reported in issue #1605, diagnosed and repaired the failures of the Autotools build,
+diagnosed the misidentified reverse mounted transducer arrays that caused zero
+depths in processed EM124 kmall data, diagnosed the rejection of option values
+beginning with a minus sign by the mbpy\_\* plotting macros, implemented
 the fixes, and verified the builds and results, and which
 reviewed the draft Claude Code instructions and guide against project practice and
 revised them and updated BuildAndInstall.md to match the web site.
