@@ -5,6 +5,9 @@
 # getopt-win32, GLib) come from conda-forge. The paths that ConfigUser.cmake
 # hard-codes for the local machine are passed here as -D options instead;
 # ConfigUser.cmake is not used in CI.
+#
+# Every package (and the InteractiveGMT plugins) is published to the mbsystem-latest release by the
+# release job at the end.
 
 name: Build
 
@@ -13,11 +16,6 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
-    inputs:
-      publish:
-        description: 'Upload the InteractiveGMT plugin archives to the mbsystem-latest release'
-        type: boolean
-        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -173,7 +171,7 @@ jobs:
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: mbsystem-windows-x64
+          name: mbsystem-programs-windows-x64
           path: mbsystem
           if-no-files-found: error
 
@@ -315,13 +313,13 @@ jobs:
       - name: Package
         run: |
           DESTDIR="$PWD/stage" cmake --install build-ci
-          tar -czf mbsystem-linux-x64.tar.gz -C stage/usr/local .
+          tar -czf mbsystem-programs-linux-x64.tar.gz -C stage/usr/local .
 
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: mbsystem-linux-x64
-          path: mbsystem-linux-x64.tar.gz
+          name: mbsystem-programs-linux-x64
+          path: mbsystem-programs-linux-x64.tar.gz
           if-no-files-found: error
 
   macos:
@@ -354,13 +352,13 @@ jobs:
       - name: Package
         run: |
           DESTDIR="$PWD/stage" cmake --install build-ci
-          tar -czf mbsystem-macos-arm64.tar.gz -C stage/usr/local .
+          tar -czf mbsystem-programs-macos-arm64.tar.gz -C stage/usr/local .
 
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: mbsystem-macos-arm64
-          path: mbsystem-macos-arm64.tar.gz
+          name: mbsystem-programs-macos-arm64
+          path: mbsystem-programs-macos-arm64.tar.gz
           if-no-files-found: error
 
   # The MB-System GMT supplement (mbsystem.so / mbsystem.dylib) for InteractiveGMT, on Linux and
@@ -377,8 +375,6 @@ jobs:
   plugin:
     name: GMT plugin for InteractiveGMT (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write        # needed only by the publish step
     strategy:
       fail-fast: false
       matrix:
@@ -567,22 +563,6 @@ jobs:
             any(l -> occursin("libmbio", basename(l)), ours) || error("libmbio not loaded from the archive")
           '
 
-      # Manual runs only, and only when the run asks for it. One fixed tag whose files are
-      # replaced in place (--clobber), never a new tag per build.
-      - name: Publish to the mbsystem-latest release
-        if: github.event_name == 'workflow_dispatch' && inputs.publish
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          # The three platform jobs can race to create it: a failed create is fine if it now exists.
-          gh release view mbsystem-latest -R "$REPO" >/dev/null 2>&1 || \
-            gh release create mbsystem-latest -R "$REPO" --prerelease \
-              --title "MB-System GMT plugin for InteractiveGMT (rolling)" \
-              --notes "MB-System GMT supplement for Linux and macOS, built against GMT_jll." || \
-            gh release view mbsystem-latest -R "$REPO" >/dev/null
-          gh release upload mbsystem-latest "mbsystem-${{ matrix.name }}.tar.gz" -R "$REPO" --clobber
 
   # The same supplement for InteractiveGMT on Windows, for a GMT.jl that runs GMT_jll's GMT
   # (GMT.isJLL; an installed Windows GMT brings its own supplement). GMT_jll is built by BinaryBuilder
@@ -597,8 +577,6 @@ jobs:
   plugin-windows:
     name: GMT plugin for InteractiveGMT (windows-x86_64)
     runs-on: windows-latest
-    permissions:
-      contents: write        # needed only by the publish step
 
     steps:
       - uses: actions/checkout@v4
@@ -807,20 +785,6 @@ jobs:
             from_archive("after the session restart")
           '
 
-      - name: Publish to the mbsystem-latest release
-        if: github.event_name == 'workflow_dispatch' && inputs.publish
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          gh release view mbsystem-latest -R "$REPO" >/dev/null 2>&1 || \
-            gh release create mbsystem-latest -R "$REPO" --prerelease \
-              --title "MB-System GMT plugin for InteractiveGMT (rolling)" \
-              --notes "MB-System GMT supplement for Linux and macOS, built against GMT_jll." || \
-            gh release view mbsystem-latest -R "$REPO" >/dev/null
-          gh release upload mbsystem-latest mbsystem-windows-x86_64.tar.gz -R "$REPO" --clobber
 
   # Full Linux build including the Motif/X11 graphical tools (mbedit,
   # mbnavedit, mbvelocitytool, mbgrdviz, mbeditviz, mbnavadjust). Built on
@@ -1116,3 +1080,50 @@ jobs:
           name: mbsystem-macos-gui-arm64
           path: mbsystem-macos-gui-arm64.tar.gz
           if-no-files-found: error
+
+  # Every package above, once all the jobs have passed (the plugins after their smoke tests), goes
+  # to the rolling mbsystem-latest release on pushes to master and manual runs: one fixed tag whose
+  # files are replaced in place (--clobber), never a new tag per build. The plugins keep the names
+  # InteractiveGMT downloads (mbsystem-<platform>.tar.gz); the programs without graphical tools are
+  # mbsystem-programs-*, the ones with them mbsystem-*-gui-*.
+  release:
+    name: Publish to the mbsystem-latest release
+    needs: [windows, windows-mingw, linux, macos, plugin, plugin-windows,
+            linux-gui, linux-gui-ubuntu, fedora-gui, macos-gui]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      # The Windows (MSVC) artifact is a folder, zipped here; the others are tarballs already.
+      - name: Collect the files
+        run: |
+          set -euo pipefail
+          mkdir out
+          (cd dist/mbsystem-programs-windows-x64 && zip -qr ../../out/mbsystem-programs-windows-x64.zip .)
+          find dist -name '*.tar.gz' -exec cp {} out/ ';'
+          ls -l out
+          n_art=$(ls dist | wc -l)
+          n_out=$(ls out | wc -l)
+          test "$n_art" -eq "$n_out" || { echo "$n_art artifacts but $n_out files"; exit 1; }
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          notes="MB-System built from master, commit ${{ github.sha }}.
+
+          - mbsystem-<platform>.tar.gz: the MB-System GMT plugin for InteractiveGMT, built against GMT_jll.
+          - mbsystem-programs-*: the programs without the graphical tools (Windows: MSVC build with its DLLs).
+          - mbsystem-*-gui-*: the programs with the Motif/X11 graphical tools, each for the system it names."
+          gh release view mbsystem-latest -R "$REPO" >/dev/null 2>&1 ||
+            gh release create mbsystem-latest -R "$REPO" --prerelease --title "MB-System (rolling build)" --notes "$notes"
+          gh release upload mbsystem-latest out/* -R "$REPO" --clobber
+          gh release edit mbsystem-latest -R "$REPO" --title "MB-System (rolling build)" --notes "$notes"
