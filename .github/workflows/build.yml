@@ -168,11 +168,18 @@ jobs:
             GMT_CUSTOM_LIBS = <this folder>\bin\mbsystem.dll
           "@ | Set-Content "$root\README-windows.txt" -Encoding utf8
 
+      - name: Package
+        shell: pwsh
+        # Windows' own tar.exe (bsdtar) writes the zip (-a: format from the name), with / in its paths
+        run: '& "$env:SystemRoot\System32\tar.exe" -a -cf mbsystem-programs-windows-x64.zip -C "${{ github.workspace }}" mbsystem'
+
+      # archive: false uploads the .zip as it is, not wrapped in another zip (also below for the
+      # .tar.gz packages); the artifact then has the file's own name.
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: mbsystem-programs-windows-x64
-          path: mbsystem
+          path: mbsystem-programs-windows-x64.zip
+          archive: false
           if-no-files-found: error
 
   # MinGW-w64 build check. MSYS2 provides only the compiler; GMT and the GDAL, PROJ, netCDF
@@ -309,17 +316,17 @@ jobs:
 
       # The binaries have /usr/local compiled in (library RPATH, data file
       # locations), so the package holds a /usr/local tree. A tarball keeps
-      # the executable bits that the artifact zip would drop.
+      # the executable bits a zip would drop.
       - name: Package
         run: |
           DESTDIR="$PWD/stage" cmake --install build-ci
           tar -czf mbsystem-programs-linux-x64.tar.gz -C stage/usr/local .
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: mbsystem-programs-linux-x64
           path: mbsystem-programs-linux-x64.tar.gz
+          archive: false
           if-no-files-found: error
 
   macos:
@@ -355,10 +362,10 @@ jobs:
           tar -czf mbsystem-programs-macos-arm64.tar.gz -C stage/usr/local .
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: mbsystem-programs-macos-arm64
           path: mbsystem-programs-macos-arm64.tar.gz
+          archive: false
           if-no-files-found: error
 
   # The MB-System GMT supplement (mbsystem.so / mbsystem.dylib) for InteractiveGMT, on Linux and
@@ -465,10 +472,17 @@ jobs:
         run: |
           set -euo pipefail
           stage="$RUNNER_TEMP/stage/mbsystem"
-          mkdir -p "$stage/lib" "$stage/share/mbsystem"
+          mkdir -p "$stage/lib" "$stage/share/mbsystem" "$stage/macros"
           if [[ $RUNNER_OS == Linux ]]; then pat='*.so*'; else pat='*.dylib'; fi
           find build-ci \( -type f -o -type l \) -name "$pat" -exec cp -a {} "$stage/lib/" \;
           cp src/share/LevitusAnnual82.dat src/share/Projections.dat "$stage/share/mbsystem/"
+          # The macros the program packages install (Perl mbm_*, Python mbpy_* with their modules) and
+          # the Julia mbjl_* ones with theirs, flat in macros/: each tool finds its modules beside it.
+          # The test_mbpy_* / test_mbjl_* checks too.
+          cp src/macros/mbm_* src/macros/mbpy_* src/macros/python/*.py src/macros/julia/mbjl_* src/macros/julia/test_mbjl_*.jl "$stage/macros/"
+          chmod +x "$stage"/macros/mbm_* "$stage"/macros/mbpy_grdplot "$stage"/macros/mbpy_grd3dplot \
+            "$stage"/macros/mbpy_histplot "$stage"/macros/mbpy_xyplot "$stage"/macros/mbjl_grdplot \
+            "$stage"/macros/mbjl_grd3dplot "$stage"/macros/mbjl_histplot "$stage"/macros/mbjl_xyplot
           echo "${{ github.sha }}" > "$stage/MBSYSTEM_COMMIT"
           ls -la "$stage/lib"
           echo "STAGE=$stage" >> "$GITHUB_ENV"
@@ -515,10 +529,10 @@ jobs:
       # Uploaded BEFORE the smoke test, so the archive is there to inspect even if the test fails.
       # Publishing to the release (below) still happens only after the test passes.
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: mbsystem-${{ matrix.name }}
           path: mbsystem-${{ matrix.name }}.tar.gz
+          archive: false
           if-no-files-found: error
 
       # The real test: load the relocated plugin into GMT.jl and run a module.
@@ -532,6 +546,8 @@ jobs:
           set -euo pipefail
           probe="$RUNNER_TEMP/probe"; mkdir -p "$probe"
           tar -xzf "mbsystem-${{ matrix.name }}.tar.gz" -C "$probe"
+          # the Julia macros run from the unpacked macros/ (they find their modules there)
+          julia --startup-file=no "$probe/mbsystem/macros/mbjl_grdplot" --help > /dev/null
           if [[ $RUNNER_OS == Linux ]]; then lib="$probe/mbsystem/lib/mbsystem.so"; else lib="$probe/mbsystem/lib/mbsystem.dylib"; fi
           test -f "$lib"
           export MBLIB="$lib" PROBEDIR="$probe/mbsystem/lib"
@@ -661,9 +677,11 @@ jobs:
         run: |
           set -euo pipefail
           stage="$(cygpath -u "$RUNNER_TEMP")/stage/mbsystem"
-          mkdir -p "$stage/lib" "$stage/share/mbsystem"
+          mkdir -p "$stage/lib" "$stage/share/mbsystem" "$stage/macros"
           find build-plugin -name "*.dll" -exec cp {} "$stage/lib/" \;
           cp src/share/LevitusAnnual82.dat src/share/Projections.dat "$stage/share/mbsystem/"
+          # The same macros as the Linux/macOS plugin (Perl, Python, Julia, with their modules).
+          cp src/macros/mbm_* src/macros/mbpy_* src/macros/python/*.py src/macros/julia/mbjl_* src/macros/julia/test_mbjl_*.jl "$stage/macros/"
           echo "${{ github.sha }}" > "$stage/MBSYSTEM_COMMIT"
           ls -la "$stage/lib"
 
@@ -712,15 +730,16 @@ jobs:
           exit $bad
 
       - name: Package
-        shell: msys2 {0}
-        run: tar -C "$(cygpath -u "$RUNNER_TEMP")/stage" -czf mbsystem-windows-x86_64.tar.gz mbsystem
+        shell: pwsh
+        # Windows' own tar.exe (bsdtar) writes the zip (-a: format from the name), with / in its paths
+        run: '& "$env:SystemRoot\System32\tar.exe" -a -cf mbsystem-windows-x86_64.zip -C "$env:RUNNER_TEMP\stage" mbsystem'
 
       # Uploaded BEFORE the smoke test, so the archive is there to inspect even if the test fails.
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: mbsystem-windows-x86_64
-          path: mbsystem-windows-x86_64.tar.gz
+          path: mbsystem-windows-x86_64.zip
+          archive: false
           if-no-files-found: error
 
       # The real test, as InteractiveGMT loads it: GMT.jl on GMT_jll, the plugin's lib/ on PATH
@@ -732,9 +751,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # POSIX form: Git-bash's tar reads "D:\a\_temp" as a remote host:path and fails
+          # Unpacked as InteractiveGMT does: Windows' own tar.exe (bsdtar, reads zip), relative name,
+          # run in the directory.
           probe="$(cygpath -u "$RUNNER_TEMP")/probe"; mkdir -p "$probe"
-          tar -xzf mbsystem-windows-x86_64.tar.gz -C "$probe"
+          cp mbsystem-windows-x86_64.zip "$probe/"
+          (cd "$probe" && "$(cygpath -u "$SYSTEMROOT")/System32/tar.exe" -xf mbsystem-windows-x86_64.zip)
+          julia --startup-file=no "$probe/mbsystem/macros/mbjl_grdplot" --help > /dev/null
           libdir="$probe/mbsystem/lib"
           test -f "$libdir/mbsystem.dll"
           export MBLIB="$(cygpath -m "$libdir/mbsystem.dll")" PROBEDIR="$(cygpath -w "$libdir")"
@@ -844,10 +866,10 @@ jobs:
           tar -czf mbsystem-linux-gui-ubuntu22.04.tar.gz -C stage/usr/local .
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: mbsystem-linux-gui-ubuntu22.04
           path: mbsystem-linux-gui-ubuntu22.04.tar.gz
+          archive: false
           if-no-files-found: error
 
   # Full builds including the Motif/X11 graphical tools for the newer Ubuntu LTS releases, each in
@@ -940,10 +962,10 @@ jobs:
           tar -czf "$pkg.tar.gz" -C stage/usr/local .
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: mbsystem-linux-gui-ubuntu${{ matrix.release }}
           path: mbsystem-linux-gui-ubuntu${{ matrix.release }}.tar.gz
+          archive: false
           if-no-files-found: error
 
   # Full Fedora 44 build including the Motif/X11 graphical tools, against Fedora's own GMT, GDAL,
@@ -1012,10 +1034,10 @@ jobs:
           tar -czf mbsystem-linux-gui-fedora44.tar.gz -C stage/usr/local .
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: mbsystem-linux-gui-fedora44
           path: mbsystem-linux-gui-fedora44.tar.gz
+          archive: false
           if-no-files-found: error
 
   # Full macOS build including the Motif/X11 graphical tools, with Motif, X11
@@ -1075,16 +1097,16 @@ jobs:
           tar -czf mbsystem-macos-gui-arm64.tar.gz -C stage/usr/local .
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: mbsystem-macos-gui-arm64
           path: mbsystem-macos-gui-arm64.tar.gz
+          archive: false
           if-no-files-found: error
 
   # Every package above, once all the jobs have passed (the plugins after their smoke tests), goes
   # to the rolling mbsystem-latest release on pushes to master and manual runs: one fixed tag whose
   # files are replaced in place (--clobber), never a new tag per build. The plugins keep the names
-  # InteractiveGMT downloads (mbsystem-<platform>.tar.gz); the programs without graphical tools are
+  # InteractiveGMT downloads (mbsystem-<platform>.tar.gz, mbsystem-windows-x86_64.zip); the programs without graphical tools are
   # mbsystem-programs-*, the ones with them mbsystem-*-gui-*.
   release:
     name: Publish to the mbsystem-latest release
@@ -1096,17 +1118,16 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
 
-      # The Windows (MSVC) artifact is a folder, zipped here; the others are tarballs already.
+      # Every artifact is one file uploaded unarchived: a .zip (Windows) or a .tar.gz (Linux, macOS).
       - name: Collect the files
         run: |
           set -euo pipefail
           mkdir out
-          (cd dist/mbsystem-programs-windows-x64 && zip -qr ../../out/mbsystem-programs-windows-x64.zip .)
-          find dist -name '*.tar.gz' -exec cp {} out/ ';'
+          find dist -type f \( -name '*.zip' -o -name '*.tar.gz' \) -exec cp {} out/ ';'
           ls -l out
           n_art=$(ls dist | wc -l)
           n_out=$(ls out | wc -l)
@@ -1120,10 +1141,15 @@ jobs:
           set -euo pipefail
           notes="MB-System built from master, commit ${{ github.sha }}.
 
-          - mbsystem-<platform>.tar.gz: the MB-System GMT plugin for InteractiveGMT, built against GMT_jll.
+          - mbsystem-<platform>.tar.gz / mbsystem-windows-x86_64.zip: the MB-System GMT plugin for InteractiveGMT,
+            built against GMT_jll, with the Julia plotting macros (mbjl_*) in macros/.
           - mbsystem-programs-*: the programs without the graphical tools (Windows: MSVC build with its DLLs).
           - mbsystem-*-gui-*: the programs with the Motif/X11 graphical tools, each for the system it names."
           gh release view mbsystem-latest -R "$REPO" >/dev/null 2>&1 ||
             gh release create mbsystem-latest -R "$REPO" --prerelease --title "MB-System (rolling build)" --notes "$notes"
           gh release upload mbsystem-latest out/* -R "$REPO" --clobber
+          # drop assets this build no longer makes (e.g. a renamed or re-packaged file)
+          for a in $(gh release view mbsystem-latest -R "$REPO" --json assets --jq '.assets[].name'); do
+            [[ -f "out/$a" ]] || gh release delete-asset mbsystem-latest "$a" -R "$REPO" --yes
+          done
           gh release edit mbsystem-latest -R "$REPO" --title "MB-System (rolling build)" --notes "$notes"
