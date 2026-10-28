@@ -1121,6 +1121,8 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: dist
+          # keep each file as uploaded: by default the .zip ones are unpacked
+          skip-decompress: true
 
       # Every artifact is one file uploaded unarchived: a .zip (Windows) or a .tar.gz (Linux, macOS).
       - name: Collect the files
