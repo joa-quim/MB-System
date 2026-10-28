@@ -5,7 +5,7 @@ This repository (joa-quim/MB-System) is a fork of the official MB-System reposit
 
 - **Windows**: MB-System builds natively on Windows with MSVC, and also with MinGW-w64.
 - **GMT modules**: the MB-System programs are also built as GMT modules in the `mbsystem` GMT supplement, so they run as `gmt mbgrid ...`, `gmt mblist ...` from GMT and from GMT's language wrappers (e.g. GMT.jl). The standalone programs are still built.
-- **InteractiveGMT plugin**: that supplement is also built against GMT_jll as a plugin that [InteractiveGMT](https://github.com/joa-quim/InteractiveGMT) downloads and installs.
+- **InteractiveGMT plugin**: that supplement is also built against GMT_jll as a plugin that [InteractiveGMT](https://github.com/GenericMappingTools/InteractiveGMT) downloads and installs.
 - **New feature**: CUBE (Combined Uncertainty and Bathymetry Estimator) gridding in `mbgrid` (`-F9`).
 - **Builds for download**: GitHub Actions builds MB-System for Windows, Linux (Ubuntu 22.04, 24.04 and 26.04, and Fedora 44, with the graphical tools), and macOS (with and without the graphical tools). It also builds the InteractiveGMT plugins. All of them are on the [mbsystem-latest release](https://github.com/joa-quim/MB-System/releases/tag/mbsystem-latest), rebuilt from every change to master.
 
