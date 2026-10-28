@@ -41,6 +41,7 @@ add_library(
   mb_cheb.c
   mb_cube.c
   mb_delaun.c
+  mb_gisfile.c
   mb_intersectgrid.c
   mb_readwritegrd.c
   mb_surface.c

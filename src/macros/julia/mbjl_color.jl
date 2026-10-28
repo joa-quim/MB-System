@@ -74,7 +74,9 @@ export NCPT, PALETTE_NAMES, SEALEVEL_PALETTES, ColorControl, resolve_color_contr
        get_ncolors_use, ColorInterval, compute_color_interval, interpolate_palette,
        interpolate_palette_sealevel, compute_sealevel_izero, CptLine, as_written,
        format_echo, build_cpt_continuous, build_cpt_continuous_sealevel, run_grdhisteq,
-       HistBoundaries, build_histogram_boundaries, build_slope_boundaries,
+       HistBoundaries, build_histogram_boundaries, SEALEVEL_HISTEQ_MAX_NODES,
+       allocate_sealevel_bins, run_grdhisteq_sealevel, build_sealevel_histogram_boundaries,
+       build_cpt_sealevel_from_boundaries, build_slope_boundaries,
        build_cpt_continuous_from_boundaries, build_cpt_discrete,
        build_cpt_discrete_sealevel, build_cpt_discrete_from_boundaries, RGB
 
@@ -640,6 +642,213 @@ function build_histogram_boundaries(
     end
 
     return HistBoundaries(hist = hist, ncolors = ncolors)
+end
+
+
+# ---------------------------------------------------------------------------
+# Histogram-equalized sealevel dual-colormap stretch (palettes 8 and 9
+# with --stretch-color). Not in mbm_grdplot, which never combined -S
+# with the sealevel palettes. The parts of the grid below and above
+# 0 m are equalized separately, so one CPT boundary always falls exactly
+# at sea level: Haxby colors (stops 1..10, as in
+# interpolate_palette_sealevel()) span the bathymetry bins and the land
+# palette spans the topography bins. With color_flip (depth-positive
+# grids) the sides swap: Haxby above 0, land below. The number of bins
+# on each side is proportional to its share of the grid's nodes, so the
+# whole CPT stays (approximately) equal-area.
+#
+# grdhisteq -C -D on a large grid is memory hungry (more than 3 GB for
+# a 19744 x 15815 node grid), so grids with more than
+# SEALEVEL_HISTEQ_MAX_NODES nodes are first decimated with nearest-
+# neighbor grdsample; the bin edges barely change, and the outermost
+# edges are reset to the grid's real zmin/zmax anyway.
+# ---------------------------------------------------------------------------
+
+const SEALEVEL_HISTEQ_MAX_NODES = 16000000
+
+
+"""Split `nbins` histogram bins between the below-zero and
+above-zero parts of a grid in proportion to their node counts,
+giving each side that has data at least one bin."""
+function allocate_sealevel_bins(nbins::Integer, count_below::Integer, count_above::Integer)::Tuple{Int,Int}
+    if count_below <= 0 && count_above <= 0
+        throw(ArgumentError("grid has no non-NaN nodes"))
+    end
+    count_above <= 0 && return (nbins, 0)
+    count_below <= 0 && return (0, nbins)
+    if nbins < 2
+        throw(ArgumentError("need at least 2 color bins to color both sides of sea level"))
+    end
+    # round() ties to even, like Python's round()
+    nbelow = round(Int, nbins * count_below / (count_below + count_above))
+    nbelow = min(max(nbelow, 1), nbins - 1)
+    return (nbelow, nbins - nbelow)
+end
+
+
+"""Run a gmt command and return its stdout; error with its stderr
+if it fails (Python's subprocess.run(..., check=True))."""
+function _gmt_output(cmd::Cmd)::String
+    out = IOBuffer()
+    err = IOBuffer()
+    proc = run(pipeline(ignorestatus(cmd); stdout = out, stderr = err))
+    success(proc) || error("$cmd failed with exit status $(proc.exitcode):\n" * String(take!(err)))
+    return String(take!(out))
+end
+
+
+function _grdinfo_columns(grid_path::AbstractString, extra::AbstractVector{<:AbstractString} = String[])::Vector{String}
+    # tab-separated, so a grid path containing spaces stays one field
+    return String.(split(rstrip(_gmt_output(`gmt grdinfo $grid_path -C $extra`), ['\r', '\n']), '\t'))
+end
+
+
+function _parse_grdhisteq_rows(text::AbstractString)::Vector{Tuple{Float64,Float64}}
+    rows = Tuple{Float64,Float64}[]
+    for line in split(text, r"\r\n|\n|\r")
+        parts = split(line)
+        if length(parts) >= 2
+            push!(rows, (pyfloat(parts[1]), pyfloat(parts[2])))
+        end
+    end
+    return rows
+end
+
+
+"""Run `gmt grdhisteq -C<n> -D` separately on the below-zero and
+above-zero parts of `grid_path` (decimated first if it has more
+than `max_nodes` nodes), with `nbins` split between the two sides
+by allocate_sealevel_bins(). Returns (rows_below, rows_above); a
+side with no data (zmin >= 0 or zmax <= 0) gets an empty list.
+Nodes exactly at 0 belong to the below-zero side.
+
+grdinfo -C column indices in the comments are 0-based, as in the
+Python original (cols[9] there is cols[10] here)."""
+function run_grdhisteq_sealevel(
+    grid_path::AbstractString,
+    nbins::Integer,
+    zmin::Real,
+    zmax::Real;
+    max_nodes::Integer = SEALEVEL_HISTEQ_MAX_NODES,
+)::Tuple{Vector{Tuple{Float64,Float64}},Vector{Tuple{Float64,Float64}}}
+    return mktempdir(; prefix = "mbjl_histeq_") do tmpdir
+        cols = _grdinfo_columns(grid_path)
+        nx, ny = pyint(cols[10]), pyint(cols[11])      # cols[9], cols[10]
+        source = grid_path
+        if nx * ny > max_nodes
+            factor = ceil(Int, sqrt(nx * ny / max_nodes))
+            source = joinpath(tmpdir, "decimated.nc")
+            _gmt_output(`gmt grdsample $grid_path -I$(div(nx - 1, factor) + 1)+n/$(div(ny - 1, factor) + 1)+n -nn -G$source`)
+        end
+
+        # clip away the other side of sea level (NaN nodes are ignored
+        # by grdhisteq) and count what is left on each side
+        sides = Tuple{Union{Nothing,String},Int}[]
+        for (name, clip, has_data) in (("below", "-Sa0/NaN", zmin < 0.0),
+                                       ("above", "-Sb0/NaN", zmax > 0.0))
+            if !has_data
+                push!(sides, (nothing, 0))
+                continue
+            end
+            part = joinpath(tmpdir, "$name.nc")
+            _gmt_output(`gmt grdclip $source $clip -G$part`)
+            cols = _grdinfo_columns(part, ["-M"])
+            count = pyint(cols[10]) * pyint(cols[11]) - pytrunc(pyfloat(cols[16]))   # cols[9] * cols[10] - cols[15]
+            push!(sides, (part, count))
+        end
+
+        nbins_side = allocate_sealevel_bins(nbins, sides[1][2], sides[2][2])
+        rows = Vector{Tuple{Float64,Float64}}[]
+        for ((part, _count), n) in zip(sides, nbins_side)
+            if part === nothing || n == 0
+                push!(rows, Tuple{Float64,Float64}[])
+                continue
+            end
+            push!(rows, _parse_grdhisteq_rows(_gmt_output(`gmt grdhisteq $part -C$n -D`)))
+        end
+        return (rows[1], rows[2])
+    end
+end
+
+
+"""Increasing bin edges for one side of sea level from grdhisteq -D
+rows, with the outer edges forced to exactly `lo` and `hi`.
+Degenerate (non-increasing) edges are dropped as in
+build_histogram_boundaries(), as are interior edges not strictly
+inside (lo, hi)."""
+function _side_boundaries(rows::AbstractVector, lo::Real, hi::Real)::Vector{Float64}
+    edges = [Float64(d1) for (d1, _d2) in rows]
+    interior = Float64[]
+    for d in edges[2:end]
+        if lo < d < hi && (isempty(interior) || d > interior[end])
+            push!(interior, d)
+        end
+    end
+    return [Float64(lo); interior; Float64(hi)]
+end
+
+
+"""Bin edges (each increasing) for the below-zero and above-zero
+sides from run_grdhisteq_sealevel() output. The edges meet exactly
+at 0, and the outer edges are padded by 1% of dzz beyond the data
+range as in build_histogram_boundaries(). A side with no rows
+gets an empty list."""
+function build_sealevel_histogram_boundaries(
+    rows_below::AbstractVector,
+    rows_above::AbstractVector,
+    zmin::Real,
+    zmax::Real,
+    dzz::Real,
+)::Tuple{Vector{Float64},Vector{Float64}}
+    below = Float64[]
+    above = Float64[]
+    if !isempty(rows_below)
+        below = _side_boundaries(rows_below, min(zmin, rows_below[1][1]) - 0.01 * dzz, 0.0)
+    end
+    if !isempty(rows_above)
+        above = _side_boundaries(rows_above, 0.0, max(zmax, rows_above[end][2]) + 0.01 * dzz)
+    end
+    return (below, above)
+end
+
+
+"""CPT lines for the histogram-equalized sealevel stretch, ordered
+by increasing z. Without color_flip the land palette (8 or 9) runs
+from its last stop at 0 up to its first stop at the top edge, and
+Haxby runs from stop 1 just below 0 down to stop 10 at the bottom
+edge -- the same color assignment as the arithmetic sealevel CPT
+(interpolate_palette_sealevel()). With color_flip the two palettes
+swap sides of sea level. Each side's colors are spread evenly over
+its bins, and the colors jump from one palette to the other at 0."""
+function build_cpt_sealevel_from_boundaries(
+    color_palette::Integer,
+    below::AbstractVector,
+    above::AbstractVector;
+    color_flip::Bool = false,
+)::Vector{CptLine}
+    if !(color_palette in SEALEVEL_PALETTES)
+        throw(ArgumentError("$color_palette is not a sealevel palette (must be 8 or 9)"))
+    end
+    land = _PALETTES_RGB[color_palette]
+    haxby = _PALETTES_RGB[1]
+
+    sea_color(f) = _interp_stop(haxby..., 1 + (NCPT - 2) * f)    # f: 0 at sea level .. 1 at the deepest edge
+    land_color(f) = _interp_stop(land..., (NCPT - 1) * (1 - f))  # f: 0 at sea level .. 1 at the highest edge
+
+    below_color, above_color = color_flip ? (land_color, sea_color) : (sea_color, land_color)
+
+    lines = CptLine[]
+    n = length(below) - 1
+    for k in 0:n-1
+        push!(lines, CptLine(below[k+1], below_color((n - k) / n),
+                             below[k+2], below_color((n - k - 1) / n)))
+    end
+    n = length(above) - 1
+    for k in 0:n-1
+        push!(lines, CptLine(above[k+1], above_color(k / n),
+                             above[k+2], above_color((k + 1) / n)))
+    end
+    return lines
 end
 
 

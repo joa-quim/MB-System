@@ -101,7 +101,7 @@ function build_arg_parser()::ArgParser
     add_argument!(g, "-W", "--color-control", metavar = "SPEC", help = "\"style/palette/ncolors\" (e.g. \"1/2/11\"), or a path to an existing .cpt file")
     add_argument!(g, "-D", "--color-flip", action = :store_true, help = "reverse the color palette")
     add_argument!(g, "-Y", "--no-nice-interval", action = :store_true, help = "use a direct linear color stretch instead of rounded intervals")
-    add_argument!(g, "--stretch-color", action = :store_true, help = "histogram-equalize the color stretch (color_mode 1)")
+    add_argument!(g, "--stretch-color", action = :store_true, help = "histogram-equalize the color stretch (color_mode 1); with sealevel palette 8 or 9, equalize below and above 0 m separately with a color break at 0")
     add_argument!(g, "-Z", "--zbounds", metavar = "ZMIN/ZMAX", help = "override the grid's own z-range used for the color stretch")
     add_argument!(g, "--data-scale", type = Float64, metavar = "FACTOR", help = "rescale grid values before colorizing/shading")
 
@@ -201,6 +201,19 @@ function build_cpt(args, grid_info::layout.GridInfo, lay::layout.Layout)
             return color.build_cpt_continuous_from_boundaries(colors, boundaries; color_flip = args[:color_flip]), nothing
         end
         return color.build_cpt_discrete_from_boundaries(colors, cc.ncolors, boundaries; color_flip = args[:color_flip]), nothing
+    end
+
+    if args[:stretch_color] && is_sealevel
+        # equalize below and above sea level separately, with a CPT
+        # boundary exactly at 0 (see MbjlColor.run_grdhisteq_sealevel())
+        nbins = cc.color_style == 1 ? ncolors_use - 1 : cc.ncolors
+        rows_below, rows_above = color.run_grdhisteq_sealevel(
+            args[:input], nbins, grid_info.zmin, grid_info.zmax
+        )
+        below, above = color.build_sealevel_histogram_boundaries(
+            rows_below, rows_above, grid_info.zmin, grid_info.zmax, dzz
+        )
+        return color.build_cpt_sealevel_from_boundaries(cc.color_palette, below, above; color_flip = args[:color_flip]), nothing
     end
 
     if args[:stretch_color]
