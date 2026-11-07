@@ -863,9 +863,15 @@ static int parse(struct GMT_CTRL *GMT, struct MBLIST_CTRL *Ctrl, struct GMT_OPTI
 				Ctrl->M.beam_set = MBLIST_SET_ALL;
 			} else if (opt->arg[0] == 'x' || opt->arg[0] == 'X') {
 				Ctrl->M.beam_set = MBLIST_SET_EXCLUDE_OUTER;
-				sscanf(opt->arg, "%*c%d", &Ctrl->M.beam_exclude_percent);
+				if (sscanf(opt->arg, "%*c%d", &Ctrl->M.beam_exclude_percent) != 1) {
+					GMT_Report(API, GMT_MSG_NORMAL, "Invalid beam range: %s\n", opt->arg);
+					n_errors++;
+				}
 			} else {
-				sscanf(opt->arg, "%d/%d", &Ctrl->M.beam_start, &Ctrl->M.beam_end);
+				if (sscanf(opt->arg, "%d/%d", &Ctrl->M.beam_start, &Ctrl->M.beam_end) != 2) {
+					GMT_Report(API, GMT_MSG_NORMAL, "Invalid beam range: %s\n", opt->arg);
+					n_errors++;
+				}
 				Ctrl->M.beam_set = MBLIST_SET_ON;
 			}
 			Ctrl->M.active = true;
@@ -874,7 +880,10 @@ static int parse(struct GMT_CTRL *GMT, struct MBLIST_CTRL *Ctrl, struct GMT_OPTI
 			if (opt->arg[0] == 'a' || opt->arg[0] == 'A') {
 				Ctrl->N.pixel_set = MBLIST_SET_ALL;
 			} else {
-				sscanf(opt->arg, "%d/%d", &Ctrl->N.pixel_start, &Ctrl->N.pixel_end);
+				if (sscanf(opt->arg, "%d/%d", &Ctrl->N.pixel_start, &Ctrl->N.pixel_end) != 2) {
+					GMT_Report(API, GMT_MSG_NORMAL, "Invalid pixel range: %s\n", opt->arg);
+					n_errors++;
+				}
 				Ctrl->N.pixel_set = MBLIST_SET_ON;
 			}
 			Ctrl->N.active = true;

@@ -846,7 +846,10 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 
 	/* write changed soundings */
 	for (int i = 0; i < nfile; i++) {
-		status = mb_esf_load(verbose, program_name, files[i].filelist, false, true, esffile, &esf, &error);
+		/* open esf file for appending, so that the existing edits are kept; rewriting it would
+		   drop the edits of all soundings that are not stored in the grid (e.g. outside the
+		   area bounds) */
+		status = mb_esf_load(verbose, program_name, files[i].filelist, false, MBP_ESF_APPEND, esffile, &esf, &error);
 		bool esffile_open = false;
 		if (status == MB_SUCCESS && esf.esffp != NULL) esffile_open = true;
 		if (status == MB_FAILURE && error == MB_ERROR_OPEN_FAIL) {
@@ -854,9 +857,11 @@ int GMT_mbareaclean(void *V_API, int mode, void *args) {
 			GMT_Report(API, GMT_MSG_NORMAL, "\nUnable to open new edit save file %s\n", esf.esffile);
 		}
 
+		/* save only the flags changed by this program, relative to the state after applying
+		   the old edits */
 		for (int j = 0; j < files[i].nsndg; j++) {
 			sndg_p = &(files[i].sndg[j]);
-			if (sndg_p->sndg_beamflag != sndg_p->sndg_beamflag_org) {
+			if (sndg_p->sndg_beamflag != sndg_p->sndg_beamflag_esf) {
 				int action = 0;
 				if (mb_beam_ok(sndg_p->sndg_beamflag))                  action = MBP_EDIT_UNFLAG;
 				else if (mb_beam_check_flag_manual(sndg_p->sndg_beamflag)) action = MBP_EDIT_FLAG;

@@ -1,0 +1,259 @@
+#!/usr/bin/env julia
+#--------------------------------------------------------------------
+#    The MB-system:  mbjl_grdtiff
+#
+#    Copyright (c) 2026 by
+#    David W. Caress (caress@mbari.org)
+#      Monterey Bay Aquarium Research Institute
+#      Moss Landing, California, USA
+#
+#    See README.md file for copying and redistribution conditions.
+#--------------------------------------------------------------------
+#
+# Purpose:
+#   Julia port of the Python macro mbpy_grdtiff, the Python/PyGMT-era
+#   replacement for the Perl macro mbm_grdtiff: reads a grid and
+#   generates a GMT **modern mode** shellscript that makes a
+#   georeferenced TIFF image of it (GeoTIFF plus .tfw world file, via
+#   MB-System's `gmt mbgrdtiff` module), suitable for loading into GIS
+#   packages. The color fill and shading styles (color_mode 1-5) and
+#   color-palette conventions match mbm_grdtiff and mbjl_grdplot, so a
+#   GeoTIFF and an mbjl_grdplot map of the same grid look the same. See
+#   src/macros/julia/mbjl_grdtiff_script.jl for the script generator
+#   and its differences from mbm_grdtiff; mbjl_layout, mbjl_color and
+#   mbjl_misc are shared with the other mbjl_* macros.
+#
+# Usage:
+#   mbjl_grdtiff -I data.grd [-O root] [options...]
+#   mbjl_grdtiff --input data.grd --color-mode 2 --azimuth 45 --execute
+#
+
+# Locate the sibling mbjl_{util,layout,color,misc,grdplot_script,
+# grdtiff_script} modules: they sit alongside this script once installed
+# (flat bindir, matching how src/macros installs its Perl macros), and
+# also in the source tree (src/macros/julia/); a julia/ subdirectory is
+# tried as well so this also runs from a layout mirroring the Python
+# tools' python/ subdir.
+const _here = dirname(realpath(@__FILE__))
+const _moddir = let d = nothing
+    for cand in (_here, joinpath(_here, "julia"))
+        if isfile(joinpath(cand, "mbjl_grdtiff_script.jl"))
+            d = cand
+            break
+        end
+    end
+    d === nothing && error("mbjl_grdtiff: cannot find mbjl_grdtiff_script.jl next to $(_here)")
+    d
+end
+
+isdefined(@__MODULE__, :MbjlUtil) || include(joinpath(_moddir, "mbjl_util.jl"))
+isdefined(@__MODULE__, :MbjlLayout) || include(joinpath(_moddir, "mbjl_layout.jl"))
+isdefined(@__MODULE__, :MbjlColor) || include(joinpath(_moddir, "mbjl_color.jl"))
+isdefined(@__MODULE__, :MbjlMisc) || include(joinpath(_moddir, "mbjl_misc.jl"))
+isdefined(@__MODULE__, :MbjlGrdplotScript) || include(joinpath(_moddir, "mbjl_grdplot_script.jl"))
+isdefined(@__MODULE__, :MbjlGrdtiffScript) || include(joinpath(_moddir, "mbjl_grdtiff_script.jl"))
+
+using .MbjlUtil
+const layout = MbjlLayout
+const color = MbjlColor
+const script = MbjlGrdtiffScript
+
+
+function build_arg_parser()::ArgParser
+    p = ArgParser(
+        prog = "mbjl_grdtiff",
+        description = "Generate a GMT modern-mode script that makes a georeferenced TIFF " *
+                      "(GeoTIFF + world file) image of a grid (Julia port of mbpy_grdtiff, " *
+                      "the replacement for mbm_grdtiff).",
+    )
+
+    g = add_argument_group(p, "input/output")
+    add_argument!(g, "-I", "--input", required = true, metavar = "GRID", help = "input grid file")
+    add_argument!(g, "-O", "--output", metavar = "ROOT",
+                  help = "output root name: writes ROOT_tiff.sh, ROOT.tif, ROOT.tfw " *
+                         "[default: input's basename without extension]")
+    add_argument!(g, "-X", "--execute", action = :store_true, help = "run the generated script immediately")
+    add_argument!(g, "-V", "--verbose", action = :store_true, help = "print the generated script path and a brief summary")
+
+    g = add_argument_group(p, "region / placement")
+    add_argument!(g, "-R", "--region", metavar = "W/E/S/N", help = "image bounds [default: the grid's own bounds]")
+    add_argument!(g, "-N", "--nudge", metavar = "DX/DY", help = "shift the image DX meters east and DY meters north")
+
+    g = add_argument_group(p, "color")
+    add_argument!(g, "-G", "--color-mode", type = Int, choices = 1:5, metavar = "{1-5}",
+                  help = "1 color fill, 2 shaded relief, 3 shade by intensity file, " *
+                         "4 slope-magnitude fill, 5 shade by slope magnitude " *
+                         "[1, or 3 when --intensity-file is given]")
+    add_argument!(g, "-W", "--color-control", metavar = "SPEC",
+                  help = "\"style/palette/ncolors\" (e.g. \"1/2/11\"), or a path to an existing .cpt file")
+    add_argument!(g, "-D", "--color-flip", action = :store_true, help = "reverse the color palette")
+    add_argument!(g, "-Y", "--no-nice-interval", action = :store_true,
+                  help = "use a direct linear color stretch instead of rounded intervals")
+    add_argument!(g, "-S", "--stretch-color", action = :store_true,
+                  help = "histogram-equalize the color stretch (color_mode 1-3, 5); with sealevel " *
+                         "palette 8 or 9, equalize below and above 0 m separately")
+    add_argument!(g, "-Z", "--zbounds", metavar = "ZMIN/ZMAX[/MODE]",
+                  help = "override the grid's z-range for the color stretch; MODE 1 extends the " *
+                         "end colors to the data's own minimum and maximum")
+    add_argument!(g, "--data-scale", type = Float64, metavar = "FACTOR",
+                  help = "rescale grid values before coloring/shading (mbm_grdtiff -MGS)")
+
+    g = add_argument_group(p, "shading (color_mode 2/3/4/5)")
+    add_argument!(g, "-A", "--shade", metavar = "MAG[/AZIM[/ELEV]]",
+                  help = "shading magnitude, illumination azimuth and elevation in one spec, as in mbm_grdtiff -A")
+    add_argument!(g, "--magnitude", type = Float64, metavar = "VAL")
+    add_argument!(g, "--azimuth", type = Float64, metavar = "DEG")
+    add_argument!(g, "--elevation", type = Float64, metavar = "DEG")
+    add_argument!(g, "--shade-flip", action = :store_true, help = "reverse the shading direction (negates magnitude)")
+    add_argument!(g, "-K", "--intensity-file", metavar = "GRID", help = "intensity grid for color_mode 3")
+    add_argument!(g, "--stretch-shade", action = :store_true, help = "histogram-equalize the intensity file (color_mode 3)")
+
+    g = add_argument_group(p, "GMT defaults")
+    add_argument!(g, "--gmt-default", action = :append, default = String[], metavar = "PARAM/VALUE",
+                  help = "override a GMT default (repeatable)")
+
+    return p
+end
+
+
+# Python truthiness of a parsed option value (None, False, "" and an
+# empty list are all "not given").
+_t(x) = !(x === nothing || x === false || (x isa AbstractString && isempty(x)) ||
+          (x isa AbstractVector && isempty(x)))
+
+
+"""argparse's `parser.error(msg)`: usage plus the message on stderr,
+exit status 2."""
+function parser_error(p::ArgParser, msg::AbstractString)
+    println(stderr, "usage: ", p.prog, " [-h] ", join(MbjlUtil._usage_piece.(p.specs), " "))
+    println(stderr, p.prog, ": error: ", msg)
+    exit(2)
+end
+
+
+function main(argv = ARGS)::Int
+    parser = build_arg_parser()
+    args = parse_args(parser, argv)
+
+    if !ispath(args[:input])
+        parser_error(parser, "input grid $(args[:input]) does not exist")
+    end
+    if _t(args[:intensity_file]) && !ispath(args[:intensity_file])
+        parser_error(parser, "intensity grid $(args[:intensity_file]) does not exist")
+    end
+    color_mode = args[:color_mode]
+    if color_mode === nothing
+        color_mode = _t(args[:intensity_file]) ? 3 : 1   # as in mbm_grdtiff
+    end
+    if color_mode == 3 && !_t(args[:intensity_file])
+        parser_error(parser, "--color-mode 3 requires --intensity-file")
+    end
+
+    root = _t(args[:output]) ? args[:output] : replace(basename(args[:input]), r"\.[A-Za-z0-9]+$" => "")
+
+    grid_info = layout.run_grdinfo(args[:input])
+    xmin, xmax, ymin, ymax = grid_info.xmin, grid_info.xmax, grid_info.ymin, grid_info.ymax
+    if _t(args[:region])
+        if endswith(args[:region], "r")
+            parser_error(parser, "corner-point regions (W/S/E/Nr) are not supported; give W/E/S/N")
+        end
+        parts = split(args[:region], "/")
+        if length(parts) != 4
+            parser_error(parser, "--region must be W/E/S/N")
+        end
+        xmin, xmax, ymin, ymax = (layout.get_decimal_degrees(v) for v in parts)
+    end
+    region = "$(fmtg(xmin, 11))/$(fmtg(xmax, 11))/$(fmtg(ymin, 11))/$(fmtg(ymax, 11))"
+
+    # projected (not lon/lat) if the grid says so or its bounds cannot be
+    # degrees -- decides grdgradient's -fg in the shading commands
+    geographic = grid_info.gridprojected == 0 &&
+                 !(xmin < -360.0 || xmax > 360.0 || ymin < -90.0 || ymax > 90.0)
+
+    # z bounds for the color stretch; zmin_t/zmax_t are the data's own
+    # (inside --region, if given)
+    zmin_t, zmax_t = grid_info.zmin, grid_info.zmax
+    if _t(args[:region])
+        zmin_t, zmax_t = script.grid_zrange(args[:input], region)
+    end
+    zmin, zmax, zmode = zmin_t, zmax_t, 0
+    if _t(args[:zbounds])
+        zparts = split(args[:zbounds], "/")
+        if !(length(zparts) in (2, 3))
+            parser_error(parser, "--zbounds must be ZMIN/ZMAX[/MODE]")
+        end
+        zmin, zmax = pyfloat(zparts[1]), pyfloat(zparts[2])
+        zmode = length(zparts) == 3 ? pyint(zparts[3]) : 0
+    end
+    data_scale = args[:data_scale]
+    if data_scale !== nothing
+        zmin, zmax = minmax(zmin * data_scale, zmax * data_scale)
+        zmin_t, zmax_t = minmax(zmin_t * data_scale, zmax_t * data_scale)
+    end
+    if zmin >= zmax
+        parser_error(parser, "improper z bounds: $(pystr(zmin)) $(pystr(zmax))")
+    end
+
+    magnitude, azimuth, elevation = args[:magnitude], args[:azimuth], args[:elevation]
+    if _t(args[:shade])
+        sparts = split(args[:shade], "/")
+        magnitude = magnitude === nothing ? pyfloat(sparts[1]) : magnitude
+        if length(sparts) > 1 && azimuth === nothing
+            azimuth = pyfloat(sparts[2])
+        end
+        if length(sparts) > 2 && elevation === nothing
+            elevation = pyfloat(sparts[3])
+        end
+    end
+
+    shade = nothing
+    if color_mode != 1
+        shade = script.ShadeOptions(
+            color_mode = color_mode, magnitude = magnitude, azimuth = azimuth, elevation = elevation,
+            shade_flip = args[:shade_flip], file_intensity = args[:intensity_file],
+            stretch_shade = args[:stretch_shade],
+        )
+    end
+
+    cc = color.resolve_color_control(args[:color_control])
+    cpt_lines = nothing
+    if cc.file_cpt === nothing
+        resolved = shade !== nothing ? script.resolve_shade_defaults(shade) : nothing
+        cpt_lines = script.build_cpt(
+            args[:input], color_mode, cc, zmin, zmax; zmode = zmode, zmin_t = zmin_t, zmax_t = zmax_t,
+            color_flip = args[:color_flip], no_nice_interval = args[:no_nice_interval],
+            stretch_color = args[:stretch_color],
+            magnitude = resolved !== nothing ? resolved.magnitude : nothing,
+            data_scale = data_scale,
+        )
+    end
+
+    opts = script.ScriptOptionsTiff(
+        grid = args[:input], root = root, region = region, geographic = geographic,
+        color_mode = color_mode, shade = shade, cpt_lines = cpt_lines, cpt_file = cc.file_cpt,
+        color_flip = args[:color_flip], data_scale = data_scale, nudge = args[:nudge],
+        gmt_defs = collect(String, args[:gmt_default]),
+    )
+    command_line = "mbjl_grdtiff " * join((shquote(a) for a in argv), " ")
+    script_path = script.generate_and_write_tiff(opts, command_line)
+
+    if args[:verbose]
+        println("Generated $(script_path)")
+        println("  Style:   $(script.COLOR_MODE_NAMES[color_mode])")
+        println("  Region:  $(region)  ($(geographic ? "geographic" : "projected"))")
+        println("  Z range: $(fmtg(zmin, 6)) $(fmtg(zmax, 6))")
+        println("  CPT:     $(cc.file_cpt !== nothing ? cc.file_cpt : root * ".cpt")")
+        println("  Image:   $(script.tiff_file(opts)) (+ $(root).tfw)")
+    end
+
+    if args[:execute]
+        run(`bash $script_path`)
+    end
+
+    return 0
+end
+
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    exit(main())
+end

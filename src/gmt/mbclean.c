@@ -47,6 +47,12 @@
 #include "mb_io.h"
 #include "mb_swap.h"
 #include "mb_process.h"
+#include "mb_aux.h"
+#include "mb_cube.h"
+#include "mb_gmt_opts.h"
+
+#include <sys/stat.h>
+#include <time.h>
 
 /* --- local defines / enums ------------------------------------------- */
 
@@ -90,6 +96,32 @@ struct bad_struct {
 	int    ping;
 	int    beam;
 	double bath;
+};
+
+/* no data value of the CUBE predicted surface */
+#define MBCLEAN_CUBE_NODATA 99999.0f
+
+/* CUBE flagging criteria */
+#define MBCLEAN_CUBE_FLAG_HYPOTHESIS 1	/* sounding belongs to a hypothesis not selected */
+#define MBCLEAN_CUBE_FLAG_OUTLIER    2	/* sounding is a single sample outlier from the selected one */
+
+/* CUBE flagging options, the program's --cube-* */
+struct mbclean_cube_struct {
+	struct mb_cube_options_struct options;	/* CUBE grid options shared with mbgrid -F9 */
+	bool   use;					/* CUBE flagging requested with --cube-spacing */
+	double dx;					/* node spacing east in m */
+	double dy;					/* node spacing north in m, 0 for dx */
+	bool   region_set;			/* grid bounds given with --cube-region */
+	double region[4];			/* grid bounds west/east/south/north in degrees */
+	int    flag;				/* criteria, MBCLEAN_CUBE_FLAG_* bits; default outlier */
+	bool   threshold_set;		/* outlier threshold given with --cube-flag-threshold */
+	double threshold;			/* outlier threshold as a normalized error */
+	double strength_max;		/* largest node strength where the hypothesis criterion applies */
+	bool   prediction_topography;	/* the predicted surface grid holds heights, positive up */
+	bool   nadir_set;			/* nadir sector given with --cube-flag-nadir */
+	double nadir_angle;			/* half-width of the nadir sector in degrees from vertical */
+	double nadir_threshold;		/* outlier threshold in the nadir sector as a normalized error */
+	bool   nadir_both;			/* nadir test two-sided; default only soundings shallower than the hypothesis */
 };
 
 EXTERN_MSC int GMT_mbclean(void *API, int mode, void *args);
@@ -150,6 +182,8 @@ struct MBCLEAN_CTRL {
 		bool check_num_good_min;
 		bool check_ping_deviation;
 	} transf;
+
+	struct mbclean_cube_struct cube;	/* CUBE flagging, the program's --cube-* options */
 };
 
 /* --- forward decls --------------------------------------------------- */
@@ -172,6 +206,14 @@ static void *New_mbclean_Ctrl(struct GMT_CTRL *GMT) {
 	Ctrl->N.ping_deviation_tolerance = 1.0;
 	Ctrl->S.spikemax        = 1.0;
 	Ctrl->S.spike_mode      = 1;
+
+	/* CUBE flagging defaults, as the program */
+	{
+		int cube_error = MB_ERROR_NO_ERROR;
+		mb_cube_default_options(0, &Ctrl->cube.options, &cube_error);
+	}
+	Ctrl->cube.flag         = MBCLEAN_CUBE_FLAG_OUTLIER;
+	Ctrl->cube.strength_max = 5.0;
 
 	return Ctrl;
 }
@@ -212,6 +254,45 @@ static struct GMT_KEYWORD_DICTIONARY module_kw[] = {
 	{ 0, '\0', "", "", "", "", "", 0 }  /* End of list marked with empty option and strings */
 };
 
+/* The program's CUBE flagging long options, which have no short letter. The first seven are
+   mbclean's own; the rest are handed to the CUBE engine as they are */
+static const struct MB_GMT_LONGOPT_DEF long_options[] = {
+	{"cube-spacing", true},
+	{"cube-region", true},
+	{"cube-flag", true},
+	{"cube-flag-nadir", true},
+	{"cube-flag-threshold", true},
+	{"cube-flag-strength-max", true},
+	{"cube-prediction-topography", false},
+	{"cube-bayes-factor", true},
+	{"cube-blunder", true},
+	{"cube-capture-min", true},
+	{"cube-capture-scale", true},
+	{"cube-context", true},
+	{"cube-depth-reference", true},
+	{"cube-dist-exp", true},
+	{"cube-est-offset", true},
+	{"cube-extractor", true},
+	{"cube-horiz-scale", true},
+	{"cube-iho-ccom", false},
+	{"cube-iho-edition", true},
+	{"cube-influence-scale", true},
+	{"cube-median-length", true},
+	{"cube-memory-limit", true},
+	{"cube-model", true},
+	{"cube-model-a", true},
+	{"cube-model-b", true},
+	{"cube-model-c", true},
+	{"cube-order", true},
+	{"cube-prediction", true},
+	{"cube-prediction-hypotheses", true},
+	{"cube-prediction-uncertainty", true},
+	{"cube-quotient-limit", true},
+	{"cube-runlength", true},
+	{"cube-sigma-h", true},
+	{"cube-sigma-v", true},
+	{NULL, false}};
+
 static int usage(struct GMTAPI_CTRL *API, int level) {
 	gmt_show_name_and_purpose(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_PURPOSE);
 	if (level == GMT_MODULE_PURPOSE) return GMT_NOERROR;
@@ -223,12 +304,24 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 		"\t[-Pmin_speed/max_speed] [-Q[<backup>]] [-R<max_heading_rate>]\n"
 		"\t[-Sspike/mode/form] [-Ttolerance] [-Unum_good_min]\n"
 		"\t[-Wwest/east/south/north] [-Xleft[/right]] [-Yleft/right[/mode]] [-Z]\n"
-		"\t[-V -H]\n\n");
+		"\t[-V -H]\n"
+		"   or: mbclean -I<inputfile> --cube-spacing=dx[/dy] [--cube-region=west/east/south/north]\n"
+		"\t[--cube-flag=hypothesis|outlier|both] [--cube-flag-nadir=angle/threshold[/shallow|both]]\n"
+		"\t[--cube-flag-strength-max=strength] [--cube-flag-threshold=threshold]\n"
+		"\t[--cube-prediction-topography] [--cube-* engine options]\n\n");
 	if (level == GMT_SYNOPSIS) return GMT_MODULE_SYNOPSIS;
 
 	GMT_Message(API, GMT_TIME_NONE,
 		"\t<inputfile> is an MB-System datalist referencing the swath data [datalist.mb-1].\n"
-		"\tEvery option also has the program's lower-case and long forms.\n\n");
+		"\tEvery option also has the program's lower-case and long forms.\n"
+		"\t--cube-spacing turns on CUBE flagging, which cannot be combined with the other tests.\n"
+		"\tThe CUBE engine options are those of the program: --cube-bayes-factor --cube-blunder\n"
+		"\t--cube-capture-min --cube-capture-scale --cube-context --cube-depth-reference --cube-dist-exp\n"
+		"\t--cube-est-offset --cube-extractor --cube-horiz-scale --cube-iho-ccom --cube-iho-edition\n"
+		"\t--cube-influence-scale --cube-median-length --cube-memory-limit --cube-model --cube-model-a\n"
+		"\t--cube-model-b --cube-model-c --cube-order --cube-prediction --cube-prediction-hypotheses\n"
+		"\t--cube-prediction-uncertainty --cube-quotient-limit --cube-runlength --cube-sigma-h\n"
+		"\t--cube-sigma-v; see the mbclean manual page.\n\n");
 	GMT_Option(API, "V,.");
 	return GMT_MODULE_USAGE;
 }
@@ -242,6 +335,74 @@ static int parse(struct GMT_CTRL *GMT, struct MBCLEAN_CTRL *Ctrl, struct GMT_OPT
 	struct GMTAPI_CTRL *API = GMT->parent;
 
 	for (opt = options; opt; opt = opt->next) {
+		if (opt->option == MB_GMT_LONGOPT) {	/* a CUBE long option, parsed as the program does */
+			struct mbclean_cube_struct *cube = &Ctrl->cube;
+			const char *value;
+			char extra;
+			const int k = mb_gmt_long_option(opt, long_options, &value);
+			if (k < 0) {
+				GMT_Report(API, GMT_MSG_NORMAL, "Option --%s %s\n", opt->arg, k == -2 ? "requires an argument" : "is not recognized");
+				n_errors++;
+				continue;
+			}
+			const char *name = long_options[k].name;
+			bool bad = false;
+			if (strcmp(name, "cube-spacing") == 0) {
+				n = sscanf(value, "%lf/%lf%c", &cube->dx, &cube->dy, &extra);
+				bad = n < 1 || n > 2 || (n == 1 && strchr(value, '/') != NULL);
+				cube->use = true;
+			}
+			else if (strcmp(name, "cube-region") == 0) {
+				bad = sscanf(value, "%lf/%lf/%lf/%lf%c", &cube->region[0], &cube->region[1], &cube->region[2],
+				             &cube->region[3], &extra) != 4;
+				cube->region_set = true;
+			}
+			else if (strcmp(name, "cube-flag") == 0) {
+				if (strcmp(value, "hypothesis") == 0)
+					cube->flag = MBCLEAN_CUBE_FLAG_HYPOTHESIS;
+				else if (strcmp(value, "outlier") == 0)
+					cube->flag = MBCLEAN_CUBE_FLAG_OUTLIER;
+				else if (strcmp(value, "both") == 0)
+					cube->flag = MBCLEAN_CUBE_FLAG_HYPOTHESIS | MBCLEAN_CUBE_FLAG_OUTLIER;
+				else
+					bad = true;
+			}
+			else if (strcmp(name, "cube-flag-nadir") == 0) {
+				char separator = '\0';
+				char nadir_mode[16] = "";
+				n = sscanf(value, "%lf/%lf%c%15[a-z]%c", &cube->nadir_angle, &cube->nadir_threshold, &separator, nadir_mode,
+				           &extra);
+				if (n == 2)
+					cube->nadir_both = false;
+				else if (n == 4 && separator == '/' && strcmp(nadir_mode, "shallow") == 0)
+					cube->nadir_both = false;
+				else if (n == 4 && separator == '/' && strcmp(nadir_mode, "both") == 0)
+					cube->nadir_both = true;
+				else
+					bad = true;
+				cube->nadir_set = true;
+			}
+			else if (strcmp(name, "cube-flag-threshold") == 0) {
+				bad = sscanf(value, "%lf%c", &cube->threshold, &extra) != 1;
+				cube->threshold_set = true;
+			}
+			else if (strcmp(name, "cube-flag-strength-max") == 0) {
+				bad = sscanf(value, "%lf%c", &cube->strength_max, &extra) != 1;
+			}
+			else if (strcmp(name, "cube-prediction-topography") == 0) {
+				cube->prediction_topography = true;
+			}
+			else {
+				int cube_error = MB_ERROR_NO_ERROR;
+				bad = mb_cube_parse_option(0, name, long_options[k].has_arg ? value : NULL, &cube->options,
+				                           &cube_error) != MB_SUCCESS;
+			}
+			if (bad) {
+				GMT_Report(API, GMT_MSG_NORMAL, "Invalid CUBE option: --%s%s%s\n", name, long_options[k].has_arg ? "=" : "", value);
+				n_errors++;
+			}
+			continue;
+		}
 		switch (opt->option) {
 
 		case '<':   /* Input file */
@@ -482,6 +643,784 @@ static int parse(struct GMT_CTRL *GMT, struct MBCLEAN_CTRL *Ctrl, struct GMT_OPT
 	return n_errors ? GMT_PARSE_ERROR : GMT_NOERROR;
 }
 
+/* --------------------------------------------------------------------
+ * mbclean_cube flags the soundings that do not belong to a CUBE surface
+ * built from all of the input data, with the grid, options and soundings
+ * of mbgrid -F9: a geographic grid with the spacing in meters. The data are
+ * read twice, three times with a median predicted surface: the first read
+ * builds the CUBE grid, the second compares every sounding with it with
+ * mb_cube_classify and appends filter edits to the edit save file of the
+ * raw file. Processed files are read where the datalist asks for them; the
+ * current edits of the raw file are applied to every read.
+ * Returns the exit code of the program, MB_ERROR_NO_ERROR on success.
+ * -------------------------------------------------------------------- */
+static int mbclean_cube(struct GMTAPI_CTRL *API, int verbose, char *read_file, int format, int lonflip, int pings,
+                        int btime_i[7], int etime_i[7], double speedmin, double timegap, bool uselockfiles,
+                        struct mbclean_cube_struct *cube) {
+	const char *program_name = THIS_MODULE_NAME;
+	int error = MB_ERROR_NO_ERROR;
+	int status = MB_SUCCESS;
+	int exit_code = MB_ERROR_NO_ERROR;
+	struct mb_cube_options_struct *options = &cube->options;
+
+	/* everything released on the way out */
+	void *cube_ptr = NULL;
+	float *pred_depth = NULL;
+	void *median_ptr = NULL;
+	void *datalist = NULL;
+	void *mbio_ptr = NULL;
+	struct mb_esf_struct esf;
+	bool esf_loaded = false;
+	bool file_locked = false;
+	char path[MB_PATH_MAXLINE] = "";
+
+	/* resolve and check the CUBE options */
+	char message[MB_PATH_MAXLINE];
+	bool ok = true;
+	if (mb_cube_resolve_options(verbose, options, message, sizeof(message), &error) != MB_SUCCESS) {
+		GMT_Report(API, GMT_MSG_NORMAL, "%s\n", message);
+		ok = false;
+	}
+	if (mb_cube_check_options(verbose, program_name, options, message, sizeof(message), &error) != MB_SUCCESS) {
+		GMT_Report(API, GMT_MSG_NORMAL, "%s\n", message);
+		ok = false;
+	}
+	if (!(cube->dx > 0.0) || cube->dy < 0.0) {
+		GMT_Report(API, GMT_MSG_NORMAL, "The CUBE node spacing --cube-spacing must be positive\n");
+		ok = false;
+	}
+	if (!(cube->strength_max >= 0.0)) {
+		GMT_Report(API, GMT_MSG_NORMAL, "The CUBE strength limit --cube-flag-strength-max must not be negative\n");
+		ok = false;
+	}
+	if (cube->threshold_set && !(cube->threshold > 0.0)) {
+		GMT_Report(API, GMT_MSG_NORMAL, "The CUBE outlier threshold --cube-flag-threshold must be positive\n");
+		ok = false;
+	}
+	if (cube->nadir_set && (!(cube->nadir_angle > 0.0) || !(cube->nadir_angle < 90.0) || !(cube->nadir_threshold > 0.0))) {
+		GMT_Report(API, GMT_MSG_NORMAL, "The CUBE nadir sector --cube-flag-nadir needs an angle between 0 and 90 degrees "
+		           "and a positive threshold\n");
+		ok = false;
+	}
+	if (cube->nadir_set && !(cube->flag & MBCLEAN_CUBE_FLAG_OUTLIER)) {
+		GMT_Report(API, GMT_MSG_NORMAL, "The CUBE nadir sector --cube-flag-nadir needs the outlier criterion, "
+		           "--cube-flag=outlier|both\n");
+		ok = false;
+	}
+	if (cube->prediction_topography && options->prediction != MB_CUBE_PREDICTION_FILE) {
+		GMT_Report(API, GMT_MSG_NORMAL, "The option --cube-prediction-topography needs a predicted surface grid, "
+		           "--cube-prediction=gridfile\n");
+		ok = false;
+	}
+	if (!ok) {
+		GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+		return (MB_ERROR_BAD_PARAMETER);
+	}
+
+	/* outlier threshold: the normalized error at which CUBE's monitor calls a
+	   single sample an outlier, where the Bayes factor
+	   exp(0.5 * (h^2 - 2 h |e|)) with h = est_offset falls below bayes_fac_t */
+	if (!cube->threshold_set) {
+		const double h = options->param.est_offset;
+		cube->threshold = (h * h - 2.0 * log(options->param.bayes_fac_t)) / (2.0 * h);
+	}
+
+	/* is the input a datalist or a single swath file */
+	if (format == 0)
+		mb_get_format(verbose, read_file, NULL, &format, &error);
+	const bool read_datalist = format < 0;
+
+	/* grid bounds: the region given or the bounds of the data */
+	double gbnd[4];
+	if (cube->region_set) {
+		for (int k = 0; k < 4; k++)
+			gbnd[k] = cube->region[k];
+	}
+	else {
+		struct mb_info_struct mb_info;
+		if (read_datalist) {
+			int formatread = -1;
+			int formatmakeinf = formatread;
+			/* mb_make_info_datalist exits on a datalist that cannot be opened */
+			if (!mb_gmt_datalist_opens(API, verbose, read_file, formatmakeinf)) {
+				GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+				return (MB_ERROR_OPEN_FAIL);
+			}
+			mb_make_info_datalist(verbose, false, read_file, &formatmakeinf, &error);
+			status = mb_get_info_datalist(verbose, read_file, &formatread, &mb_info, lonflip, &error);
+		}
+		else {
+			mb_make_info(verbose, false, read_file, format, &error);
+			status = mb_get_info(verbose, read_file, &mb_info, lonflip, &error);
+		}
+		if (status != MB_SUCCESS || !(mb_info.lon_max > mb_info.lon_min) || !(mb_info.lat_max > mb_info.lat_min)) {
+			GMT_Report(API, GMT_MSG_NORMAL, "Unable to get the bounds of the input data from %s; use --cube-region\n", read_file);
+			GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+			return (MB_ERROR_BAD_PARAMETER);
+		}
+		gbnd[0] = mb_info.lon_min;
+		gbnd[1] = mb_info.lon_max;
+		gbnd[2] = mb_info.lat_min;
+		gbnd[3] = mb_info.lat_max;
+		status = MB_SUCCESS;
+		error = MB_ERROR_NO_ERROR;
+	}
+
+	/* geographic grid with the spacing in meters, as in mbgrid -F9 -E dx/dy/meters;
+	   dy = dx if not given */
+	double mtodeglon;
+	double mtodeglat;
+	mb_coor_scale(verbose, 0.5 * (gbnd[2] + gbnd[3]), &mtodeglon, &mtodeglat);
+	const int nx = (int)lrint((gbnd[1] - gbnd[0]) / (mtodeglon * cube->dx) + 1);
+	const double dy_set = cube->dy > 0.0 ? cube->dy : cube->dx;
+	const int ny = (int)lrint((gbnd[3] - gbnd[2]) / (mtodeglat * dy_set) + 1);
+	if (!(gbnd[1] > gbnd[0]) || !(gbnd[3] > gbnd[2]) || nx < 2 || ny < 2) {
+		GMT_Report(API, GMT_MSG_NORMAL, "The CUBE grid of region %f/%f/%f/%f with spacing %f m has fewer than 2 x 2 nodes\n",
+		           gbnd[0], gbnd[1], gbnd[2], gbnd[3], cube->dx);
+		GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+		return (MB_ERROR_BAD_PARAMETER);
+	}
+	const double dlon = (gbnd[1] - gbnd[0]) / (nx - 1);
+	const double dlat = (gbnd[3] - gbnd[2]) / (ny - 1);
+	const double cube_dx = dlon / mtodeglon;
+	const double cube_dy = dlat / mtodeglat;
+	{
+		/* CUBE distances use the longitude scale of the grid center */
+		double mtodeglon_south, mtodeglon_north, mtodeglat_tmp;
+		mb_coor_scale(verbose, gbnd[2], &mtodeglon_south, &mtodeglat_tmp);
+		mb_coor_scale(verbose, gbnd[3], &mtodeglon_north, &mtodeglat_tmp);
+		if (fabs(mtodeglon_south - mtodeglon) > 0.01 * mtodeglon || fabs(mtodeglon_north - mtodeglon) > 0.01 * mtodeglon)
+			fprintf(stderr, "\nWarning: CUBE distances in this geographic grid are in error by more than 1%%\n"
+			                "at its northern or southern edge; use a smaller --cube-region\n");
+	}
+
+	/* bounds for reading the data, extended as in mbgrid */
+	double bounds[4];
+	for (int k = 0; k < 4; k++)
+		bounds[k] = gbnd[k];
+	{
+		const double xx = MIN(0.05 * (bounds[1] - bounds[0]), 0.1);
+		const double yy = MIN(0.05 * (bounds[3] - bounds[2]), 0.1);
+		bounds[0] -= xx;
+		bounds[1] += xx;
+		bounds[2] -= yy;
+		bounds[3] += yy;
+	}
+
+	/* memory */
+	double cube_memory = 0.0;
+	mb_cube_estimate_memory(verbose, &options->param, nx, ny, &cube_memory, &error);
+	if (cube_memory > options->memory_limit * 1.0e9) {
+		GMT_Report(API, GMT_MSG_NORMAL, "The CUBE grid of %d x %d nodes may need %.1f GB of memory, more than the limit of "
+		           "%.1f GB\n", nx, ny, cube_memory / 1.0e9, options->memory_limit);
+		GMT_Report(API, GMT_MSG_NORMAL, "set by --cube-memory-limit; use a larger grid spacing or a smaller area\n");
+		GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+		return (MB_ERROR_BAD_PARAMETER);
+	}
+
+	if (verbose >= 0) {
+		const char *extractor_name[] = {"prior, most soundings", "likelihood, closest to a nearby unambiguous node",
+		                                "posterior, likelihood and number of soundings",
+		                                "predicted, closest to the predicted surface"};
+		fprintf(stderr, "\nCUBE flagging:\n");
+		fprintf(stderr, "  Grid bounds:            %f %f %f %f\n", gbnd[0], gbnd[1], gbnd[2], gbnd[3]);
+		fprintf(stderr, "  Grid dimensions:        %d x %d\n", nx, ny);
+		fprintf(stderr, "  Node spacing:           %f m x %f m\n", cube_dx, cube_dy);
+		if (options->model == MB_CUBE_MODEL_IHO)
+			fprintf(stderr, "  Sounding uncertainty:   %s; TVU a %.3f m, b %.4f; THU %.1f m + %.0f%% of depth\n",
+			        options->iho_label, options->param.tvu_a, options->param.tvu_b, options->thu_fixed,
+			        100.0 * options->thu_fraction);
+		else if (options->model == MB_CUBE_MODEL_CONSTANT)
+			fprintf(stderr, "  Sounding uncertainty:   constant, vertical sigma %f m, horizontal sigma %f m\n",
+			        options->sigma_v, options->sigma_h);
+		else
+			fprintf(stderr, "  Sounding uncertainty:   vertical sigma sqrt[%f^2 + [%f * depth]^2] m,\n"
+			                "                          horizontal sigma sqrt[%f^2 + [%f * depth]^2] m\n",
+			        options->model_a, options->model_b, options->sigma_h, options->model_c);
+		fprintf(stderr, "  Depth used in models:   %s\n",
+		        options->depth_below_sonar ? "depth below the sonar" : "depth below the sea surface");
+		fprintf(stderr, "  Hypothesis selection:   %s\n", extractor_name[options->param.extractor]);
+		if (options->param.extractor == MB_CUBE_EXTRACT_LIKELIHOOD || options->param.extractor == MB_CUBE_EXTRACT_POSTERIOR) {
+			int context_min = 0;
+			int context_max = 0;
+			int context_error = MB_ERROR_NO_ERROR;
+			mb_cube_context_nodes(verbose, &options->param, cube_dx, cube_dy, &context_min, &context_max, &context_error);
+			fprintf(stderr, "  Guide search:           %.1f to %.1f m, %d to %d nodes\n", options->param.min_context,
+			        options->param.max_context, context_min, context_max);
+			if (context_max < 1) {
+				const double spacing = MIN(cube_dx, cube_dy);
+				fprintf(stderr, "  Warning: --cube-context=%g/%g is shorter than the node spacing of %.1f m; no neighbouring\n"
+				                "           node is searched and the selection falls back to the prior rule.\n"
+				                "           For this grid try --cube-context=%g/%g, 1 to 5 nodes.\n",
+				        options->param.min_context, options->param.max_context, spacing, spacing, 5.0 * spacing);
+			}
+		}
+		if (options->prediction == MB_CUBE_PREDICTION_MEDIAN)
+			fprintf(stderr, "  Predicted surface:      median of the soundings, %d times the node spacing\n",
+			        options->prediction_factor);
+		else if (options->prediction == MB_CUBE_PREDICTION_FILE)
+			fprintf(stderr, "  Predicted surface:      grid %s%s\n", options->prediction_file,
+			        cube->prediction_topography ? ", heights positive up" : "");
+		if (cube->flag & MBCLEAN_CUBE_FLAG_HYPOTHESIS)
+			fprintf(stderr, "  Flag:                   soundings not belonging to the selected hypothesis%s\n",
+			        cube->strength_max < 5.0 ? ", at nodes of strength up to the limit" : "");
+		if (cube->flag & MBCLEAN_CUBE_FLAG_OUTLIER)
+			fprintf(stderr, "  Flag:                   soundings more than %.3f normalized errors from the selected hypothesis\n",
+			        cube->threshold);
+		if (cube->nadir_set)
+			fprintf(stderr, "  Nadir sector:           beam angle < %.1f deg: soundings more than %.3f normalized errors %s\n",
+			        cube->nadir_angle, cube->nadir_threshold,
+			        cube->nadir_both ? "from the selected hypothesis" : "shallower than the selected hypothesis");
+		if (cube->flag & MBCLEAN_CUBE_FLAG_HYPOTHESIS && cube->strength_max < 5.0)
+			fprintf(stderr, "  Strength limit:         %f\n", cube->strength_max);
+		fprintf(stderr, "  Memory estimate:        %.2f GB, limit %.2f GB\n", cube_memory / 1.0e9, options->memory_limit);
+	}
+
+	/* initialize the CUBE grid */
+	status = mb_cube_init(verbose, &options->param, nx, ny, cube_dx, cube_dy, &cube_ptr, &error);
+	if (status != MB_SUCCESS) {
+		char *mbmessage = NULL;
+		mb_error(verbose, error, &mbmessage);
+		GMT_Report(API, GMT_MSG_NORMAL, "MBIO Error allocating CUBE grid:\n%s\n", mbmessage);
+		GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+		cube_ptr = NULL;
+		exit_code = error;
+		goto cleanup;
+	}
+
+	/* predicted surface from a geographic grid file of depths */
+	if (options->prediction != MB_CUBE_PREDICTION_NONE)
+		status = mb_mallocd(verbose, __FILE__, __LINE__, (size_t)nx * ny * sizeof(float), (void **)&pred_depth, &error);
+	if (status == MB_SUCCESS && options->prediction == MB_CUBE_PREDICTION_FILE) {
+		int pgrid_mode;
+		char pgrid_id[MB_PATH_MAXLINE] = "";
+		float pgrid_nodata;
+		int pgrid_nxy, pgrid_nx, pgrid_ny;
+		double pgrid_min, pgrid_max, pgrid_xmin, pgrid_xmax, pgrid_ymin, pgrid_ymax, pgrid_dx, pgrid_dy;
+		float *pgrid = NULL;
+		status = mb_read_gmt_grd(verbose, options->prediction_file, &pgrid_mode, pgrid_id, &pgrid_nodata, &pgrid_nxy,
+		                         &pgrid_nx, &pgrid_ny, &pgrid_min, &pgrid_max, &pgrid_xmin, &pgrid_xmax, &pgrid_ymin,
+		                         &pgrid_ymax, &pgrid_dx, &pgrid_dy, &pgrid, NULL, NULL, &error);
+		if (status != MB_SUCCESS) {
+			char *mbmessage = NULL;
+			mb_error(verbose, error, &mbmessage);
+			GMT_Report(API, GMT_MSG_NORMAL, "MBIO Error reading the CUBE predicted surface %s:\n%s\n",
+			           options->prediction_file, mbmessage);
+			GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+			exit_code = error;
+			goto cleanup;
+		}
+		const long pgrid_reg_x = lrint((pgrid_xmax - pgrid_xmin) / pgrid_dx) + 1 - pgrid_nx;
+		const long pgrid_reg_y = lrint((pgrid_ymax - pgrid_ymin) / pgrid_dy) + 1 - pgrid_ny;
+		if (pgrid_mode == MB_PROJECTION_PROJECTED || pgrid_reg_x != pgrid_reg_y || (pgrid_reg_x != 0 && pgrid_reg_x != 1)) {
+			GMT_Report(API, GMT_MSG_NORMAL, "The predicted surface %s must be a geographic grid with gridline or pixel "
+			           "registration\n", options->prediction_file);
+			GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+			mb_freed(verbose, __FILE__, __LINE__, (void **)&pgrid, &error);
+			exit_code = MB_ERROR_BAD_PARAMETER;
+			goto cleanup;
+		}
+		mb_cube_sample_grid(verbose, pgrid, pgrid_nx, pgrid_ny, pgrid_xmin + 0.5 * pgrid_reg_x * pgrid_dx,
+		                    pgrid_ymin + 0.5 * pgrid_reg_y * pgrid_dy, pgrid_dx, pgrid_dy, pgrid_nodata,
+		                    cube->prediction_topography ? -1.0 : 1.0, nx, ny, gbnd[0], gbnd[2], dlon, dlat,
+		                    MBCLEAN_CUBE_NODATA, pred_depth, &error);
+		mb_freed(verbose, __FILE__, __LINE__, (void **)&pgrid, &error);
+		int npred = 0;
+		status = mb_cube_apply_prediction(verbose, cube_ptr, options, nx, ny, pred_depth, MBCLEAN_CUBE_NODATA, &npred, &error);
+		if (status == MB_SUCCESS) {
+			fprintf(stderr, "\nPredicted surface set at %d of %d nodes\n", npred, nx * ny);
+			if (npred == 0)
+				fprintf(stderr, "Warning: the predicted surface %s covers no node of the CUBE grid\n", options->prediction_file);
+		}
+	}
+	if (status == MB_SUCCESS && options->prediction == MB_CUBE_PREDICTION_MEDIAN)
+		status = mb_cube_median_init(verbose, nx, ny, cube_dx, cube_dy, options->prediction_factor,
+		                             options->memory_limit * 1.0e9 - cube_memory, &median_ptr, &error);
+	if (status != MB_SUCCESS) {
+		char *mbmessage = NULL;
+		mb_error(verbose, error, &mbmessage);
+		GMT_Report(API, GMT_MSG_NORMAL, "MBIO Error allocating the CUBE predicted surface:\n%s\n", mbmessage);
+		GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+		exit_code = error;
+		goto cleanup;
+	}
+
+	/* counters, 64 bit for the totals of large surveys */
+	int nfiletot = 0;
+	long long ninserttot = 0;
+	long long ntestedtot = 0;
+	long long nuntestedtot = 0;
+	long long nhypothesistot = 0;
+	long long noutliertot = 0;
+	long long nblundertot = 0;
+	long long nflagtot = 0;
+
+	/* read all of the data: pass 0 bins the soundings for a median predicted
+	   surface, pass 1 builds the CUBE grid, pass 2 flags the soundings */
+	for (int pass = options->prediction == MB_CUBE_PREDICTION_MEDIAN ? 0 : 1; pass < 3; pass++) {
+		if (verbose >= 0) {
+			if (pass == 0)
+				fprintf(stderr, "\nReading data for the median predicted surface...\n");
+			else if (pass == 1)
+				fprintf(stderr, "\nReading data for the CUBE surface...\n");
+			else
+				fprintf(stderr, "\nComparing soundings with the CUBE surface...\n");
+		}
+
+		if (read_datalist && mb_datalist_open(verbose, &datalist, read_file, MB_DATALIST_LOOK_UNSET, &error) != MB_SUCCESS) {
+			GMT_Report(API, GMT_MSG_NORMAL, "Unable to open data list file: %s\n", read_file);
+			GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+			datalist = NULL;
+			exit_code = MB_ERROR_OPEN_FAIL;
+			goto cleanup;
+		}
+		int pstatus = MB_PROCESSED_NONE;
+		int astatus = MB_ALTNAV_NONE;
+		char ppath[MB_PATH_MAXLINE] = "";
+		char apath[MB_PATH_MAXLINE] = "";
+		char dpath[MB_PATH_MAXLINE] = "";
+		int fformat = format;
+		double file_weight = 1.0;
+		bool more;
+		if (read_datalist) {
+			more = mb_datalist_read3(verbose, datalist, &pstatus, path, ppath, &astatus, apath, dpath, &fformat, &file_weight,
+			                         &error) == MB_SUCCESS;
+		}
+		else {
+			snprintf(path, sizeof(path), "%s", read_file);
+			more = true;
+		}
+		while (more) {
+			if (fformat > 0 && path[0] != '#') {
+				/* the file read: processed where the datalist asks for it */
+				char file[MB_PATH_MAXLINE];
+				snprintf(file, sizeof(file), "%s", pstatus == MB_PROCESSED_USE ? ppath : path);
+
+				/* warn if a processed file is older than the files it is made from */
+				if (pass == 1 && pstatus == MB_PROCESSED_USE) {
+					struct stat file_status;
+					time_t ptime = 0;
+					if (stat(ppath, &file_status) == 0)
+						ptime = file_status.st_mtime;
+					char sfile[MB_PATH_MAXLINE + 8];
+					bool stale = stat(path, &file_status) == 0 && file_status.st_mtime > ptime;
+					snprintf(sfile, sizeof(sfile), "%s.par", path);
+					stale = stale || (stat(sfile, &file_status) == 0 && file_status.st_mtime > ptime);
+					snprintf(sfile, sizeof(sfile), "%s.esf", path);
+					stale = stale || (stat(sfile, &file_status) == 0 && file_status.st_mtime > ptime);
+					if (stale)
+						fprintf(stderr, "\nWarning: the processed file %s is older than its raw file, parameter file or edit\n"
+						                "save file; run mbprocess so that the CUBE surface matches mbgrid\n",
+						        ppath);
+				}
+
+				/* skip files outside the grid */
+				bool file_in_bounds = true;
+				if (mb_check_info(verbose, file, lonflip, bounds, &file_in_bounds, &error) != MB_SUCCESS) {
+					file_in_bounds = true;
+					error = MB_ERROR_NO_ERROR;
+				}
+
+				/* lock the raw file while its edits are written */
+				bool oktoprocess = file_in_bounds;
+				if (oktoprocess && pass == 2 && uselockfiles) {
+					if (mb_pr_lockswathfile(verbose, path, MBP_LOCK_EDITBATHY, program_name, &error) != MB_SUCCESS) {
+						GMT_Report(API, GMT_MSG_NORMAL, "Unable to lock file %s; its soundings are not flagged\n", path);
+						oktoprocess = false;
+						error = MB_ERROR_NO_ERROR;
+					}
+					else
+						file_locked = true;
+				}
+
+				/* current edits of the raw file, read only or appended to */
+				char esffile[MB_PATH_MAXLINE] = "";
+				if (oktoprocess) {
+					if (mb_esf_load(verbose, program_name, path, true, pass == 2 ? MBP_ESF_APPEND : MBP_ESF_NOWRITE, esffile,
+					                &esf, &error) == MB_SUCCESS) {
+						esf_loaded = true;
+					}
+					else if (pass == 2) {
+						GMT_Report(API, GMT_MSG_NORMAL, "Unable to open the edit save file of %s; its soundings are not "
+						           "flagged\n", path);
+						if (file_locked) {
+							mb_pr_unlockswathfile(verbose, path, MBP_LOCK_EDITBATHY, program_name, &error);
+							file_locked = false;
+						}
+						oktoprocess = false;
+					}
+					error = MB_ERROR_NO_ERROR;
+				}
+
+				/* read the file */
+				int nflagfile = 0;
+				if (oktoprocess) {
+					char rfile[MB_PATH_MAXLINE];
+					snprintf(rfile, sizeof(rfile), "%s", file);
+					int rformat = fformat;
+					mb_get_fbt(verbose, rfile, &rformat, &error);
+					double btime_d;
+					double etime_d;
+					int beams_bath;
+					int beams_amp;
+					int pixels_ss;
+					if (mb_read_init_altnav(verbose, rfile, rformat, pings, lonflip, bounds, btime_i, etime_i, speedmin, timegap,
+					                        astatus, apath, &mbio_ptr, &btime_d, &etime_d, &beams_bath, &beams_amp, &pixels_ss,
+					                        &error) != MB_SUCCESS) {
+						char *mbmessage = NULL;
+						mb_error(verbose, error, &mbmessage);
+						GMT_Report(API, GMT_MSG_NORMAL, "MBIO Error returned from function <mb_read_init_altnav>:\n%s\n", mbmessage);
+						GMT_Report(API, GMT_MSG_NORMAL, "Multibeam File <%s> not initialized for reading\n", rfile);
+						GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+						mbio_ptr = NULL;	/* not a handle to close */
+						exit_code = error;
+						goto cleanup;
+					}
+					char *beamflag = NULL;
+					double *bath = NULL;
+					double *amp = NULL;
+					double *bathlon = NULL;
+					double *bathlat = NULL;
+					double *ss = NULL;
+					double *sslon = NULL;
+					double *sslat = NULL;
+					if (error == MB_ERROR_NO_ERROR)
+						mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(char), (void **)&beamflag, &error);
+					if (error == MB_ERROR_NO_ERROR)
+						mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), (void **)&bath, &error);
+					if (error == MB_ERROR_NO_ERROR)
+						mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_AMPLITUDE, sizeof(double), (void **)&amp, &error);
+					if (error == MB_ERROR_NO_ERROR)
+						mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), (void **)&bathlon, &error);
+					if (error == MB_ERROR_NO_ERROR)
+						mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_BATHYMETRY, sizeof(double), (void **)&bathlat, &error);
+					if (error == MB_ERROR_NO_ERROR)
+						mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_SIDESCAN, sizeof(double), (void **)&ss, &error);
+					if (error == MB_ERROR_NO_ERROR)
+						mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_SIDESCAN, sizeof(double), (void **)&sslon, &error);
+					if (error == MB_ERROR_NO_ERROR)
+						mb_register_array(verbose, mbio_ptr, MB_MEM_TYPE_SIDESCAN, sizeof(double), (void **)&sslat, &error);
+					if (error != MB_ERROR_NO_ERROR) {
+						char *mbmessage = NULL;
+						mb_error(verbose, error, &mbmessage);
+						GMT_Report(API, GMT_MSG_NORMAL, "MBIO Error allocating data arrays:\n%s\n", mbmessage);
+						GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+						exit_code = error;
+						goto cleanup;
+					}
+
+					if (pass == 2 && verbose >= 0)
+						fprintf(stderr, "\nProcessing %s\n", file);
+					int ndata = 0;
+					int ntested = 0;
+					int nuntested = 0;
+					int nhypothesis = 0;
+					int noutlier = 0;
+					int nblunder = 0;
+					int nflag = 0;
+					int multiplicity = 0;
+					double time_d_last = 0.0;
+					char comment[MB_COMMENT_MAXLINE];
+					while (error <= MB_ERROR_NO_ERROR) {
+						int kind;
+						int rpings;
+						int time_i[7];
+						double time_d;
+						double navlon, navlat, speed, heading, distance, altitude, sensordepth;
+						status = mb_read(verbose, mbio_ptr, &kind, &rpings, time_i, &time_d, &navlon, &navlat, &speed, &heading,
+						                 &distance, &altitude, &sensordepth, &beams_bath, &beams_amp, &pixels_ss, beamflag, bath,
+						                 amp, bathlon, bathlat, ss, sslon, sslat, comment, &error);
+
+						/* time gaps are not a problem here */
+						if (error == MB_ERROR_TIME_GAP) {
+							error = MB_ERROR_NO_ERROR;
+							status = MB_SUCCESS;
+						}
+						if (error != MB_ERROR_NO_ERROR || kind != MB_DATA_DATA)
+							continue;
+
+						/* ping multiplicity, as in the edit save files of mbclean */
+						void *store_ptr = NULL;
+						int sensorhead = 0;
+						int sensorhead_error = MB_ERROR_NO_ERROR;
+						mb_get_store(verbose, mbio_ptr, &store_ptr, &sensorhead_error);
+						if (mb_sensorhead(verbose, mbio_ptr, store_ptr, &sensorhead, &sensorhead_error) == MB_SUCCESS)
+							multiplicity = sensorhead;
+						else if (ndata > 0 && fabs(time_d - time_d_last) < MB_ESF_MAXTIMEDIFF)
+							multiplicity++;
+						else
+							multiplicity = 0;
+						time_d_last = time_d;
+						ndata++;
+
+						/* current edits */
+						if (esf_loaded)
+							mb_esf_apply(verbose, &esf, time_d, multiplicity, beams_bath, beamflag, &error);
+
+						/* meters to degrees at the sonar, for the beam angles of the nadir sector */
+						double ping_mtodeglon = 0.0;
+						double ping_mtodeglat = 0.0;
+						if (pass == 2 && cube->nadir_set)
+							mb_coor_scale(verbose, navlat, &ping_mtodeglon, &ping_mtodeglat);
+
+						for (int ib = 0; ib < beams_bath; ib++) {
+							if (!mb_beam_ok(beamflag[ib]))
+								continue;
+							const double xx = (bathlon[ib] - gbnd[0]) / mtodeglon;
+							const double yy = (bathlat[ib] - gbnd[2]) / mtodeglat;
+							if (pass == 0) {
+								double bins_memory = 0.0;
+								if (mb_cube_median_add(verbose, median_ptr, xx, yy, bath[ib], &bins_memory, &error) != MB_SUCCESS) {
+									GMT_Report(API, GMT_MSG_NORMAL, "The CUBE grid and the median predicted surface would need "
+									           "%.1f GB of memory, more than the\nlimit of %.1f GB set by --cube-memory-limit, "
+									           "or the memory could not be allocated\n",
+									           (cube_memory + bins_memory) / 1.0e9, options->memory_limit);
+									GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+									exit_code = MB_ERROR_MEMORY_FAIL;
+									goto cleanup;
+								}
+								continue;
+							}
+							const double h = fabs(options->depth_below_sonar ? bath[ib] - sensordepth : bath[ib]);
+							double var_depth;
+							double var_horiz;
+							mb_cube_sounding_variance(verbose, options, h, &var_depth, &var_horiz, &error);
+							if (pass == 1) {
+								int nused = 0;
+								if (mb_cube_insert(verbose, cube_ptr, xx, yy, bath[ib], h, var_depth, var_horiz, &nused, &error) !=
+								    MB_SUCCESS) {
+									if (error == MB_ERROR_MEMORY_FAIL) {
+										char *mbmessage = NULL;
+										mb_error(verbose, error, &mbmessage);
+										GMT_Report(API, GMT_MSG_NORMAL, "MBIO Error inserting data into the CUBE grid:\n%s\n",
+										           mbmessage);
+										GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+										exit_code = error;
+										goto cleanup;
+									}
+									/* soundings with invalid values are skipped */
+								}
+								else if (nused > 0) {
+									ninserttot++;
+								}
+								error = MB_ERROR_NO_ERROR;
+								continue;
+							}
+
+							/* pass 2: compare the sounding with the CUBE surface */
+							int node, nhyp, is_selected, is_blunder;
+							double error_selected, strength;
+							if (mb_cube_classify(verbose, cube_ptr, xx, yy, bath[ib], h, var_depth, var_horiz, &node, &nhyp,
+							                     &is_selected, &is_blunder, &error_selected, &strength, &error) != MB_SUCCESS ||
+							    node < 0) {
+								nuntested++;
+								error = MB_ERROR_NO_ERROR;
+								continue;
+							}
+							ntested++;
+
+							/* beam angle from vertical, from the horizontal distance of the
+							   sounding to the sonar and its depth below the sonar */
+							double beam_angle = 90.0;
+							if (cube->nadir_set) {
+								const double dx = (bathlon[ib] - navlon) / ping_mtodeglon;
+								const double dy = (bathlat[ib] - navlat) / ping_mtodeglat;
+								const double dz = bath[ib] - sensordepth;
+								if (dz > 0.0)
+									beam_angle = RTD * atan2(sqrt(dx * dx + dy * dy), dz);
+							}
+
+							const char *reason = NULL;
+							if (is_blunder) {
+								reason = "blunder";
+								nblunder++;
+							}
+							else if ((cube->flag & MBCLEAN_CUBE_FLAG_HYPOTHESIS) && !is_selected && strength <= cube->strength_max) {
+								reason = "hypothesis";
+								nhypothesis++;
+							}
+							else if (cube->flag & MBCLEAN_CUBE_FLAG_OUTLIER) {
+								const bool nadir = cube->nadir_set && beam_angle < cube->nadir_angle;
+								bool outlier;
+								if (nadir && cube->nadir_both)
+									outlier = fabs(error_selected) > cube->nadir_threshold;
+								else if (nadir)
+									outlier = error_selected < -cube->nadir_threshold;
+								else
+									outlier = fabs(error_selected) > cube->threshold;
+								if (outlier) {
+									reason = "outlier";
+									noutlier++;
+								}
+							}
+							if (reason != NULL) {
+								if (verbose >= 1 && cube->nadir_set)
+									fprintf(stderr, "c: %4d %2d %2d %2.2d:%2.2d:%2.2d.%6.6d  %4d %8.2f %s %d %.3f %.2f %.1f\n",
+									        time_i[0], time_i[1], time_i[2], time_i[3], time_i[4], time_i[5], time_i[6], ib, bath[ib],
+									        reason, nhyp, error_selected, strength, beam_angle);
+								else if (verbose >= 1)
+									fprintf(stderr, "c: %4d %2d %2d %2.2d:%2.2d:%2.2d.%6.6d  %4d %8.2f %s %d %.3f %.2f\n",
+									        time_i[0], time_i[1], time_i[2], time_i[3], time_i[4], time_i[5], time_i[6], ib, bath[ib],
+									        reason, nhyp, error_selected, strength);
+								beamflag[ib] = mb_beam_set_flag_filter(beamflag[ib]);
+								if (mb_esf_save(verbose, &esf, time_d, ib + multiplicity * MB_ESF_MULTIPLICITY_FACTOR, MBP_EDIT_FILTER,
+								                &error) != MB_SUCCESS) {
+									GMT_Report(API, GMT_MSG_NORMAL, "Unable to write the edit save file %s\n", esffile);
+									GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+									exit_code = MB_ERROR_WRITE_FAIL;
+									goto cleanup;
+								}
+								nflag++;
+							}
+						}
+					}
+					mb_close(verbose, &mbio_ptr, &error);
+					mbio_ptr = NULL;
+					error = MB_ERROR_NO_ERROR;
+					status = MB_SUCCESS;
+
+					if (pass == 2) {
+						nfiletot++;
+						ntestedtot += ntested;
+						nuntestedtot += nuntested;
+						nhypothesistot += nhypothesis;
+						noutliertot += noutlier;
+						nblundertot += nblunder;
+						nflagtot += nflag;
+						nflagfile = nflag;
+						if (verbose >= 0) {
+							fprintf(stderr, "%d bathymetry data records processed\n", ndata);
+							fprintf(stderr, "%d soundings compared with the CUBE surface\n", ntested);
+							fprintf(stderr, "%d soundings reaching no CUBE node with data, not tested\n", nuntested);
+							fprintf(stderr, "%d soundings belonging to a hypothesis not selected\n", nhypothesis);
+							fprintf(stderr, "%d soundings exceeding the outlier threshold\n", noutlier);
+							if (options->param.blunder && options->prediction != MB_CUBE_PREDICTION_NONE)
+								fprintf(stderr, "%d soundings rejected by the blunder test\n", nblunder);
+							fprintf(stderr, "%d beams flagged\n", nflag);
+						}
+					}
+				}
+
+				/* close the edit save file once its edits are on disk, register it if
+				   edits were added, since an unchanged parameter file keeps processed files
+				   up to date, and unlock the raw file */
+				if (esf_loaded && pass == 2 && esf.esffp != NULL && (fflush(esf.esffp) != 0 || ferror(esf.esffp) != 0)) {
+					GMT_Report(API, GMT_MSG_NORMAL, "Unable to write the edit save file %s\n", esffile);
+					GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+					exit_code = MB_ERROR_WRITE_FAIL;
+					goto cleanup;
+				}
+				if (esf_loaded) {
+					mb_esf_close(verbose, &esf, &error);
+					esf_loaded = false;
+				}
+				if (oktoprocess && pass == 2 && nflagfile > 0) {
+					mb_pr_update_format(verbose, path, true, fformat, &error);
+					mb_pr_update_edit(verbose, path, MBP_EDIT_ON, esffile, &error);
+				}
+				if (file_locked) {
+					mb_pr_unlockswathfile(verbose, path, MBP_LOCK_EDITBATHY, program_name, &error);
+					file_locked = false;
+				}
+				error = MB_ERROR_NO_ERROR;
+			}
+
+			/* next file */
+			if (read_datalist)
+				more = mb_datalist_read3(verbose, datalist, &pstatus, path, ppath, &astatus, apath, dpath, &fformat,
+				                         &file_weight, &error) == MB_SUCCESS;
+			else
+				more = false;
+		}
+		if (read_datalist) {
+			mb_datalist_close(verbose, &datalist, &error);
+			datalist = NULL;
+		}
+		error = MB_ERROR_NO_ERROR;
+
+		/* median predicted surface, then the estimators and the selection */
+		if (pass == 0) {
+			int nused = 0;
+			status = mb_cube_median_surface(verbose, median_ptr, MBCLEAN_CUBE_NODATA, pred_depth, &nused, &error);
+			if (status == MB_SUCCESS)
+				fprintf(stderr, "%d data points used for the median predicted surface\n", nused);
+			mb_cube_median_deall(verbose, &median_ptr, &error);
+			median_ptr = NULL;
+		}
+		if (status == MB_SUCCESS && pass == 0 && options->prediction == MB_CUBE_PREDICTION_MEDIAN) {
+			int npred = 0;
+			status = mb_cube_apply_prediction(verbose, cube_ptr, options, nx, ny, pred_depth, MBCLEAN_CUBE_NODATA, &npred, &error);
+			if (status == MB_SUCCESS)
+				fprintf(stderr, "Predicted surface set at %d of %d nodes\n", npred, nx * ny);
+		}
+		if (status == MB_SUCCESS && pass == 1) {
+			fprintf(stderr, "%lld soundings inserted into the CUBE grid\n", ninserttot);
+
+			/* a predicted surface grid of the wrong sign makes most soundings
+			   blunders and reverses the slope correction */
+			double nsame = 0.0;
+			double nopposite = 0.0;
+			if (options->prediction == MB_CUBE_PREDICTION_FILE &&
+			    mb_cube_prediction_sign(verbose, cube_ptr, &nsame, &nopposite, &error) != MB_SUCCESS) {
+				GMT_Report(API, GMT_MSG_NORMAL, "The predicted surface %s has the opposite sign to %.0f of the %.0f soundings "
+				           "compared with it:\na grid of heights, positive up, needs --cube-prediction-topography, a grid of "
+				           "depths, positive\ndown, must be used without it\n",
+				           options->prediction_file, nopposite, nsame + nopposite);
+				GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+				exit_code = MB_ERROR_BAD_PARAMETER;
+				goto cleanup;
+			}
+			status = mb_cube_flush(verbose, cube_ptr, &error);
+		}
+		if (status != MB_SUCCESS) {
+			char *mbmessage = NULL;
+			mb_error(verbose, error, &mbmessage);
+			GMT_Report(API, GMT_MSG_NORMAL, "MBIO Error building the CUBE surface:\n%s\n", mbmessage);
+			GMT_Report(API, GMT_MSG_NORMAL, "Program <%s> Terminated\n", program_name);
+			exit_code = error;
+			goto cleanup;
+		}
+	}
+
+	/* give the total statistics */
+	if (verbose >= 0) {
+		fprintf(stderr, "\nMBclean CUBE Processing Totals:\n");
+		fprintf(stderr, "-------------------------------\n");
+		fprintf(stderr, "%d total swath data files processed\n", nfiletot);
+		fprintf(stderr, "%lld total soundings inserted into the CUBE grid\n", ninserttot);
+		fprintf(stderr, "%lld total soundings compared with the CUBE surface\n", ntestedtot);
+		fprintf(stderr, "%lld total soundings reaching no CUBE node with data, not tested\n", nuntestedtot);
+		fprintf(stderr, "%lld total soundings belonging to a hypothesis not selected\n", nhypothesistot);
+		fprintf(stderr, "%lld total soundings exceeding the outlier threshold\n", noutliertot);
+		if (options->param.blunder && options->prediction != MB_CUBE_PREDICTION_NONE)
+			fprintf(stderr, "%lld total soundings rejected by the blunder test\n", nblundertot);
+		fprintf(stderr, "%lld total beams flagged\n", nflagtot);
+	}
+
+cleanup:
+	/* on a fatal error: close the swath file and the edit save file, unlock the
+	   raw file and close the datalist; always release the CUBE grid and the
+	   predicted surface */
+	{
+		int release_error = MB_ERROR_NO_ERROR;
+		if (mbio_ptr != NULL)
+			mb_close(verbose, &mbio_ptr, &release_error);
+		if (esf_loaded)
+			mb_esf_close(verbose, &esf, &release_error);
+		if (file_locked)
+			mb_pr_unlockswathfile(verbose, path, MBP_LOCK_EDITBATHY, program_name, &release_error);
+		if (datalist != NULL)
+			mb_datalist_close(verbose, &datalist, &release_error);
+		if (median_ptr != NULL)
+			mb_cube_median_deall(verbose, &median_ptr, &release_error);
+		if (pred_depth != NULL)
+			mb_freed(verbose, __FILE__, __LINE__, (void **)&pred_depth, &release_error);
+		if (cube_ptr != NULL)
+			mb_cube_deall(verbose, &cube_ptr, &release_error);
+	}
+	return (exit_code);
+}
+
 #define bailout(code)  { gmt_M_free_options(mode); return (code); }
 #define Return(code)   { Free_mbclean_Ctrl(GMT, Ctrl); gmt_end_module(GMT, GMT_cpy); bailout(code); }
 
@@ -505,6 +1444,9 @@ int GMT_mbclean(void *V_API, int mode, void *args) {
 	/* 1: no options is a run of the program (on datalist.mb-1) */
 	if ((error = gmt_report_usage(API, options, 1, usage)) != GMT_NOERROR) bailout(error);
 
+	/* the program's CUBE long options, which have no short letter, kept out of the keyword translation and of
+	   GMT's --PAR=value handling */
+	mb_gmt_mark_long_options(API, &options, long_options);
 	if ((GMT = gmt_init_module(API, THIS_MODULE_LIB, THIS_MODULE_NAME, THIS_MODULE_KEYS, THIS_MODULE_NEEDS, module_kw, &options, &GMT_cpy)) == NULL) bailout(API->error);
 	if (GMT_Parse_Common(API, THIS_MODULE_OPTIONS, options)) Return(API->error);
 
@@ -598,6 +1540,23 @@ int GMT_mbclean(void *V_API, int mode, void *args) {
 
 	mb_path read_file;
 	strcpy(read_file, Ctrl->I.active ? Ctrl->I.inputfile : "datalist.mb-1");
+
+	/* CUBE flagging runs alone: run mbclean twice to combine it with other tests */
+	if (Ctrl->cube.use) {
+		if (check_slope || zap_beams || flag_distance || unflag_distance || flag_angle || unflag_angle || zap_rails ||
+		    check_spike || check_range || check_range_min || check_fraction || check_speed_good || check_deviation ||
+		    check_num_good_min || check_position_bounds || check_zero_position || fix_edit_timestamps ||
+		    zap_max_heading_rate || zap_long_across || check_ping_deviation) {
+			GMT_Report(API, GMT_MSG_NORMAL, "CUBE flagging --cube-spacing cannot be combined with the other tests of %s;\n"
+			           "run %s once with the other tests and once with CUBE flagging\n", THIS_MODULE_NAME, THIS_MODULE_NAME);
+			Return(GMT_PARSE_ERROR);
+		}
+		const int cube_exit = mbclean_cube(API, verbose, read_file, format, lonflip, pings, btime_i, etime_i, speedmin,
+		                                   timegap, uselockfiles, &Ctrl->cube);
+		if (mb_memory_list(verbose, &error) == MB_FAILURE)
+			GMT_Report(API, GMT_MSG_NORMAL, "Program %s completed but leaked memory\n", THIS_MODULE_NAME);
+		Return(cube_exit == MB_ERROR_NO_ERROR ? GMT_NOERROR : GMT_RUNTIME_ERROR);
+	}
 
 	/* If nothing else asked, default to slope checking. */
 	if (!check_slope && !zap_beams && !flag_distance && !unflag_distance &&

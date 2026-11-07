@@ -3,15 +3,15 @@
 Which MB-System programs are available as GMT modules in the `mbsystem`
 supplement, and which are not. Counts taken from a full Windows/MSVC build.
 
-## Ported (56 modules in mbsystem.dll)
+## Ported (59 modules in mbsystem.dll)
 
 mb7k2jstar, mbabsorption, mbareaclean, mbauvloglist, mbbackangle, mbclean, mbconfig,
 mbcontour, mbcopy, mbctdlist, mbdatalist, mbdefaults, mbdumpesf, mbextractsegy, mbfilter,
 mbfnv2navlab, mbformat, mbgetdata, mbgetesf, mbgpstide, mbgrd2gltf, mbgrd2obj, mbgrdtiff,
-mbgrid, mbhistogram, mbimport, mbinfo, mblevitus, mblist, mbmakedatalist, mbmakeplatform,
+mbgrid, mbhistogram, mbhistory, mbimport, mbinfo, mblevitus, mblist, mbmakedatalist, mbmakeplatform,
 mbmapscale, mbmesh, mbminirovnav, mbmosaic, mbnavadjustmerge, mbnavlab2fnv, mbnavlist,
 mbotps, mbpreprocess, mbprocess, mbrolltimelag, mbroutetime, mbsegygrid, mbsegyinfo,
-mbsegylist, mbsegypsd, mbset, mbsslayout, mbsvplist, mbsvpselect, mbswath, mbswath2las,
+mbsegylist, mbsegypsd, mbset, mbsslayout, mbsvpbest, mbsvpextract, mbsvplist, mbsvpselect, mbswath, mbswath2las,
 mbtime, mbusbl2fnv, mbvoxelclean
 
 `mbgetdata` and `mbimport` are GMT-only: they have no command-line counterpart.
@@ -49,10 +49,14 @@ was never a candidate:
 - A module that hands a datalist to `mb_make_info_datalist()` / `mb_get_info_datalist()` asks
   `mb_gmt_datalist_opens()` first: those MBIO functions `exit()` on a datalist they cannot open,
   which would end the caller's whole session (Julia, Python, MATLAB).
+- A module that runs other modules of this library through `GMT_Call_Module` (mbhistory
+  `--process`, mbsvpbest) opens its text output with `mb_gmt_text_begin_deferred()`: the called
+  module sets up its own output, which would take over one opened before it (lost records, or a
+  crash in `GMT_End_IO`). It runs those modules, not the executables, so a plugin-only install works.
 - Output keys only for what really comes back through the API (`>D}` for text records). A module
   that writes its own files (grids, swath files) has an input key only.
 
-Done this way: all 56 modules. Checked against the programs (compileds/VC14_64/bin) by
+Done this way: all 59 modules. Checked against the programs (compileds/VC14_64/bin) by
 `test/gmtmodules/mbport_check.jl` (`run_checks.bat`).
 
 ## How a port is done

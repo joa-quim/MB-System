@@ -62,4 +62,49 @@ const CMD = mbprog("utilities", "mbpreprocess")
 	@testset "OldSimradFormat54" begin
 		check_old_simrad_to_format57("mb54", "TN136HS.309.snipped.mb54", 54, 2, 115)
 	end
+
+	@testset "KongsbergHeadingWithoutPlatform" begin
+		# Kongsberg EM122 .all data (format 58) preprocessed without a platform file must keep the
+		# recorded heading in the format 59 output and in the .fbt file. mbsys_simrad3_preprocess()
+		# used to add uninitialized platform mount offsets, giving heading 0.000 in the .mb59 file
+		# and -21474836 in the .fbt file instead of about 8.3 degrees. The test data are two pings
+		# of a Sea Acceptance Test line of RV METEOR, 19 December 2011. Uninitialized stack values
+		# change with the stack layout, and the old code gave the correct heading by chance in some
+		# runs, so mbpreprocess is run with a range of environment sizes, each of which must pass.
+		cmd = abspath(CMD)
+		cmd_dir = dirname(cmd)
+		testdata = abspath(joinpath("testdata", "mb58"))
+		src_name = "0008_20111219_210356_METEOR_EM122.snipped.all"
+		env = mbenv()
+		env["PATH"] = join([cmd_dir, get(env, "PATH", "")], Sys.iswindows() ? ';' : ':')
+
+		headings(filename, iformat) =
+			[parse(Float64, value) for value in
+			 split(mbcheck([joinpath(cmd_dir, "mblist" * MB_EXE), "-I" * filename, "-F$iformat", "-Q", "-OH"]; env))]
+
+		mktempdir() do tmpdir
+			cp(joinpath(testdata, src_name), joinpath(tmpdir, src_name))
+			cd(tmpdir) do
+				ofile = splitext(src_name)[1] * ".mb59"
+				raw = headings(src_name, 58)
+				@test length(raw) == 2
+				for value in raw
+					@test isapprox(value, 8.27; atol = 0.05)
+				end
+
+				for pad in 0:8:255
+					run_env = copy(env)
+					run_env["MB_TEST_STACK_PAD"] = "x"^pad
+					mbcheck([cmd, "--input=" * src_name, "--format=58"]; stderr_to_stdout = true, env = run_env)
+					for (filename, iformat) in ((ofile, 59), (ofile * ".fbt", 71))
+						preprocessed = headings(filename, iformat)
+						@test length(preprocessed) == length(raw)
+						for (raw_value, value) in zip(raw, preprocessed)
+							@test isapprox(value, raw_value; atol = 0.1)
+						end
+					end
+				end
+			end
+		end
+	end
 end

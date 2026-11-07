@@ -35,5 +35,45 @@ const CMD = mbprog("utilities", "mblist")
 		@test occursin("projection_pars:", output)
 	end
 
+	@testset "InvalidBeamRange" begin
+		# An unparsable beam range used to leave the beam range uninitialized, so mblist could loop
+		# over a random number of beams for every ping.
+		for arg in ("-MC", "-M5", "-MX", "--beam-range=C", "--beam-range=X")
+			output, code = mbrun([CMD, arg]; stderr_to_stdout = true)
+			@test code == 9
+			@test occursin("Invalid beam range:", output)
+			@test occursin("usage:", output)
+		end
+	end
+
+	@testset "ValidBeamRange" begin
+		# Valid beam ranges are accepted; mblist then stops because there is no input file.
+		for arg in ("-M10/20", "-MA", "-MX20", "--beam-range=10/20")
+			output, code = mbrun([CMD, arg]; stderr_to_stdout = true)
+			@test code == 2
+			@test !occursin("Invalid beam range:", output)
+			@test occursin("Unable to open data list file:", output)
+		end
+	end
+
+	@testset "InvalidPixelRange" begin
+		# Same as InvalidBeamRange for the sidescan pixel range.
+		for arg in ("-NC", "-N5", "--pixel-range=C")
+			output, code = mbrun([CMD, arg]; stderr_to_stdout = true)
+			@test code == 9
+			@test occursin("Invalid pixel range:", output)
+			@test occursin("usage:", output)
+		end
+	end
+
+	@testset "ValidPixelRange" begin
+		for arg in ("-N10/20", "-NA", "--pixel-range=10/20")
+			output, code = mbrun([CMD, arg]; stderr_to_stdout = true)
+			@test code == 2
+			@test !occursin("Invalid pixel range:", output)
+			@test occursin("Unable to open data list file:", output)
+		end
+	end
+
 	# TODO(schwehr): Add tests of actual usage.
 end

@@ -32,5 +32,41 @@ const CMD = mbprog("utilities", "mbareaclean")
 		@test occursin("median_filter", output)
 	end
 
-	# TODO(schwehr): Add tests of actual usage.
+	@testset "KeepsExistingEdits" begin
+		# mbareaclean must keep the edits already in the edit save file, also for soundings it does
+		# not evaluate (here: outside the --bounds area). It used to rewrite the file with only the
+		# edits of the soundings stored in its grid, deleting all the others.
+		cmd = abspath(CMD)
+		cmd_dir = dirname(cmd)
+		testdata = abspath(joinpath("testdata", "mb54"))
+		swath = "TN136HS.309.snipped.mb54"
+		env = mbenv()
+		env["PATH"] = join([cmd_dir, get(env, "PATH", "")], Sys.iswindows() ? ';' : ':')
+
+		# keep time, beam and action, not the record index
+		function edits()
+			output = unixlines(mbcheck([joinpath(cmd_dir, "mbdumpesf" * MB_EXE), "--input=" * swath * ".esf"]; env))
+			return [split(line, "time:"; limit = 2)[2] for line in split(output, '\n') if startswith(line, "EDITS READ:")]
+		end
+
+		mktempdir() do tmpdir
+			cp(joinpath(testdata, swath), joinpath(tmpdir, swath))
+			cd(tmpdir) do
+				mbcheck([joinpath(cmd_dir, "mbclean" * MB_EXE), "--input=" * swath, "--format=54", "--depth-range=455/470"];
+				        stderr_to_stdout = true, env)
+				before = edits()
+				@test length(before) > 0
+
+				write("datalist.mb-1", swath * " 54\n")
+				mbcheck([cmd, "--input=datalist.mb-1", "--bin-size=20", "--median-filter=0.5/2",
+				         "--flag-bad", "--bounds=-124.51/-124.5015/40.83/40.85"]; stderr_to_stdout = true, env)
+				after = edits()
+				for edit in before
+					@test edit in after
+				end
+			end
+		end
+	end
+
+	# TODO(schwehr): Add more tests of actual usage.
 end

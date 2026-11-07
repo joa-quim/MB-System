@@ -28,6 +28,7 @@ set(manpages
     mbgrdviz.1
     mbgrid.1
     mbhistogram.1
+    mbhistory.1
     mbimagelist.1
     mbinfo.1
     mbnavlab2fnv.1
@@ -74,9 +75,12 @@ set(manpages
     mbotps.1
     mbpreprocess.1
     mbprocess.1
+    mbpy_wcdview.1
     mbpy_grd3dplot.1
     mbpy_grdplot.1
+    mbpy_grdtiff.1
     mbpy_histplot.1
+    mbpy_plot.1
     mbpy_xyplot.1
     mbrolltimelag.1
     mbroutetime.1
@@ -86,6 +90,8 @@ set(manpages
     mbsegypsd.1
     mbset.1
     mbsslayout.1
+    mbsvpbest.1
+    mbsvpextract.1
     mbsvplist.1
     mbsvpselect.1
     mbswath.1
@@ -128,7 +134,14 @@ if(buildOpenCV)
         mbphotomosaic.1)
 endif()
 
-install(FILES ${manpages} ${deprecated} ${trn} ${photo} DESTINATION ${CMAKE_INSTALL_MANPAGES}/man1)
+if(buildQt6Tools)
+    set(qt6tools
+        mbwcdview.1
+        mbvelocitytool-qt.1
+        mbedit-qt.1)
+endif()
+
+install(FILES ${manpages} ${deprecated} ${trn} ${photo} ${qt6tools} DESTINATION ${CMAKE_INSTALL_MANPAGES}/man1)
 
 message(STATUS "Installed man pages to ${CMAKE_INSTALL_MANPAGES}/man1")
 

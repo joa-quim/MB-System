@@ -37,8 +37,8 @@
 #include <stdint.h>
 
 /* Define version and date for this release */
-#define MB_VERSION "5.8.3beta26"
-#define MB_VERSION_DATE "23 October 2026"
+#define MB_VERSION "5.8.3beta28"
+#define MB_VERSION_DATE "3 November 2026"
 
 /* CMake supports current OS's and so there is only one form of RPC and XDR and no mb_config.h file */
 #ifdef CMAKE_BUILD_SYSTEM
@@ -660,6 +660,12 @@ MBIO_API int mb_extract_rawss(int verbose, void *mbio_ptr, void *store_ptr, int 
 int mb_insert_rawss(int verbose, void *mbio_ptr, void *store_ptr, int kind, int sidescan_type, double sample_interval,
                     double beamwidth_xtrack, double beamwidth_ltrack, int num_samples_port, double *rawss_port,
                     int num_samples_stbd, double *rawss_stbd, int *error);
+MBIO_API int mb_extract_wcdimensions(int verbose, void *mbio_ptr, void *store_ptr, int *kind, int *nbeams, int *nsamples_max,
+                                     int *error);
+MBIO_API int mb_extract_wc(int verbose, void *mbio_ptr, void *store_ptr, int nbeams_alloc, int nsamples_alloc, int *kind,
+                           int time_i[7], double *time_d, int *nbeams, int *nsamples_max, int *swath, double *angle_across,
+                           double *angle_along, double *sample_interval, double *soundspeed, int *start_sample, int *nsamples,
+                           double *detect_sample, float *amplitude, int *error);
 MBIO_API int mb_extract_segytraceheader(int verbose, void *mbio_ptr, void *store_ptr, int *kind, void *segytraceheader_ptr, int *error);
 MBIO_API int mb_extract_segy(int verbose, void *mbio_ptr, void *store_ptr, int *sampleformat, int *kind, void *segyheader_ptr,
                     float *segydata, int *error);
@@ -870,7 +876,7 @@ int mb_beaudoin_unrotate(int verbose, mb_3D_vector orig, mb_3D_orientation rotat
 /* Function prototypes from mb_compare.c */
 MBIO_API int mb_double_compare(const void *a, const void *b);
 int mb_int_compare(const void *a, const void *b);
-int mb_edit_compare(const void *a, const void *b);
+MBIO_API int mb_edit_compare(const void *a, const void *b);
 int mb_edit_compare_coarse(const void *a, const void *b);
 
 /* mb_process.h declares prototypes for all functions defined in mb_process.c (mb_pr_checkstatus,

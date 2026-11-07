@@ -82,6 +82,7 @@ set (MBSYSTEM_MODULE_SRCS
     mbgrd2obj.c
     mbgrid.c
     mbhistogram.c
+    mbhistory.c
     mbimport.c
     mbinfo.c
     mblevitus.c
@@ -96,6 +97,8 @@ set (MBSYSTEM_MODULE_SRCS
     mbprocess.c
     mbsegyinfo.c
     mbset.c
+    mbsvpbest.c
+    mbsvpextract.c
     mbsvplist.c
     mbsvpselect.c
     mbswath2las.c
@@ -210,6 +213,9 @@ target_link_libraries(mbsystem FFTW::Double)
 # mbnavadjustmerge.c works on mbnavadjust projects through mbnavadjust_core
 # (defined in src/mbnavadjust; linking by name resolves at generate time).
 target_link_libraries(mbsystem mbnavadjust_core)
+# mbsvpbest.c and mbsvpextract.c use the sound velocity profile tools library
+# (defined in src/svptools; built position independent for this shared library).
+target_link_libraries(mbsystem mbsvptools)
 # mbcopy/mbgpstide reach mbsys_gsf.h, which includes <gsf.h>; linking mbgsf
 # (as src/utilities does) brings both the header path and the symbols.
 target_link_libraries(mbsystem GMT::GMT GMT::PSL mbio mbaux mbbsio mbsapi mbgsf)

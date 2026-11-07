@@ -25,7 +25,7 @@ dnl-----------------------------------------------------------------------------
 dnl--------------------------------------------------------------------
 
 dnl Initialize and set version and version date
-AC_INIT([mbsystem],[5.8.3beta26],[http://listserver.mbari.org/sympa/arc/mbsystem],[mbsystem],[http://www.mbari.org/data/mbsystem/])
+AC_INIT([mbsystem],[5.8.3beta28],[http://listserver.mbari.org/sympa/arc/mbsystem],[mbsystem],[http://www.mbari.org/data/mbsystem/])
 
 AS_ECHO([" "])
 AS_ECHO(["------------------------------------------------------------------------------"])
@@ -1501,8 +1501,10 @@ AC_CONFIG_FILES([\
     src/mbbitpack/Makefile \
     src/mbaux/Makefile \
     src/utilities/Makefile \
+    src/svptools/Makefile \
     src/gmt/Makefile \
     src/macros/Makefile \
+    src/python/Makefile \
     src/otps/Makefile \
     src/mbgrd2gltf/Makefile \
     src/mbmesh/Makefile \

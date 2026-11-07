@@ -425,28 +425,23 @@ function compute_layout_xy(
     projection = projection_pars = nothing
 
     if map_scale !== nothing
-        spec = layout.get_projection(map_scale)
+        spec = layout.get_projection_xy(map_scale)
         projection = spec.projection
         projection_pars = spec.projection_pars
         use_scale, use_width = spec.use_scale, spec.use_width
-        use_ratio = spec.use_ratio
+        use_ratio, linear = spec.use_ratio, spec.linear
         separator, trial_value = spec.separator, spec.trial_value
         plot_scale, plot_width = spec.plot_scale, spec.plot_width
 
-        # BUG FIX (present in mbpy_xyplot_script.py, not in mbm_xyplot):
-        # the Python port took `linear` from the shared get_projection(),
-        # whose mbm_grdplot semantics set it for EVERY x/X spec. mbm_xyplot
-        # itself instead uses $geographic, which its own GetProjection sets
-        # only for the literal "xd"/"Xd" flag -- and it also chop()s the
-        # trailing "d" off the *global* $map_scale there, so the later
-        # re-derivation of projection_pars from $map_scale sees "x"/"X".
-        # The Python port missed both halves: "-J X" came out as the
-        # geographic "-JX6.5d" (never reaching the independent x/y fill
-        # branch below), and "-J xd"/"-J Xd" came out as "-Jxd18.367d",
-        # which GMT rejects outright ("d18.367 not a valid number").
-        # Confirmed by running the generated scripts through GMT 6.
-        linear = map_scale == "xd" || map_scale == "Xd"
-        if linear
+        # mbm_xyplot's own GetProjection (get_projection_xy()) sets its
+        # $geographic (`linear` here) only for the literal "xd"/"Xd" flag,
+        # and treats any other x/X remainder ("x3.0/-0.05", "X6/-8",
+        # "X6i") as a complete user scale/width. It also chop()s the "d"
+        # off a bare "xd"/"Xd" in the *global* $map_scale, so the later
+        # projection_pars rebuild sees "x"/"X". (This Julia port fixed the
+        # `linear` and chop halves before upstream did; upstream's
+        # get_projection_xy() now also covers the user scale/width part.)
+        if map_scale == "xd" || map_scale == "Xd"
             map_scale = map_scale[1:end-1]
         end
 

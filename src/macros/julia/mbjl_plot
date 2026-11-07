@@ -1,0 +1,458 @@
+#!/usr/bin/env julia
+#--------------------------------------------------------------------
+#    The MB-system:  mbjl_plot
+#
+#    Copyright (c) 2026 by
+#    David W. Caress (caress@mbari.org)
+#      Monterey Bay Aquarium Research Institute
+#      Moss Landing, California, USA
+#
+#    See README.md file for copying and redistribution conditions.
+#--------------------------------------------------------------------
+#
+# Purpose:
+#   Julia port of the Python macro mbpy_plot, the Python/PyGMT-era
+#   replacement for the Perl macro mbm_plot: reads a swath data file or
+#   datalist and generates a GMT **modern mode** shellscript that maps
+#   the swath data itself (not a grid) with MB-System's `gmt mbswath`
+#   (bathymetry color fill or shaded relief, bathymetry shaded by
+#   amplitude, amplitude or sidescan fill) and `gmt mbcontour`
+#   (bathymetry contours, annotated navigation), plus optional
+#   coastline, xy and text overlays, color scale and basemap. The page
+#   layout and projection fitting follow mbm_plot (shared with the other
+#   mbjl_* macros in src/macros/julia/mbjl_layout.jl); the
+#   swath-specific bounds, color and control logic, and the fixes made
+#   relative to mbm_plot, are in src/macros/julia/mbjl_plot_script.jl.
+#
+#   As in mbjl_grdplot, mbm_plot's "-M<sub>:<sub>:..." grammar is
+#   replaced by descriptive long options -- see the --help text.
+#
+# Usage:
+#   mbjl_plot -I datalist.mb-1 [-O root] [options...]
+#   mbjl_plot --input datalist.mb-1 --color-mode 2 --contour 50 \
+#       --navigation 0.25/1/4 --coast --execute
+#
+
+# Locate the sibling mbjl_{util,layout,color,misc,grdplot_script,
+# plot_script} modules: they sit alongside this script once installed
+# (flat bindir, matching how src/macros installs its Perl macros), and
+# also in the source tree (src/macros/julia/); a julia/ subdirectory is
+# tried as well so this also runs from a layout mirroring the Python
+# tools' python/ subdir.
+const _here = dirname(realpath(@__FILE__))
+const _moddir = let d = nothing
+    for cand in (_here, joinpath(_here, "julia"))
+        if isfile(joinpath(cand, "mbjl_plot_script.jl"))
+            d = cand
+            break
+        end
+    end
+    d === nothing && error("mbjl_plot: cannot find mbjl_plot_script.jl next to $(_here)")
+    d
+end
+
+isdefined(@__MODULE__, :MbjlUtil) || include(joinpath(_moddir, "mbjl_util.jl"))
+isdefined(@__MODULE__, :MbjlLayout) || include(joinpath(_moddir, "mbjl_layout.jl"))
+isdefined(@__MODULE__, :MbjlColor) || include(joinpath(_moddir, "mbjl_color.jl"))
+isdefined(@__MODULE__, :MbjlMisc) || include(joinpath(_moddir, "mbjl_misc.jl"))
+isdefined(@__MODULE__, :MbjlGrdplotScript) || include(joinpath(_moddir, "mbjl_grdplot_script.jl"))
+isdefined(@__MODULE__, :MbjlPlotScript) || include(joinpath(_moddir, "mbjl_plot_script.jl"))
+
+using .MbjlUtil
+const layout = MbjlLayout
+const color = MbjlColor
+const misc = MbjlMisc
+const script = MbjlPlotScript
+
+
+function build_arg_parser()::ArgParser
+    p = ArgParser(
+        prog = "mbjl_plot",
+        description = "Generate a GMT modern-mode script that maps swath sonar data with " *
+                      "mbswath and mbcontour (Julia port of mbpy_plot, the replacement for mbm_plot). " *
+                      "With none of --color-mode, --contour or --navigation, the navigation " *
+                      "track is plotted.",
+    )
+
+    g = add_argument_group(p, "input/output")
+    add_argument!(g, "-I", "--input", default = "datalist.mb-1", metavar = "FILE",
+                  help = "swath data file or datalist [datalist.mb-1]")
+    add_argument!(g, "-F", "--data-format", type = Int, metavar = "FORMAT",
+                  help = "MB-System format id of the input, -1 for a datalist [from mbformat]")
+    add_argument!(g, "-O", "--output", metavar = "ROOT",
+                  help = "output root name: writes ROOT.sh and ROOT.<format> [default: input's basename without extension]")
+    add_argument!(g, "--format", default = "pdf", metavar = "FMT", help = "output format: pdf, png, ps, jpg, tif, eps, ... [pdf]")
+    add_argument!(g, "--title", metavar = "TEXT", help = "plot title [default: \"Data List File <input>\" or \"Data File <input>\"]")
+    add_argument!(g, "--colorbar-label", metavar = "TEXT",
+                  help = "color scale label [by color mode: \"Depth (meters)\", \"Beam Amplitude Values\", \"Sidescan Pixel Values\"]")
+    add_argument!(g, "--dpi", type = Int, metavar = "DPI", help = "resolution of the mbswath image and of a raster output")
+    add_argument!(g, "-X", "--execute", action = :store_true, help = "run the generated script immediately")
+    add_argument!(g, "-V", "--verbose", action = :store_true, help = "print progress and a brief summary")
+
+    g = add_argument_group(p, "region / projection / page")
+    add_argument!(g, "-R", "--region", metavar = "W/E/S/N", help = "map region [default: data bounds, padded]")
+    add_argument!(g, "-J", "--projection", metavar = "SPEC", help = "GMT map scale/projection spec, e.g. \"m1.0\", \"Xd6i\" [default: auto-fit Mercator]")
+    add_argument!(g, "-P", "--pagesize", default = "a", metavar = "SIZE", help = "page size code (a, b, c, ... a4, ...) [a]")
+    orient = add_mutually_exclusive_group(p)
+    add_argument!(orient, "--portrait", action = :store_const, dest = :orientation, const_ = 1, help = "force portrait orientation")
+    add_argument!(orient, "--landscape", action = :store_const, dest = :orientation, const_ = 2, help = "force landscape orientation")
+    set_defaults!(p; orientation = 0)
+    add_argument!(g, "--scale-location", default = "b", choices = ["l", "r", "t", "b"], help = "color scale bar placement [b]")
+    add_argument!(g, "--tick-info", metavar = "SPEC", help = "raw -B basemap tick spec override")
+    add_argument!(g, "--length-scale", metavar = "SPEC",
+                  help = "GMT distance scale bar spec, e.g. \"fx1/1/36.8/10+lkm\"; \"center\" in it is replaced by the map center lon/lat")
+    add_argument!(g, "--timestamp", nargs = "?", const_ = "", default = nothing, metavar = "LABEL",
+                  help = "add a GMT time stamp (-U), optionally with a label")
+
+    g = add_argument_group(p, "swath image (mbswath)")
+    add_argument!(g, "-G", "--color-mode", type = Int, choices = 1:5, metavar = "{1-5}",
+                  help = "1 bathymetry color fill, 2 bathymetry shaded relief, 3 bathymetry shaded by amplitude, " *
+                         "4 amplitude fill, 5 sidescan fill")
+    add_argument!(g, "--filtered", action = :store_true, help = "plot filtered amplitude/sidescan (mbswath -Z<mode>F)")
+    add_argument!(g, "-W", "--color-control", metavar = "SPEC",
+                  help = "\"style/palette[/ncolors]\" (style 1 continuous, 2 discrete; palette 1-7), or a path " *
+                         "to an existing .cpt file [1/1/11; palette 4 (grayscale) for color modes 4 and 5]")
+    add_argument!(g, "-D", "--color-flip", action = :store_true, help = "reverse the color palette")
+    add_argument!(g, "-Y", "--no-nice-interval", action = :store_true,
+                  help = "use a direct linear color stretch instead of rounded intervals")
+    add_argument!(g, "-S", "--stretch-color", action = :store_true,
+                  help = "histogram-equalize the color stretch (using mbhistogram)")
+    add_argument!(g, "-Z", "--zbounds", metavar = "MIN/MAX",
+                  help = "range of the colored quantity (depth, or amplitude/sidescan for color modes 4/5)")
+
+    g = add_argument_group(p, "shading (color modes 2 and 3)")
+    add_argument!(g, "-A", "--shade", metavar = "MAG[/AZIM|/ZERO]",
+                  help = "magnitude and illumination azimuth (mode 2) or amplitude zero level (mode 3), as in mbm_plot -A")
+    add_argument!(g, "--magnitude", type = Float64, metavar = "VAL", help = "shading magnitude [2.5 for mode 2]")
+    add_argument!(g, "--azimuth", type = Float64, metavar = "DEG", help = "illumination azimuth for mode 2 [0]")
+    add_argument!(g, "--zero-level", type = Float64, metavar = "VAL", help = "amplitude giving zero shading for mode 3 [from the amplitude range]")
+    add_argument!(g, "--shade-flip", action = :store_true, help = "reverse the shading (mode 2: azimuth + 180; mode 3 stretched shade: gray scale)")
+    add_argument!(g, "--stretch-shade", action = :store_true, help = "equalize the amplitude shading for mode 3 (Gaussian mbhistogram)")
+
+    g = add_argument_group(p, "contours and navigation (mbcontour)")
+    add_argument!(g, "-C", "--contour", nargs = "?", const_ = true, default = false,
+                  metavar = "CONT[/COLOR[/TICK[/LABEL[/TICKLEN[/LABELHGT]]]]]",
+                  help = "plot bathymetry contours, optionally at these intervals and sizes [auto]")
+    add_argument!(g, "--contour-algorithm", metavar = "N", help = "mbcontour -Z contour algorithm (-MMZ)")
+    add_argument!(g, "--contour-nplot", metavar = "PINGS", help = "number of pings contoured at a time (-MMN)")
+    add_argument!(g, "-N", "--navigation", nargs = "?", const_ = true, default = false,
+                  metavar = "TICK[/ANNOT[/DATE[/SIZE]]] | F | FP",
+                  help = "plot the navigation track, optionally with time ticks/annotations (hours), " *
+                         "or F/FP to annotate file names (FP perpendicular to the track)")
+    add_argument!(g, "--nav-names", nargs = "?", const_ = "0.15", default = nothing, metavar = "HEIGHT[/P]",
+                  help = "annotate file names on the track, optionally perpendicular (-MNA)")
+    add_argument!(g, "--ping-ticks", nargs = "?", const_ = "50/100/0.1", default = nothing, metavar = "TICK[/ANNOT[/LEN]]",
+                  help = "ping number ticks and annotations (-MNP) [50/100/0.1]")
+
+    g = add_argument_group(p, "data selection (mbswath and mbcontour)")
+    add_argument!(g, "--footprint", metavar = "FACTOR/MODE/DEPTH", help = "beam footprint parameters, mbswath -A (-MMA) [1]")
+    add_argument!(g, "--swath-scale", metavar = "MODE/SCALE[/MIN/MAX]", help = "amplitude/sidescan scaling, mbswath -D (-MMD)")
+    add_argument!(g, "--begin-time", metavar = "YR/MO/DA/HR/MN/SC", help = "plot data from this time (-MMB)")
+    add_argument!(g, "--end-time", metavar = "YR/MO/DA/HR/MN/SC", help = "plot data until this time (-MME)")
+    add_argument!(g, "--speedmin", metavar = "KM/HR", help = "minimum ship speed (-MMS)")
+    add_argument!(g, "--timegap", metavar = "MINUTES", help = "time gap threshold (-MMT)")
+    add_argument!(g, "--lonflip", type = Int, choices = (-1, 0, 1), help = "longitude range: -1 -360..0, 0 -180..180, 1 0..360 (-MML) [0]")
+
+    g = add_argument_group(p, "coastline")
+    add_argument!(g, "-T", "--coast", action = :store_true, help = "plot coastline [dry fill 200, pen 1p when nothing else is set]")
+    add_argument!(g, "--coast-resolution", choices = ["f", "h", "i", "l", "c"], metavar = "{f,h,i,l,c}", help = "[f]")
+    add_argument!(g, "--coast-dry-fill", metavar = "COLOR")
+    add_argument!(g, "--coast-wet-fill", metavar = "COLOR")
+    add_argument!(g, "--coast-lake-fill", metavar = "COLOR")
+    add_argument!(g, "--coast-river", metavar = "SPEC")
+    add_argument!(g, "--coast-boundary", action = :append, default = String[], metavar = "SPEC", help = "national boundary spec (repeatable)")
+    add_argument!(g, "--coast-pen", metavar = "PEN")
+
+    g = add_argument_group(p, "xy overlay")
+    add_argument!(g, "--xy-overlay", action = :append, default = String[], metavar = "FILE[:fill=..][:symbol=..][:pen=..]",
+                  help = "an xy data file to overlay, e.g. \"points.xy:fill=red:symbol=c0.1:pen=1p,blue\" (repeatable)")
+
+    g = add_argument_group(p, "text labels")
+    add_argument!(g, "--text", action = :append, default = String[], metavar = "LON/LAT/SIZE/ANGLE/FONT/JUSTIFY/TEXT",
+                  help = "a text label, e.g. \"-11.7/36.8/12/0/1/LB/Gorringe Bank\" (repeatable)")
+
+    g = add_argument_group(p, "GMT defaults")
+    add_argument!(g, "--gmt-default", action = :append, default = String[], metavar = "PARAM/VALUE",
+                  help = "override a GMT default (repeatable)")
+
+    return p
+end
+
+
+# Python truthiness of a parsed option value (None, False, "" and an
+# empty list are all "not given").
+_t(x) = !(x === nothing || x === false || (x isa AbstractString && isempty(x)) ||
+          (x isa AbstractVector && isempty(x)))
+
+
+"""argparse's `parser.error(msg)`: usage plus the message on stderr,
+exit status 2."""
+function parser_error(p::ArgParser, msg::AbstractString)
+    println(stderr, "usage: ", p.prog, " [-h] ", join(MbjlUtil._usage_piece.(p.specs), " "))
+    println(stderr, p.prog, ": error: ", msg)
+    exit(2)
+end
+
+
+function _partition(s::AbstractString, sep::AbstractString)
+    idx = findfirst(sep, s)
+    idx === nothing && return (String(s), "")
+    return (String(s[1:prevind(s, first(idx))]), String(s[nextind(s, last(idx)):end]))
+end
+
+
+function parse_xy_overlay(spec::AbstractString)::misc.XYOverlayEntry
+    parts = split(spec, ":")
+    styles = Dict("fill" => "N", "symbol" => "N", "pen" => "N")
+    for part in parts[2:end]
+        key, value = _partition(part, "=")
+        if !haskey(styles, key)
+            throw(ArgumentError("unknown xy-overlay style $(repr(key)) in $(repr(String(spec))) (expected fill/symbol/pen)"))
+        end
+        styles[key] = value
+    end
+    return misc.XYOverlayEntry(file = String(parts[1]), symbol = styles["symbol"], fill = styles["fill"],
+                               segment = "N", segchar = ">", pen = styles["pen"])
+end
+
+
+"""mbm_plot's -N / -MNA / -MNP handling (lines ~760-845)."""
+function resolve_navigation(args)::misc.NavigationOptions
+    control = args[:navigation] isa AbstractString ? args[:navigation] : nothing
+    nav = misc.NavigationOptions(
+        navigation_mode = true,
+        # a bare -N (or the default track-only plot) is the track with no
+        # time ticks or annotations, unlike mbm_grdplot's bare -MNN
+        navigation_control = _t(control) ? control : "100000/100000/100000/0.15",
+    )
+    if args[:nav_names] !== nothing
+        hgt, perp = _partition(args[:nav_names], "/")
+        if uppercase(hgt) == "P"
+            hgt, perp = "0.15", "P"
+        end
+        nav.name_mode, nav.nav_name_hgt, nav.name_perp = true, pyfloat(isempty(hgt) ? "0.15" : hgt), uppercase(perp) == "P"
+    end
+    if args[:ping_ticks] !== nothing
+        f = split(args[:ping_ticks], "/")
+        nav.pingnumber_mode = true
+        nav.pingnumber_tick = pyfloat(f[1])
+        nav.pingnumber_annot = length(f) > 1 ? pyfloat(f[2]) : 100.0
+        nav.pingnumber_tick_len = length(f) > 2 ? pyfloat(f[3]) : 0.10
+    end
+    return misc.resolve_navigation_control(nav, true)
+end
+
+
+function main(argv = ARGS)::Int
+    parser = build_arg_parser()
+    args = parse_args(parser, argv)
+
+    if !ispath(args[:input])
+        parser_error(parser, "input file $(args[:input]) cannot be opened")
+    end
+    color_mode = args[:color_mode] === nothing ? 0 : args[:color_mode]
+    if color_mode == 0 && !_t(args[:contour]) && !_t(args[:navigation])
+        args[:navigation] = true
+    end
+
+    fmt = args[:data_format]
+    if fmt === nothing
+        fmt = pyint(misc.resolve_swath_format(args[:input]))
+    end
+    root = _t(args[:output]) ? args[:output] : replace(basename(args[:input]), r"\.[A-Za-z0-9-]+$" => "")
+
+    region_bounds = nothing
+    if _t(args[:region])
+        if endswith(args[:region], "r")
+            parser_error(parser, "corner-point regions (W/S/E/Nr) are not supported; give W/E/S/N")
+        end
+        parts = split(args[:region], "/")
+        if length(parts) != 4
+            parser_error(parser, "--region must be W/E/S/N")
+        end
+        region_bounds = Tuple(layout.get_decimal_degrees(v) for v in parts)
+    end
+
+    files = script.list_swath_files(args[:input], fmt, args[:region])
+    bounds = try
+        script.get_swath_bounds(
+            files; region_bounds = region_bounds, region = args[:region],
+            btime = args[:begin_time], etime = args[:end_time],
+            lonflip = args[:lonflip] === nothing ? 0 : args[:lonflip], color_mode = color_mode,
+            verbose = args[:verbose],
+        )
+    catch e
+        e isa ErrorException || rethrow()
+        parser_error(parser, e.msg)
+    end
+
+    # range of the colored quantity, and of bathymetry (for contours)
+    zmin, zmax = bounds.zmin, bounds.zmax
+    dmin, dmax = zmin, zmax
+    if color_mode == 4
+        dmin, dmax = bounds.amin, bounds.amax
+    elseif color_mode == 5
+        dmin, dmax = bounds.smin, bounds.smax
+    end
+    if _t(args[:zbounds])
+        zp = split(args[:zbounds], "/")
+        lo, hi = pyfloat(zp[1]), pyfloat(zp[2])
+        dmin, dmax = lo, hi
+        if color_mode in (0, 1, 2, 3)
+            zmin, zmax = lo, hi
+        end
+    end
+    needed = Dict(1 => "bathymetry", 2 => "bathymetry", 3 => "bathymetry", 4 => "amplitude", 5 => "sidescan")
+    if color_mode != 0 && (dmin === nothing || dmax === nothing || dmin >= dmax)
+        parser_error(parser, "does not appear to be any $(needed[color_mode]) data in the input")
+    end
+    if color_mode == 3 && !args[:stretch_shade] && (bounds.amin === nothing || bounds.amin >= bounds.amax)
+        parser_error(parser, "does not appear to be any amplitude data in the input")
+    end
+    if zmin === nothing || zmax === nothing || zmin >= zmax
+        zmin, zmax = 0.0, 1.0   # no bathymetry: only the track can be plotted
+    end
+
+    if region_bounds !== nothing
+        xmin, xmax, ymin, ymax = region_bounds
+    else
+        xmin, xmax, ymin, ymax = script.expand_bounds(bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax)
+    end
+    region = "$(fmtg(xmin, 8))/$(fmtg(xmax, 8))/$(fmtg(ymin, 8))/$(fmtg(ymax, 8))"
+
+    grid_info = layout.GridInfo(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
+                                zmin = zmin, zmax = zmax, gridprojected = 0)
+    lay = layout.compute_layout(
+        grid_info; pagesize = lowercase(args[:pagesize]), scale_loc = args[:scale_location],
+        map_scale = args[:projection], orientation = args[:orientation], region = region,
+    )
+
+    # colors
+    cc = color.resolve_color_control(args[:color_control])
+    color_style, color_palette, ncolors = cc.color_style, cc.color_palette, cc.ncolors
+    if !_t(args[:color_control]) && color_mode in (4, 5)
+        color_palette = 4
+    end
+    if cc.file_cpt === nothing && !(1 <= color_palette <= 7)
+        println(stderr, "mbjl_plot: palette $(color_palette) is not available here (1-7); using 1")
+        color_palette = 1
+    end
+    cpt_lines = nothing
+    if color_mode != 0 && cc.file_cpt === nothing
+        colors = color.interpolate_palette(color_palette, ncolors)
+        boundaries = nothing
+        color_start = color_int = 0.0
+        if args[:stretch_color]
+            data_type = get(Dict(4 => 1, 5 => 2), color_mode, 0)
+            boundaries = script.run_mbhistogram(args[:input], fmt, data_type, dmin, dmax, ncolors)
+        else
+            ncolors_use = color_style == 1 ? ncolors : ncolors + 1
+            color_start, color_int = script.compute_color_interval_plot(
+                dmin, dmax, zmax, ncolors_use, args[:no_nice_interval])
+        end
+        cpt_lines = script.build_cpt_plot(colors, color_style, args[:color_flip],
+                                          color_start, color_int; boundaries = boundaries)
+    end
+
+    # shading
+    magnitude = args[:magnitude]
+    second = color_mode == 3 ? args[:zero_level] : args[:azimuth]
+    if _t(args[:shade])
+        sp = split(args[:shade], "/")
+        if magnitude === nothing
+            magnitude = pyfloat(sp[1])
+        end
+        if length(sp) > 1 && second === nothing
+            second = pyfloat(sp[2])
+        end
+    end
+    shade = shade_cpt = nothing
+    if color_mode in (2, 3)
+        shade = script.resolve_shade_control(color_mode; magnitude = magnitude, second = second,
+                                             amin = bounds.amin, amax = bounds.amax,
+                                             stretch_shade = args[:stretch_shade], shade_flip = args[:shade_flip])
+        if color_mode == 3 && args[:stretch_shade]
+            hist = script.run_mbhistogram(args[:input], fmt, 1, bounds.amin, bounds.amax, script.NCPT; gaussian = true)
+            shade_cpt = script.build_shade_cpt(hist, args[:shade_flip])
+        end
+    end
+
+    # contours and navigation
+    contour_control = nothing
+    if _t(args[:contour])
+        contour_control = script.resolve_contour_control(
+            args[:contour] isa AbstractString ? args[:contour] : nothing,
+            script.nice_interval(zmax - zmin), color_mode, layout.PAGE_HEIGHT_IN[lay.pagesize])
+    end
+    navigation = (_t(args[:navigation]) || _t(args[:nav_names]) || _t(args[:ping_ticks])) ? resolve_navigation(args) : nothing
+
+    coast = nothing
+    if args[:coast] || _t(args[:coast_dry_fill]) || _t(args[:coast_wet_fill]) || _t(args[:coast_lake_fill]) ||
+            _t(args[:coast_river]) || _t(args[:coast_boundary]) || _t(args[:coast_pen])
+        coast = misc.CoastOptions(
+            coast_control = true, coast_resolution = _t(args[:coast_resolution]) ? args[:coast_resolution] : "f",
+            coast_dryfill = args[:coast_dry_fill], coast_wetfill = args[:coast_wet_fill],
+            coast_lakefill = args[:coast_lake_fill], coast_river = args[:coast_river],
+            coast_boundaries = collect(String, args[:coast_boundary]), coast_pen = args[:coast_pen],
+        )
+        if !(_t(coast.coast_dryfill) || _t(coast.coast_wetfill) || _t(coast.coast_pen) ||
+             _t(coast.coast_boundaries) || _t(coast.coast_river))
+            coast.coast_dryfill, coast.coast_pen = "200", "1p"
+        end
+    end
+
+    length_scale = args[:length_scale]
+    if _t(length_scale) && occursin("center", length_scale)
+        length_scale = replace(length_scale, "center" => "$(fmtg(0.5 * (xmin + xmax), 8))/$(fmtg(0.5 * (ymin + ymax), 8))")
+    end
+
+    title = args[:title]
+    if title === nothing
+        title = fmt < 0 ? "Data List File $(args[:input])" : "Data File $(args[:input])"
+    end
+
+    opts = script.ScriptOptionsPlot(
+        file_data = args[:input], fmt = fmt, root = root, layout = lay,
+        output_format = args[:format], title = title, tick_info = args[:tick_info],
+        colorbar_label = args[:colorbar_label], length_scale = length_scale,
+        unix_stamp = args[:timestamp], dpi = args[:dpi],
+        color_mode = color_mode, use_filtered = args[:filtered],
+        color_palette = cc.file_cpt !== nothing ? 1 : color_palette, color_flip = args[:color_flip],
+        cpt_lines = cpt_lines, cpt_file = cc.file_cpt,
+        shade = shade, shade_cpt_lines = shade_cpt,
+        contour_control = contour_control, navigation = navigation,
+        swath = script.SwathOptions(
+            footprint = args[:footprint], btime = args[:begin_time], etime = args[:end_time],
+            swath_scale = args[:swath_scale], contour_nplot = args[:contour_nplot],
+            speedmin = args[:speedmin], timegap = args[:timegap],
+            contour_algorithm = args[:contour_algorithm], lonflip = args[:lonflip],
+        ),
+        coast = coast, xy_entries = [parse_xy_overlay(s) for s in args[:xy_overlay]],
+        text_labels = collect(String, args[:text]), gmt_defs = collect(String, args[:gmt_default]),
+    )
+    command_line = "mbjl_plot " * join((shquote(a) for a in argv), " ")
+    script_path = script.generate_and_write_plot(opts, command_line)
+
+    if args[:verbose]
+        style = get(script.COLOR_MODE_NAMES, color_mode, nothing)
+        extras = [s for (s, on) in (("contours", contour_control !== nothing), ("navigation", navigation !== nothing)) if on]
+        println("Generated $(script_path) (output: $(root).$(args[:format]))")
+        println("  Plot:    $(join(vcat(style === nothing ? String[] : [style], extras), ", "))")
+        println("  Region:  $(lay.region)   Projection: -J$(lay.projection)$(lay.projection_pars)")
+        println("  Page:    $(lay.pagesize) $(lay.landscape ? "landscape" : "portrait")")
+        if cpt_lines !== nothing || cc.file_cpt !== nothing
+            println("  CPT:     $(script.cpt_path(opts))")
+        end
+    end
+
+    if args[:execute]
+        run(`bash $script_path`)
+    end
+
+    return 0
+end
+
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    exit(main())
+end

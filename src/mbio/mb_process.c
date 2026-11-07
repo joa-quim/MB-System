@@ -1054,7 +1054,13 @@ int mb_pr_readpar(int verbose, char *file, int lookforfiles, struct mb_process_s
 
 	/* Now make filenames global if local */
 	char *lastslash = strrchr(process->mbp_ifile, '/');
-	const int len = lastslash - process->mbp_ifile + 1;
+#ifdef _WIN32
+	char *lastbackslash = strrchr(process->mbp_ifile, '\\');
+	if (lastbackslash != NULL && (lastslash == NULL || lastbackslash > lastslash))
+		lastslash = lastbackslash;
+#endif
+	/* no directory in the file name: nothing to prepend */
+	const int len = lastslash != NULL ? (int)(lastslash - process->mbp_ifile) + 1 : 0;
 
 	/* reset navadj file */
 	if (len > 1 && strlen(process->mbp_navadjfile) > 1 && process->mbp_navadjfile[0] != '/' &&

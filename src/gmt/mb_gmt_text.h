@@ -31,6 +31,11 @@ struct MB_GMT_TEXT;
 /* Records through the GMT API; NULL on failure (API->error says why). */
 struct MB_GMT_TEXT *mb_gmt_text_begin(struct GMT_CTRL *GMT, struct GMT_OPTION *options);
 
+/* Records through the GMT API like mb_gmt_text_begin(), but kept in memory and handed to the API
+   only by mb_gmt_text_end(): for a module that runs other modules with GMT_Call_Module meanwhile,
+   whose own output would take over an output already opened. `options` must live until the end. */
+struct MB_GMT_TEXT *mb_gmt_text_begin_deferred(struct GMT_CTRL *GMT, struct GMT_OPTION *options);
+
 /* The file `path`, written as the program writes it; NULL when it cannot be opened. */
 struct MB_GMT_TEXT *mb_gmt_text_file(struct GMT_CTRL *GMT, const char *path);
 

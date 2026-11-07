@@ -35,7 +35,7 @@ using Printf
 using ..MbjlUtil
 
 export PAGE_SIZE_NAMES, PAGE_WIDTH_IN, PAGE_HEIGHT_IN, get_decimal_degrees,
-       PageMargins, get_page_size, ProjectionSpec, get_projection, BaseTick,
+       PageMargins, get_page_size, ProjectionSpec, get_projection, get_projection_xy, BaseTick,
        get_base_tick, GridInfo, run_grdinfo, Layout, compute_layout
 
 # ---------------------------------------------------------------------------
@@ -400,6 +400,28 @@ function get_projection(map_scale::AbstractString)::ProjectionSpec
         plot_scale = plot_scale,
         plot_width = plot_width,
     )
+end
+
+
+"""Port of mbm_xyplot's and mbm_histplot's own sub GetProjection,
+which differs from mbm_grdplot's for "x"/"X": only the bare "xd"/"Xd"
+flag means a geographic (degree) axis (\$geographic there, `linear`
+here), and any other remainder -- including an "xscale/yscale" or
+"width/height" pair such as "x3.0/-0.05" or "X6/-8", or a unit
+suffix such as "X6i" -- is a complete user scale/width, used as
+given.
+"""
+function get_projection_xy(map_scale::AbstractString)::ProjectionSpec
+    spec = get_projection(map_scale)
+    if !(spec.projection in ("x", "X")) || map_scale in ("xd", "Xd")
+        return spec
+    end
+    mm = match(r"^([\d.eE+-]+)", spec.projection_pars)
+    value = mm !== nothing ? pyfloat(mm.captures[1]) : nothing
+    if spec.projection == "x"
+        return pyreplace(spec; linear = false, plot_scale = value)
+    end
+    return pyreplace(spec; linear = false, plot_width = value)
 end
 
 

@@ -239,8 +239,7 @@ int mb_defaults(int verbose, int *format, int *pings, int *lonflip,
   const char *home_ptr = mb_home_directory();
   if (home_ptr != NULL) {
     char file[MB_PATH_MAXLINE];
-    strcpy(file, home_ptr);
-    strcat(file, "/.mbio_defaults");
+    snprintf(file, sizeof(file), "%s/.mbio_defaults", home_ptr);
 
     /* open and read values from file if possible */
     FILE *fp = fopen(file, "r");
@@ -313,8 +312,7 @@ int mb_env(int verbose, char *psdisplay, char *imgdisplay, char *mbproject) {
   const char *home_ptr = mb_home_directory();
   if (home_ptr != NULL) {
     char file[MB_PATH_MAXLINE];
-    strcpy(file, home_ptr);
-    strcat(file, "/.mbio_defaults");
+    snprintf(file, sizeof(file), "%s/.mbio_defaults", home_ptr);
 
     /* open and read values from file if possible */
     FILE *fp = fopen(file, "r");
@@ -323,7 +321,7 @@ int mb_env(int verbose, char *psdisplay, char *imgdisplay, char *mbproject) {
       while (fgets(string, sizeof(string), fp) != NULL) {
         if (strncmp(string, "ps viewer:", 10) == 0)
           sscanf(string, "ps viewer: %s", psdisplay);
-        if (strncmp(string, "img viewer:", 10) == 0)
+        if (strncmp(string, "img viewer:", 11) == 0)
           sscanf(string, "img viewer: %s", imgdisplay);
         if (strncmp(string, "project:", 8) == 0)
           sscanf(string, "project: %s", mbproject);
@@ -361,8 +359,7 @@ int mb_lonflip(int verbose, int *lonflip) {
   const char *home_ptr = mb_home_directory();
   if (home_ptr != NULL) {
     char file[MB_PATH_MAXLINE];
-    strcpy(file, home_ptr);
-    strcat(file, "/.mbio_defaults");
+    snprintf(file, sizeof(file), "%s/.mbio_defaults", home_ptr);
 
     /* open and read values from file if possible */
     FILE *fp = fopen(file, "r");
@@ -417,35 +414,34 @@ int mb_mbview_defaults(int verbose, int *primary_colortable, int *primary_colort
   const char *home_ptr = mb_home_directory();
   if (home_ptr != NULL) {
     char file[MB_PATH_MAXLINE];
-    strcpy(file, home_ptr);
-    strcat(file, "/.mbio_defaults");
+    snprintf(file, sizeof(file), "%s/.mbio_defaults", home_ptr);
 
     /* open and read values from file if possible */
     FILE *fp = fopen(file, "r");
     if (fp != NULL) {
       char string[MB_PATH_MAXLINE];
       while (fgets(string, sizeof(string), fp) != NULL) {
-        if (strncmp(string, "mbview_primary_colortable:", 25) == 0)
+        if (strncmp(string, "mbview_primary_colortable:", 26) == 0)
           sscanf(string, "mbview_primary_colortable:%d", primary_colortable);
-        if (strncmp(string, "mbview_primary_colortable_mode:", 30) == 0)
+        if (strncmp(string, "mbview_primary_colortable_mode:", 31) == 0)
           sscanf(string, "mbview_primary_colortable_mode:%d", primary_colortable_mode);
-        if (strncmp(string, "mbview_primary_shade_mode:", 25) == 0)
+        if (strncmp(string, "mbview_primary_shade_mode:", 26) == 0)
           sscanf(string, "mbview_primary_shade_mode:%d", primary_shade_mode);
-        if (strncmp(string, "mbview_slope_colortable:", 23) == 0)
+        if (strncmp(string, "mbview_slope_colortable:", 24) == 0)
           sscanf(string, "mbview_slope_colortable:%d", slope_colortable);
-        if (strncmp(string, "mbview_slope_colortable_mode:", 28) == 0)
+        if (strncmp(string, "mbview_slope_colortable_mode:", 29) == 0)
           sscanf(string, "mbview_slope_colortable_mode:%d", slope_colortable_mode);
-        if (strncmp(string, "mbview_secondary_colortable:", 27) == 0)
+        if (strncmp(string, "mbview_secondary_colortable:", 28) == 0)
           sscanf(string, "mbview_secondary_colortable:%d", secondary_colortable);
-        if (strncmp(string, "mbview_secondary_colortable_mode:", 32) == 0)
+        if (strncmp(string, "mbview_secondary_colortable_mode:", 33) == 0)
           sscanf(string, "mbview_secondary_colortable_mode:%d", secondary_colortable_mode);
-        if (strncmp(string, "mbview_illuminate_magnitude:", 27) == 0)
+        if (strncmp(string, "mbview_illuminate_magnitude:", 28) == 0)
           sscanf(string, "mbview_illuminate_magnitude:%lf", illuminate_magnitude);
-        if (strncmp(string, "mbview_illuminate_elevation:", 27) == 0)
+        if (strncmp(string, "mbview_illuminate_elevation:", 28) == 0)
           sscanf(string, "mbview_illuminate_elevation:%lf", illuminate_elevation);
-        if (strncmp(string, "mbview_illuminate_azimuth:", 25) == 0)
+        if (strncmp(string, "mbview_illuminate_azimuth:", 26) == 0)
           sscanf(string, "mbview_illuminate_azimuth:%lf", illuminate_azimuth);
-        if (strncmp(string, "mbview_slope_magnitude:", 22) == 0)
+        if (strncmp(string, "mbview_slope_magnitude:", 23) == 0)
           sscanf(string, "mbview_slope_magnitude:%lf", slope_magnitude);
       }
       fclose(fp);
@@ -490,8 +486,7 @@ int mb_fbtversion(int verbose, int *fbtversion) {
   const char *home_ptr = mb_home_directory();
   if (home_ptr != NULL) {
     char file[MB_PATH_MAXLINE];
-    strcpy(file, home_ptr);
-    strcat(file, "/.mbio_defaults");
+    snprintf(file, sizeof(file), "%s/.mbio_defaults", home_ptr);
 
     /* open and read values from file if possible */
     FILE *fp = fopen(file, "r");
@@ -541,8 +536,7 @@ int mb_uselockfiles(int verbose, bool *uselockfiles) {
   const char *home_ptr = mb_home_directory();
   if (home_ptr != NULL) {
     char file[MB_PATH_MAXLINE];
-    strcpy(file, home_ptr);
-    strcat(file, "/.mbio_defaults");
+    snprintf(file, sizeof(file), "%s/.mbio_defaults", home_ptr);
 
     /* open and read values from file if possible */
     FILE *fp = fopen(file, "r");
@@ -590,8 +584,7 @@ int mb_fileiobuffer(int verbose, int *fileiobuffer) {
   const char *home_ptr = mb_home_directory();
   if (home_ptr != NULL) {
     char file[MB_PATH_MAXLINE];
-    strcpy(file, home_ptr);
-    strcat(file, "/.mbio_defaults");
+    snprintf(file, sizeof(file), "%s/.mbio_defaults", home_ptr);
 
     /* open and read values from file if possible */
     FILE *fp = fopen(file, "r");

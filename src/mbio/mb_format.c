@@ -30,6 +30,7 @@
  */
 
 #include <assert.h>
+#include <ctype.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -3058,6 +3059,26 @@ int mb_get_format(int verbose, char *filename, char *fileroot, int *format, int 
   return (status);
 }
 /*--------------------------------------------------------------------*/
+/* The last directory separator of a path: '/', and on Windows also '\' */
+static char *mb_datalist_last_separator(const char *path) {
+  const char *slash = strrchr(path, '/');
+#ifdef _WIN32
+  const char *backslash = strrchr(path, '\\');
+  if (backslash != NULL && (slash == NULL || backslash > slash))
+    slash = backslash;
+#endif
+  return (char *)slash;
+}
+/* A path that a datalist entry is not relative to: one starting with '/', and on Windows
+   also one starting with '\' or a drive letter */
+static bool mb_datalist_absolute_path(const char *path) {
+#ifdef _WIN32
+  if (path[0] == '\\' || (path[0] != '\0' && path[1] == ':'))
+    return true;
+#endif
+  return path[0] == '/';
+}
+/*--------------------------------------------------------------------*/
 int mb_datalist_open(int verbose, void **datalist_ptr, char *path, int look_processed, int *error) {
   if (verbose >= 2) {
     fprintf(stderr, "\ndbg2  MBIO function <%s> called\n", __func__);
@@ -3379,8 +3400,8 @@ int mb_datalist_read2(int verbose, void *datalist_ptr, int *pstatus, char *path,
             nscan = sscanf(&(buffer[istart]), "%s %d %lf", path, format, weight);
 
             /* get path */
-            if (nscan >= 1 && path[0] != '/' && strrchr(datalist->path, '/') != NULL &&
-                (len = strrchr(datalist->path, '/') - datalist->path + 1) > 1) {
+            if (nscan >= 1 && !mb_datalist_absolute_path(path) && mb_datalist_last_separator(datalist->path) != NULL &&
+                (len = mb_datalist_last_separator(datalist->path) - datalist->path + 1) > 1) {
               strcpy(tmpstr, path);
               strncpy(path, datalist->path, len);
               path[len] = '\0';
@@ -3420,8 +3441,8 @@ int mb_datalist_read2(int verbose, void *datalist_ptr, int *pstatus, char *path,
             pfile[0] = '\0';
             if (file_ok) {
               mb_pr_get_ofile(verbose, path, &pfile_specified, pfile, error);
-              if (strlen(pfile) > 0 && pfile[0] != '/' && strrchr(path, '/') != NULL &&
-                  (len = strrchr(path, '/') - path + 1) > 1) {
+              if (strlen(pfile) > 0 && !mb_datalist_absolute_path(pfile) && mb_datalist_last_separator(path) != NULL &&
+                  (len = mb_datalist_last_separator(path) - path + 1) > 1) {
                 strcpy(tmpstr, pfile);
                 strncpy(pfile, path, len);
                 pfile[len] = '\0';
@@ -3673,8 +3694,8 @@ int mb_datalist_read3(int verbose, void *datalist_ptr,
             }
 
             /* get path */
-            if (nscan >= 1 && path[0] != '/' && strrchr(datalist->path, '/') != NULL &&
-                (len = strrchr(datalist->path, '/') - datalist->path + 1) > 1) {
+            if (nscan >= 1 && !mb_datalist_absolute_path(path) && mb_datalist_last_separator(datalist->path) != NULL &&
+                (len = mb_datalist_last_separator(datalist->path) - datalist->path + 1) > 1) {
               strcpy(tmpstr, path);
               strncpy(path, datalist->path, len);
               path[len] = '\0';
@@ -3714,8 +3735,8 @@ int mb_datalist_read3(int verbose, void *datalist_ptr,
             pfile[0] = '\0';
             if (file_ok) {
               mb_pr_get_ofile(verbose, path, &pfile_specified, pfile, error);
-              if (strlen(pfile) > 0 && pfile[0] != '/' && strrchr(path, '/') != NULL &&
-                  (len = strrchr(path, '/') - path + 1) > 1) {
+              if (strlen(pfile) > 0 && !mb_datalist_absolute_path(pfile) && mb_datalist_last_separator(path) != NULL &&
+                  (len = mb_datalist_last_separator(path) - path + 1) > 1) {
                 strcpy(tmpstr, pfile);
                 strncpy(pfile, path, len);
                 pfile[len] = '\0';
@@ -4456,7 +4477,11 @@ int mb_get_relative_path(int verbose, char *path, char *ipwd, int *error) {
      the same algorithm still applies. Off course, there probably many ways this can go wrong
      because we trim the first 2 chars in strings like C:\blabla and don't put it back. But
      test have shown that it was maybe not necessary.
+     The drive letters are kept aside: a path on another drive is never made relative,
+     and a path left absolute gets its drive back at the end.
   */
+  char path_drive = (pathlen > 1 && path[1] == ':') ? (char)toupper((unsigned char)path[0]) : '\0';
+  char pwd_drive = (pwdlen > 1 && ipwd[1] == ':') ? (char)toupper((unsigned char)ipwd[0]) : '\0';
   mb_cvt_to_nix_path(path);
   mb_cvt_to_nix_path(ipwd);
 #endif
@@ -4471,6 +4496,8 @@ int mb_get_relative_path(int verbose, char *path, char *ipwd, int *error) {
     bufptr = getcwd(path, MB_PATH_MAXLINE);
     assert(strlen(path) > 0);
 #ifdef WIN32
+    if (bufptr != NULL && path[1] == ':')
+      path_drive = (char)toupper((unsigned char)path[0]);
     mb_cvt_to_nix_path(path);
     mb_cvt_to_nix_path(bufptr);
 #endif
@@ -4496,6 +4523,8 @@ int mb_get_relative_path(int verbose, char *path, char *ipwd, int *error) {
     bufptr = getcwd(pwd, MB_PATH_MAXLINE);
     assert(strlen(pwd) > 0);
 #ifdef WIN32
+    if (bufptr != NULL && pwd[1] == ':')
+      pwd_drive = (char)toupper((unsigned char)pwd[0]);
     mb_cvt_to_nix_path(pwd);
     mb_cvt_to_nix_path(bufptr);
 #endif
@@ -4516,8 +4545,14 @@ int mb_get_relative_path(int verbose, char *path, char *ipwd, int *error) {
   pathlen = strlen(path);
   pwdlen = strlen(pwd);
 
+  /* a path on another drive has no relative form */
+  bool same_drive = true;
+#ifdef WIN32
+  same_drive = path_drive == '\0' || pwd_drive == '\0' || path_drive == pwd_drive;
+#endif
+
   /* try to get best relative path */
-  if (pathlen > 0 && pwdlen > 0) {
+  if (pathlen > 0 && pwdlen > 0 && same_drive) {
     /* look for last identical slash-terminated section */
     bool same = true;
     int isame = 0;
@@ -4571,6 +4606,21 @@ int mb_get_relative_path(int verbose, char *path, char *ipwd, int *error) {
     *error = MB_ERROR_NO_ERROR;
   }
 
+#ifdef WIN32
+  /* give a path left absolute, and the caller's pwd, their drive back */
+  if (path[0] == '/' && path_drive != '\0' && strlen(path) + 2 < MB_PATH_MAXLINE) {
+    memmove(&path[2], path, strlen(path) + 1);
+    path[0] = path_drive;
+    path[1] = ':';
+  }
+  const size_t ipwdlen = strlen(ipwd);
+  if (ipwd[0] == '/' && pwd_drive != '\0' && ipwdlen + 2 < MB_PATH_MAXLINE) {
+    memmove(&ipwd[2], ipwd, ipwdlen + 1);
+    ipwd[0] = pwd_drive;
+    ipwd[1] = ':';
+  }
+#endif
+
   if (verbose >= 2) {
     fprintf(stderr, "\ndbg2  MBIO function <%s> completed\n", __func__);
     fprintf(stderr, "dbg2  Return values:\n");
@@ -4602,7 +4652,10 @@ int mb_get_absolute_path(int verbose, char *path, char *ipwd, int *error) {
      the same algorithm still applies. Off course, there probably many ways this can go wrong
      because we trim the first 2 chars in strings like C:\blabla and don't put it back. But
      test have shown that it was maybe not necessary.
+     The drive letters are kept aside and put back on the result and on the caller's pwd.
   */
+  char path_drive = (pathlen > 1 && path[1] == ':') ? (char)toupper((unsigned char)path[0]) : '\0';
+  const char pwd_drive = (pwdlen > 1 && ipwd[1] == ':') ? (char)toupper((unsigned char)ipwd[0]) : '\0';
   mb_cvt_to_nix_path(path);
   mb_cvt_to_nix_path(ipwd);
 #endif
@@ -4611,15 +4664,32 @@ int mb_get_absolute_path(int verbose, char *path, char *ipwd, int *error) {
   char absolutepath[MB_PATH_MAXLINE] = {""};
   char *bufptr = NULL;
 
-  /* if path starts with '/' then it is already an absolute path so do nothing 
+  /* if path starts with '/' then it is already an absolute path so do nothing
   	 otherwise concatenate pwd and path and then shorten the path if possible */
   if (pathlen > 0 && path[0] != '/') {
     strncpy(absolutepath, ipwd, MB_PATH_MAXLINE);
     strncat(absolutepath, "/", MB_PATH_MAXLINE - strlen(ipwd));
     strncat(absolutepath, path, MB_PATH_MAXLINE - strlen(ipwd) - 1);
     strncpy(path, absolutepath, MB_PATH_MAXLINE);
+#ifdef WIN32
+    path_drive = pwd_drive;
+#endif
   }
   mb_get_shortest_path(verbose, path, error);
+
+#ifdef WIN32
+  if (path[0] == '/' && path_drive != '\0' && strlen(path) + 2 < MB_PATH_MAXLINE) {
+    memmove(&path[2], path, strlen(path) + 1);
+    path[0] = path_drive;
+    path[1] = ':';
+  }
+  const size_t ipwdlen = strlen(ipwd);
+  if (ipwd[0] == '/' && pwd_drive != '\0' && ipwdlen + 2 < MB_PATH_MAXLINE) {
+    memmove(&ipwd[2], ipwd, ipwdlen + 1);
+    ipwd[0] = pwd_drive;
+    ipwd[1] = ':';
+  }
+#endif
 
   /* no error even if no path or pwd */
   status = MB_SUCCESS;

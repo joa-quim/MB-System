@@ -289,14 +289,12 @@ int mb_gis_addlayer(int verbose, struct mb_gisdata_struct *gis, const char *name
 	}
 	else if (gis->nlayer >= gis->nlayer_alloc) {
 		const int nalloc = gis->nlayer_alloc + MB_GIS_ALLOC_NUM;
-		status = mb_reallocd(verbose, __FILE__, __LINE__, nalloc * sizeof(struct mb_gislayer_struct), (void **)&gis->layers,
-		                     error);
+		/* realloc into a copy of the pointer so that a failure leaves the existing layers intact */
+		void *layers = gis->layers;
+		status = mb_reallocd(verbose, __FILE__, __LINE__, nalloc * sizeof(struct mb_gislayer_struct), &layers, error);
 		if (status == MB_SUCCESS) {
+			gis->layers = (struct mb_gislayer_struct *)layers;
 			gis->nlayer_alloc = nalloc;
-		}
-		else {
-			gis->nlayer = 0;
-			gis->nlayer_alloc = 0;
 		}
 	}
 	if (status == MB_SUCCESS) {
@@ -382,14 +380,12 @@ int mb_gis_addfeature(int verbose, struct mb_gisdata_struct *gis, int layer, int
 	/* make room for the new feature */
 	if (status == MB_SUCCESS && gis->nfeature >= gis->nfeature_alloc) {
 		const int nalloc = gis->nfeature_alloc > 0 ? 2 * gis->nfeature_alloc : MB_GIS_ALLOC_NUM;
-		status = mb_reallocd(verbose, __FILE__, __LINE__, nalloc * sizeof(struct mb_gisfeature_struct),
-		                     (void **)&gis->features, error);
+		/* realloc into a copy of the pointer so that a failure leaves the existing features intact */
+		void *features = gis->features;
+		status = mb_reallocd(verbose, __FILE__, __LINE__, nalloc * sizeof(struct mb_gisfeature_struct), &features, error);
 		if (status == MB_SUCCESS) {
+			gis->features = (struct mb_gisfeature_struct *)features;
 			gis->nfeature_alloc = nalloc;
-		}
-		else {
-			gis->nfeature = 0;
-			gis->nfeature_alloc = 0;
 		}
 	}
 
@@ -1316,9 +1312,9 @@ int mb_gis_export_shapefile(int verbose, const char *file, struct mb_gisdata_str
 	}
 
 	/* replace an existing shapefile (plain stat(): GDAL's VSIStatBufL is
-	   struct stat64 on Linux, undefined here without _LARGEFILE64_SOURCE) */
-	struct stat statbuf;
-	if (stat(shpfile, &statbuf) == 0)
+	   struct stat64 on glibc, which C code cannot see without _LARGEFILE64_SOURCE) */
+	struct stat file_status;
+	if (stat(shpfile, &file_status) == 0)
 		GDALDeleteDataset(driver, shpfile);
 
 	GDALDatasetH dataset = GDALCreate(driver, shpfile, 0, 0, 0, GDT_Unknown, NULL);

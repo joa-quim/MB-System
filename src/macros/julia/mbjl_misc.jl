@@ -194,11 +194,17 @@ function resolve_swath_format(swathnavdatalist::AbstractString, swathformat::Uni
     if _nonempty(swathformat)
         return String(swathformat)
     end
-    out = IOBuffer()
+    # stdout is read straight from the process (open + read), not through
+    # run(pipeline(...; stdout = IOBuffer())): on Windows, the first such
+    # IOBuffer-captured run of an MB-System program in a fresh Julia
+    # process came back with empty output (seen with mbformat and mbinfo,
+    # not with gmt), which made this index an empty list.
     err = IOBuffer()
-    proc = run(pipeline(ignorestatus(`mbformat -I $swathnavdatalist -L`); stdout = out, stderr = err))
+    proc = open(pipeline(ignorestatus(`mbformat -I $swathnavdatalist -L`); stderr = err), "r")
+    out = read(proc, String)
+    wait(proc)
     success(proc) || error("mbformat failed with exit status $(proc.exitcode):\n" * String(take!(err)))
-    detected = String(split(String(take!(out)))[1])
+    detected = String(split(out)[1])
     if detected == "0"
         detected = "-1"
     end
