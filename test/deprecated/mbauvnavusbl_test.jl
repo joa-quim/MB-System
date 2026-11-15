@@ -31,7 +31,7 @@ const CMD = mbprog("deprecated", "mbauvnavusbl")
 		@test occursin("-Uusblfile", output)
 		@test occursin("dbg2", output)
 		@test occursin("lonflip", output)
-		@test occursin("usbl format:", output)
+		@test occursin("usbl file:", output)
 	end
 
 	# TODO(schwehr): Add tests of actual usage.

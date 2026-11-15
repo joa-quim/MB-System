@@ -10,5 +10,7 @@ const CMD = mbprog("mbnavadjust", "mbnavadjustmerge")
 		@test occursin("Program mbnavadjustmerge", output)
 		@test occursin("merges two existing mbnavadjust projects", output)
 		@test occursin("usage: mbnavadjustmerge --input=project_path", output)
+		@test occursin("--remove-file=file", output)
+		@test occursin("--remove-survey=survey", output)
 	end
 end

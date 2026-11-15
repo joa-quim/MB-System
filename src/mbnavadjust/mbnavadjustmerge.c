@@ -126,6 +126,7 @@
 #define MOD_MODE_INVERT_NAVIGATION 65
 #define MOD_MODE_UPDATE_GRIDS 66
 #define MOD_MODE_APPLY_NAVIGATION 67
+#define MOD_MODE_REMOVE_SURVEY 68
 #define IMPORT_NONE 0
 #define IMPORT_TIE 1
 #define IMPORT_GLOBALTIE 2
@@ -248,6 +249,7 @@ static char usage_message[] =
     "\t--skip-short-section-crossings=min_length\n"
     "\t--remove-short-sections=min_length\n"
     "\t--remove-file=file\n"
+    "\t--remove-survey=survey\n"
     "\t--remake-mb166-files\n"
     "\t--fix-sensordepth\n"
     "\t--shift-global-ties=shiftx/shifty\n"
@@ -387,7 +389,6 @@ int main(int argc, char **argv) {
   double triangle_scale = 0.0;
   double minimum_section_length = 0.0;
   int minimum_section_soundings = 0;
-  int ifile_remove = 0;
 
   {
   static struct option options[] = {{"verbose", no_argument, NULL, 0},
@@ -480,6 +481,7 @@ int main(int argc, char **argv) {
                                     {"skip-short-section-crossings", required_argument, NULL, 0},
                                     {"remove-short-sections", required_argument, NULL, 0},
                                     {"remove-file", required_argument, NULL, 0},
+                                    {"remove-survey", required_argument, NULL, 0},
                                     {"remake-mb166-files", no_argument, NULL, 0},
                                     {"fix-sensordepth", no_argument, NULL, 0},
                                     {NULL, 0, NULL, 0}};
@@ -1896,7 +1898,7 @@ int main(int argc, char **argv) {
         if (num_mods < NUMBER_MODS_MAX) {
           mods[num_mods].mode = MOD_MODE_REMOVE_FILE;
           int nscan;
-          if ((nscan = sscanf(optarg, "%d", &ifile_remove)) == 1) {
+          if ((nscan = sscanf(optarg, "%d", &mods[num_mods].file1)) == 1) {
             num_mods++;
           }
           else {
@@ -1906,6 +1908,25 @@ int main(int argc, char **argv) {
         else {
           fprintf(stderr,
                   "Maximum number of mod commands reached:\n\tremove-file command ignored\n\n");
+        }
+      }
+
+      /*-------------------------------------------------------*/
+      // remove all files of the specified survey (file->survey, not block)
+      else if (strcmp("remove-survey", options[option_index].name) == 0) {
+        if (num_mods < NUMBER_MODS_MAX) {
+          mods[num_mods].mode = MOD_MODE_REMOVE_SURVEY;
+          int nscan;
+          if ((nscan = sscanf(optarg, "%d", &mods[num_mods].survey1)) == 1) {
+            num_mods++;
+          }
+          else {
+            fprintf(stderr, "Remove survey not parsed:\n\tremove-survey command ignored\n\n");
+          }
+        }
+        else {
+          fprintf(stderr,
+                  "Maximum number of mod commands reached:\n\tremove-survey command ignored\n\n");
         }
       }
 
@@ -4367,18 +4388,36 @@ int main(int argc, char **argv) {
       break;
 
     case MOD_MODE_REMOVE_FILE:
+      fprintf(stderr, "\nCommand remove-file=%2.2d\n", mods[imod].file1);
 
-      // validate the file index before using it to index project_output.files[]
-      // below (mbnavadjust_remove_file_by_id() does not itself bounds-check it) -
-      // mirrors the guard used for --add-crossing
-      if (ifile_remove < 0 || ifile_remove >= project_output.num_files) {
-        fprintf(stderr, "Invalid remove-file=%d - file index out of range, file not removed\n", ifile_remove);
+      // validate the file index before removing the file
+      if (mods[imod].file1 < 0 || mods[imod].file1 >= project_output.num_files) {
+        fprintf(stderr, "Invalid remove-file=%d - file index out of range, file not removed\n", mods[imod].file1);
         break;
       }
 
-      // remove specified file
+      // remove specified file - later file ids shift down by one
+      fprintf(stderr, "Removing file %d: %s\n", mods[imod].file1, project_output.files[mods[imod].file1].path);
       status = mbnavadjust_remove_file_by_id(verbose, &project_output,
-                    ifile_remove, &error);
+                    mods[imod].file1, &error);
+      break;
+
+    case MOD_MODE_REMOVE_SURVEY:
+      fprintf(stderr, "\nCommand remove-survey=%2.2d\n", mods[imod].survey1);
+
+      // validate the survey index before removing the survey
+      if (mods[imod].survey1 < 0 || mods[imod].survey1 >= project_output.num_surveys) {
+        fprintf(stderr, "Invalid remove-survey=%d - survey index out of range, survey not removed\n", mods[imod].survey1);
+        break;
+      }
+
+      // remove all files of the specified survey - later survey and file ids shift down
+      for (int ifile = 0; ifile < project_output.num_files; ifile++) {
+        if (project_output.files[ifile].survey == mods[imod].survey1)
+          fprintf(stderr, "Removing file %d: %s\n", ifile, project_output.files[ifile].path);
+      }
+      status = mbnavadjust_remove_survey(verbose, &project_output,
+                    mods[imod].survey1, &error);
       break;
 
     case MOD_MODE_REMAKE_MB166_FILES:
