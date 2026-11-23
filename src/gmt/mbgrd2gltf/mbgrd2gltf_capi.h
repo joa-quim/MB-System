@@ -13,7 +13,7 @@
  * here; the implementation in mbgrd2gltf_capi.cpp is the only C++ involved.
  *
  * This mirrors the arrangement already used for mbmesh
- * (src/mbmesh/mbmesh_capi.h): each stage is a separate call returning an
+ * (src/gmt/mbmesh/mbmesh_capi.h): each stage is a separate call returning an
  * opaque handle, so the whole of the original main() - its sequencing, its
  * logging and its error handling - lives in the C driver, and the bridge
  * carries no logic of its own. Every entry point catches the C++ exceptions

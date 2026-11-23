@@ -9,7 +9,7 @@
  * the program, whatever options upstream adds to it, without a copy of its
  * driver to keep in step.
  *
- * mbmesh.cpp is compiled here unchanged, with two names changed:
+ * mbmesh.cpp is compiled here unchanged, with three names changed, iso_utc_time being the third, below:
  *   main       becomes mbmesh_program_main(), which mbmesh_run_program() calls;
  *   std::exit  becomes std::mbmesh_program_exit(), which throws instead of
  *              ending the process: parse_options() calls std::exit(1) on a bad
@@ -70,8 +70,31 @@ namespace std {
 }
 }  // namespace std
 
+// mbmesh.cpp formats the time of its first and last pings with iso_utc_time() (io/provenance.cpp), which does not
+// check that gmtime could convert the time. Generic point data (MBIO formats 162/168, the points a host such as iGMT
+// hands over) has no time stamps, and formatting the unset result is an invalid parameter on Windows: the process,
+// the host's session with it, ends. MB-System's own code is not changed here; its calls in mbmesh.cpp are routed to
+// this checked copy, which gives no date for a time that has none.
+static std::string mbmesh_program_iso_utc_time(double unix_seconds) {
+    const std::time_t seconds = static_cast<std::time_t>(std::floor(unix_seconds));
+    std::tm utc;
+#ifdef _WIN32
+    const bool converted = gmtime_s(&utc, &seconds) == 0;
+#else
+    const bool converted = gmtime_r(&seconds, &utc) != nullptr;
+#endif
+    if (!converted) {
+        return "";
+    }
+    char buffer[32];
+    std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &utc);
+    return buffer;
+}
+
 #define main mbmesh_program_main
 #define exit(status) mbmesh_program_exit(status)
+#define iso_utc_time mbmesh_program_iso_utc_time
 #include "mbmesh.cpp"
+#undef iso_utc_time
 #undef exit
 #undef main

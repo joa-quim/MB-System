@@ -19,9 +19,7 @@
 #include <utility>
 #include <vector>
 
-/* TINYGLTF_IMPLEMENTATION is instantiated once, in
- * src/mbgrd2gltf/tinygltf_impl.cpp, because the GMT supplement links this
- * pipeline together with the other glTF writer. */
+#define TINYGLTF_IMPLEMENTATION
 #define TINYGLTF_NO_STB_IMAGE
 #define TINYGLTF_NO_STB_IMAGE_WRITE
 #include "tinygltf/tiny_gltf.h"

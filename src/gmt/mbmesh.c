@@ -7,8 +7,8 @@
  * mbmesh generates 3D meshes from swath sonar bathymetry data.
  *
  * GMT module of src/mbmesh/mbmesh.cpp. The program itself is built into the
- * mbmesh_pipeline library by src/mbmesh/mbmesh_program.cpp and is run through
- * the plain C interface in src/mbmesh/mbmesh_capi.h, so the module has every
+ * mbmesh_pipeline library by src/gmt/mbmesh/mbmesh_program.cpp and is run through
+ * the plain C interface in src/gmt/mbmesh/mbmesh_capi.h, so the module has every
  * option of the program, with its checks, its messages and its log, and keeps
  * them as the program changes. The module only turns GMT's option list back
  * into the program's command line.

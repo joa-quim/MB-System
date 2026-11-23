@@ -194,15 +194,16 @@ target_include_directories(mbsystem PRIVATE
 find_package(LibPROJ REQUIRED)
 target_link_libraries(mbsystem LibPROJ::LibPROJ)
 # mbmesh.c drives the mbmesh reconstruction pipeline through the plain C
-# bridge in src/mbmesh/mbmesh_capi.h; mbmesh_pipeline carries that bridge, the
-# C++ it wraps, and the include directories the header needs. The target is
-# defined by src/mbmesh, which CMake processes after this directory; linking by
-# name is resolved at generate time, so the ordering does not matter.
+# bridge in mbmesh/mbmesh_capi.h; mbmesh_pipeline (mbmesh/CMakeLists.txt) carries
+# that bridge, the upstream src/mbmesh code it wraps, and the include directory
+# the header needs.
+add_subdirectory(mbmesh)
 target_link_libraries(mbsystem mbmesh_pipeline)
 # mbgrd2gltf.c drives the glTF conversion through the plain C bridge in
-# src/mbgrd2gltf/mbgrd2gltf_capi.h; mbgrd2gltf_pipeline carries that bridge,
-# the C++ it wraps (including Draco) and the include directory the header
-# needs. That library does not link back to mbsystem, so there is no cycle.
+# mbgrd2gltf/mbgrd2gltf_capi.h; mbgrd2gltf_pipeline (mbgrd2gltf/CMakeLists.txt)
+# carries that bridge, the upstream src/mbgrd2gltf code it wraps (including
+# Draco) and the include directory the header needs.
+add_subdirectory(mbgrd2gltf)
 target_link_libraries(mbsystem mbgrd2gltf_pipeline)
 # mbprocess.c runs its processing threads on pthreads outside Windows
 # (MB_SYSLIBS carries pthread there and is empty on MSVC).

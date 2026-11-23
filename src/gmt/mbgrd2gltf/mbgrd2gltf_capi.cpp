@@ -22,6 +22,8 @@
 #include <string>
 #include <cstring>
 #include <system_error>
+#include <vector>
+#include <cstdio>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -160,39 +162,94 @@ GridRunInfo make_run_info(const Bathymetry &bathymetry, const Geometry &geometry
 	return run;
 }
 
-} /* namespace */
-
-/* Builds the C++ Options from the POD the GMT module fills in. Declared in
- * options.h so it sits with the rest of the class. */
-namespace mbgrd2gltf {
-
-Options::Options(const struct mbgrd2gltf_options &options) {
-	_input_filepath = options.input_filepath;
-	_output_filepath = options.output_filepath;
-	_exaggeration = options.exaggeration;
-	_geoorigin_lon = options.geoorigin_lon;
-	_geoorigin_lat = options.geoorigin_lat;
-	_geoorigin_elev = options.geoorigin_elev;
-	_is_binary_output = options.is_binary_output;
-	_is_help = options.is_help;
-	_is_verbose = options.is_verbose;
-	_is_exaggeration_set = options.is_exaggeration_set;
-	_is_output_folder_set = options.is_output_folder_set;
-	_is_geoorigin_set = options.is_geoorigin_set;
-	_is_geoorigin_auto = options.is_geoorigin_auto;
-	_is_html_output = options.is_html_output;
-	_is_cesium_html_output = options.is_cesium_html_output;
-	_colors = options.colors;
-	_cesium_url = options.cesium_url;
-	_draco.enabled = options.is_draco_compressed;
-	_draco.precision = options.draco_precision;
-	_draco.normal_bits = options.draco_normal_bits;
-	for (int i = 0; i < options.n_geoviewpoints && i < MBGRD2GLTF_GEOVIEWPOINT_MAX; i++) {
-		_geoviewpoints.push_back(options.geoviewpoints[i]);
+/* Builds the C++ Options from the POD the GMT module fills in, by handing the
+ * program's own parser (upstream Options(argc, argv)) the command line those
+ * values stand for, so that MB-System's sources need no constructor of ours. */
+Options make_options(const struct mbgrd2gltf_options &options) {
+	char number[64];
+	std::vector<std::string> args;
+	args.emplace_back("mbgrd2gltf");
+	args.emplace_back(std::string("--input=") + options.input_filepath);
+	if (options.output_filepath[0] != '\0') {
+		args.emplace_back(std::string("--output=") + options.output_filepath);
 	}
+	if (options.is_exaggeration_set) {
+		std::snprintf(number, sizeof(number), "%.17g", options.exaggeration);
+		args.emplace_back(std::string("--exaggeration=") + number);
+	}
+	if (!options.is_binary_output) {
+		args.emplace_back("--no-binary");
+	}
+	if (!options.is_draco_compressed) {
+		args.emplace_back("--no-draco");
+	}
+	std::snprintf(number, sizeof(number), "%.17g", options.draco_precision);
+	args.emplace_back(std::string("--draco-precision=") + number);
+	std::snprintf(number, sizeof(number), "%d", options.draco_normal_bits);
+	args.emplace_back(std::string("--draco-normal-bits=") + number);
+	/* the module marks an automatic GeoOrigin (-G alone) as set as well */
+	if (options.is_geoorigin_auto) {
+		args.emplace_back("--geoorigin");
+	}
+	else if (options.is_geoorigin_set) {
+		char origin[200];
+		std::snprintf(origin, sizeof(origin), "--geoorigin=%.17g,%.17g,%.17g", options.geoorigin_lon, options.geoorigin_lat,
+		              options.geoorigin_elev);
+		args.emplace_back(origin);
+	}
+	for (int i = 0; i < options.n_geoviewpoints && i < MBGRD2GLTF_GEOVIEWPOINT_MAX; i++) {
+		args.emplace_back(std::string("--geoviewpoint=") + options.geoviewpoints[i]);
+	}
+	if (options.is_verbose) {
+		args.emplace_back("--verbose");
+	}
+	if (options.is_html_output) {
+		args.emplace_back("--html");
+	}
+	if (options.is_cesium_html_output) {
+		args.emplace_back("--cesium-html");
+	}
+	if (!options.colors) {
+		args.emplace_back("--no-colors");
+	}
+	if (options.cesium_url[0] != '\0') {
+		args.emplace_back(std::string("--cesium-url=") + options.cesium_url);
+	}
+	std::vector<const char *> argv;
+	for (const std::string &arg : args) {
+		argv.push_back(arg.c_str());
+	}
+	argv.push_back(nullptr);
+	return Options(static_cast<unsigned>(args.size()), argv.data());
 }
 
-} /* namespace mbgrd2gltf */
+/* The output root the program takes when none is given: the grid's folder and
+ * its name without the extension ("output" for a name that is all extension),
+ * as upstream's get_path_info() in options.cpp splits it. */
+std::string default_output_root(const char *filepath) {
+	const char *start_of_filename = filepath;
+	for (const char *iter = filepath; *iter; ++iter) {
+#ifdef _WIN32
+		const bool is_dir_char = *iter == '/' || *iter == '\\';
+#else
+		const bool is_dir_char = *iter == '/';
+#endif
+		if (is_dir_char) {
+			start_of_filename = iter + 1;
+		}
+	}
+	const char *start_of_extension = start_of_filename;
+	while (*start_of_extension != '\0' && *start_of_extension != '.') {
+		start_of_extension++;
+	}
+	std::string file_basename(start_of_filename, start_of_extension - start_of_filename);
+	if (file_basename.empty()) {
+		file_basename = "output";
+	}
+	return std::string(filepath, start_of_filename - filepath) + file_basename;
+}
+
+} /* namespace */
 
 extern "C" {
 
@@ -209,8 +266,7 @@ void mbgrd2gltf_options_defaults(struct mbgrd2gltf_options *options) {
 }
 
 void mbgrd2gltf_default_output_root(const char *input_filepath, char *output_root, size_t length) {
-	const PathInfo info = get_path_info(input_filepath);
-	const std::string root = info.folder + info.file_basename;
+	const std::string root = default_output_root(input_filepath);
 
 	std::strncpy(output_root, root.c_str(), length - 1);
 	output_root[length - 1] = '\0';
@@ -256,7 +312,7 @@ bool mbgrd2gltf_bathymetry_create(const struct mbgrd2gltf_options *options,
                                   mbgrd2gltf_bathymetry_t **bathymetry, char *error, size_t error_length) {
 	mbgrd2gltf_bathymetry_t *handle = nullptr;
 	const bool ok = guarded([&]() {
-		const Options cxx_options(*options);
+		const Options cxx_options = make_options(*options);
 		handle = new mbgrd2gltf_bathymetry_s(cxx_options);
 	}, error, error_length);
 
@@ -272,7 +328,7 @@ bool mbgrd2gltf_geometry_create(const mbgrd2gltf_bathymetry_t *bathymetry,
                                 mbgrd2gltf_geometry_t **geometry, char *error, size_t error_length) {
 	mbgrd2gltf_geometry_t *handle = nullptr;
 	const bool ok = guarded([&]() {
-		const Options cxx_options(*options);
+		const Options cxx_options = make_options(*options);
 		handle = new mbgrd2gltf_geometry_s(bathymetry->value, cxx_options);
 	}, error, error_length);
 
@@ -287,7 +343,7 @@ bool mbgrd2gltf_write_gltf(const mbgrd2gltf_bathymetry_t *bathymetry, mbgrd2gltf
                            const struct mbgrd2gltf_options *options, const char *command_line,
                            char *error, size_t error_length) {
 	return guarded([&]() {
-		const Options cxx_options(*options);
+		const Options cxx_options = make_options(*options);
 		geometry->run = make_run_info(bathymetry->value, geometry->value, cxx_options, command_line);
 		model::write_gltf(geometry->value, cxx_options, geometry->run);
 	}, error, error_length);
@@ -296,7 +352,7 @@ bool mbgrd2gltf_write_gltf(const mbgrd2gltf_bathymetry_t *bathymetry, mbgrd2gltf
 bool mbgrd2gltf_write_cesium_html(const mbgrd2gltf_geometry_t *geometry, const struct mbgrd2gltf_options *options,
                                   char *error, size_t error_length) {
 	return guarded([&]() {
-		const Options cxx_options(*options);
+		const Options cxx_options = make_options(*options);
 		model::write_cesium_html(geometry->value, cxx_options, Logger::get_captured_logs(), geometry->run);
 	}, error, error_length);
 }
@@ -305,7 +361,7 @@ bool mbgrd2gltf_write_html(const mbgrd2gltf_bathymetry_t *bathymetry, const mbgr
                            const struct mbgrd2gltf_options *options, const char *command_line,
                            const char *timestamp, char *error, size_t error_length) {
 	return guarded([&]() {
-		const Options cxx_options(*options);
+		const Options cxx_options = make_options(*options);
 		/* The viewer embeds the captured log for provenance; the driver has been
 		 * feeding it through mbgrd2gltf_logger_info() as it went. */
 		model::write_html(bathymetry->value, geometry->value, cxx_options, command_line, timestamp,

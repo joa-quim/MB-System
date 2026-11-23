@@ -30,12 +30,10 @@ find_package(NetCDF REQUIRED)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Pipeline sources shared by the mbgrd2gltf program and the GMT module. The C
-# bridge (mbgrd2gltf_capi.cpp) is built here, with the C++ it wraps, so that
-# src/gmt/mbgrd2gltf.c can stay plain C.
+# Set the sources for the executable
 # The page for CesiumJS (--cesium-html) is written by the source of mbmesh and mbglb2tiles, which uses only the standard library.
-set(SOURCES bathymetry.cpp geometry.cpp logger.cpp model.cpp options.cpp provenance.cpp viewpoint.cpp
-	${CMAKE_SOURCE_DIR}/src/mbmesh/src/io/cesium_writer.cpp mbgrd2gltf_capi.cpp)
+set(SOURCES bathymetry.cpp geometry.cpp logger.cpp main.cpp model.cpp options.cpp provenance.cpp viewpoint.cpp
+	${CMAKE_SOURCE_DIR}/src/mbmesh/src/io/cesium_writer.cpp)
 
 # Include directories (Draco is in the shared mbdraco library, src/mbdraco)
 include_directories(
@@ -43,36 +41,8 @@ include_directories(
 	${CMAKE_CURRENT_SOURCE_DIR}/tinygltf
 )
 
-# The pipeline as a library, so both the program and the GMT module can use
-# it. It deliberately does not link mbsystem: the supplement links this
-# library, so depending on it here would be a cycle.
-# tinygltf is header-only; instantiate it exactly once, in a library that both
-# this pipeline and mbmesh link, so the GMT supplement does not end up with
-# two copies of its symbols.
-add_library(tinygltf_impl STATIC tinygltf_impl.cpp)
-set_target_properties(tinygltf_impl PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(tinygltf_impl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tinygltf)
-
-add_library(mbgrd2gltf_pipeline STATIC ${SOURCES})
-set_target_properties(mbgrd2gltf_pipeline PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-target_include_directories(mbgrd2gltf_pipeline
-	PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
-	PRIVATE ${NetCDF_INCLUDE_DIRS}
-	PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tinygltf
-	PRIVATE ${CMAKE_SOURCE_DIR}/src/mbmesh/include
-	PRIVATE ${CMAKE_SOURCE_DIR}/src/mbio
-)
-
-target_link_libraries(mbgrd2gltf_pipeline
-	PUBLIC tinygltf_impl
-	PUBLIC ${NetCDF_LIBRARIES}
-	PUBLIC mbdraco
-	PUBLIC ${CMAKE_DL_LIBS}
-)
-
 # Specify sources for the executable
-add_executable(mbgrd2gltf main.cpp)
+add_executable(mbgrd2gltf ${SOURCES})
 
 # Set and link the include directories
 target_include_directories(mbgrd2gltf
@@ -83,7 +53,6 @@ target_include_directories(mbgrd2gltf
 )
 
 target_link_libraries(mbgrd2gltf
-	PRIVATE mbgrd2gltf_pipeline
 	PRIVATE mbsystem
 	PRIVATE ${NetCDF_LIBRARIES}
 	PRIVATE mbdraco

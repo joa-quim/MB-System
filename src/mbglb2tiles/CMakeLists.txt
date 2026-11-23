@@ -32,7 +32,7 @@ target_include_directories(mbglb2tiles PRIVATE
   ${MBMESH_DIR}/include
   ${CMAKE_SOURCE_DIR}/src/mbio
   ${CMAKE_SOURCE_DIR}/src/mbgrd2gltf)
-target_link_libraries(mbglb2tiles PRIVATE mbio mbdraco tinygltf_impl Threads::Threads)
+target_link_libraries(mbglb2tiles PRIVATE mbio mbdraco Threads::Threads)
 
 install(TARGETS mbglb2tiles DESTINATION ${CMAKE_INSTALL_BINDIR})
 
@@ -48,6 +48,6 @@ if(buildTests)
     ${MBMESH_DIR}/include
     ${CMAKE_SOURCE_DIR}/src/mbio
     ${CMAKE_SOURCE_DIR}/src/mbgrd2gltf)
-  target_link_libraries(mbglb2tiles_test_levels PRIVATE mbdraco tinygltf_impl Threads::Threads)
+  target_link_libraries(mbglb2tiles_test_levels PRIVATE mbdraco Threads::Threads)
   add_test(NAME mbglb2tiles_levels COMMAND mbglb2tiles_test_levels)
 endif()

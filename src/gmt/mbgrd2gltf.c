@@ -15,7 +15,7 @@
  *    GMT module port of src/mbgrd2gltf/main.cpp. The driver below is that
  *    file's main() rewritten in C against the GMT option parser and the GMT
  *    reporting API; the conversion pipeline is reached through the plain C
- *    interface in src/mbgrd2gltf/mbgrd2gltf_capi.h, in the same arrangement
+ *    interface in src/gmt/mbgrd2gltf/mbgrd2gltf_capi.h, in the same arrangement
  *    used for mbmesh.
  *
  *    Option mapping. GMT has no long-option keyword dictionary for an

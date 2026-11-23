@@ -7,14 +7,10 @@ AM_CPPFLAGS =
 AM_CPPFLAGS += -I$(top_srcdir)/src/mbdraco
 # tinygltf is held beside the glTF writers of mbgrd2gltf.
 AM_CPPFLAGS += -I$(top_srcdir)/src/mbgrd2gltf
-AM_CPPFLAGS += -I$(top_srcdir)/src/mbgrd2gltf/tinygltf
 
 # The vendored Draco source is not ours to make quiet.
 libmbdraco_la_CXXFLAGS = -std=c++17 -w -DMBDRACO_WITH_DRACO
-# tinygltf_impl.cpp is the one instantiation of the header-only tinygltf: the glTF writers of mbgrd2gltf, mbmesh and
-# mbglb2tiles no longer instantiate it themselves, and all of them link this library.
 libmbdraco_la_SOURCES = \
-	../mbgrd2gltf/tinygltf_impl.cpp \
 	draco_mesh.cpp \
 	draco/attributes/attribute_octahedron_transform.cc \
 	draco/attributes/attribute_quantization_transform.cc \
