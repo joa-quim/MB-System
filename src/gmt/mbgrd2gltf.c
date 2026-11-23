@@ -29,11 +29,14 @@
 #define THIS_MODULE_NAME    "mbgrd2gltf"
 #define THIS_MODULE_LIB     "mbsystem"
 #define THIS_MODULE_PURPOSE "Convert a bathymetry grid to a glTF/GLB 3D model"
-/* -I carries the input grid, which is the module's one primary resource, so an
- * external API (Julia, Python, MATLAB) binds its input argument to -I. There is
- * deliberately no output key: mbgrd2gltf writes the .glb/.gltf and the optional
- * .html itself and hands nothing back through the API. */
-#define THIS_MODULE_KEYS    "IG{"
+/* -I names the input grid file. It is an optional input, not a required one:
+ * mbgrd2gltf reads the grid file itself with netCDF and cannot take a grid in
+ * memory, and as a required input an external API such as Julia, Python or
+ * MATLAB would demand one whenever -I is not given literally, as in -H, --help
+ * or --input=FILE. There is deliberately no output key: mbgrd2gltf writes the
+ * .glb/.gltf and the optional pages itself and hands nothing back through the
+ * API. */
+#define THIS_MODULE_KEYS    "IG("
 #define THIS_MODULE_NEEDS   ""
 #define THIS_MODULE_OPTIONS "->V"
 
@@ -521,10 +524,15 @@ int GMT_mbgrd2gltf(void *V_API, int mode, void *args) {
 		mbgrd2gltf_options_defaults(&staged);
 		{
 			char *joined = join_args(mode, args);
+			/* An external API such as GMT.jl hands over an option list, in which a
+			 * long option is a "--" parameter: make it text again so that the long
+			 * options are resolved here as well. */
+			char *listed = (mode == GMT_MODULE_OPT && args != NULL) ? GMT_Create_Cmd(API, (struct GMT_OPTION *)args) : NULL;
 			const char *text = (joined != NULL) ? joined
-			                                    : ((mode == GMT_MODULE_CMD) ? (const char *)args : NULL);
+			                 : ((mode == GMT_MODULE_CMD) ? (const char *)args : listed);
 			if (text != NULL) remaining_args = preparse_long_options(&staged, text);
 			free(joined);
+			if (listed != NULL) GMT_Destroy_Cmd(API, &listed);
 		}
 
 		options = GMT_Create_Options(API, (remaining_args != NULL) ? GMT_MODULE_CMD : mode,
