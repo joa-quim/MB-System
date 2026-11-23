@@ -45,6 +45,14 @@ extern "C" int mbmesh_run_program(int argc, char **argv, char **captured_output)
 	}
 
 	reset_getopt();
+#ifdef _WIN32
+	/* The getopt of Windows (getopt-win32, MinGW) names the program in its error
+	 * messages from the __argv of the C runtime, not from argv, and in a host
+	 * that does not set __argv (Julia starts with wmain) that is a NULL read. The
+	 * program logs its own error for an unknown option, so getopt stays quiet. */
+	const int saved_opterr = opterr;
+	opterr = 0;
+#endif
 	try {
 		status = mbmesh_program_main(argc, argv);
 	}
@@ -60,6 +68,9 @@ extern "C" int mbmesh_run_program(int argc, char **argv, char **captured_output)
 		status = 1;
 	}
 	std::cout.flush();
+#ifdef _WIN32
+	opterr = saved_opterr;
+#endif
 
 	if (captured_output != nullptr) {
 		std::cout.rdbuf(saved);

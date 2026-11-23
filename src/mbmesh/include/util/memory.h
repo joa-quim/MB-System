@@ -9,6 +9,8 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+// before windows.h, as mb_define.h has it, or windows.h brings in the old winsock.h first
+#include <winsock2.h>
 #include <windows.h>
 #include <psapi.h>
 // windows.h defines near and far as empty macros, and the mbmesh code uses them as names
