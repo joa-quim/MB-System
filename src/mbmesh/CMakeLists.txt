@@ -10,11 +10,13 @@
 message("In src/mbmesh")
 
 # Pipeline sources shared by the mbmesh program and the GMT module. The C
-# bridge (mbmesh_capi.cpp) is built here, with the C++ it wraps, so that
+# bridge (mbmesh_capi.cpp) is built here, with the program it runs
+# (mbmesh_program.cpp, mbmesh.cpp with main renamed), so that
 # src/gmt/mbmesh.c can stay plain C.
 set(MBMESH_PIPELINE_SOURCES
   settings.cpp
   mbmesh_capi.cpp
+  mbmesh_program.cpp
   src/io/coordinate_frame.cpp
   src/io/datalist_reader.cpp
   src/io/point_spill.cpp
