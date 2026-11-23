@@ -422,7 +422,15 @@ bool mbmesh_write_mesh_glb_file(const char *path, const mbmesh_mesh_t *mesh, cha
 
 bool mbmesh_write_glb_x3dom_file(const char *path, const char *glb_filename, char *error, size_t error_length) {
 	std::string message;
-	if (!write_glb_x3dom_file(std::filesystem::path(path), glb_filename, {}, &message)) {
+	/* one model, shown when the page opens, as the single-run page of the program */
+	X3DomWriterOptions html_options;
+	X3DomModel model;
+	model.uri = glb_filename;
+	model.label = glb_filename;
+	model.visible = true;
+	html_options.title = std::filesystem::path(path).stem().string();
+	html_options.models.push_back(model);
+	if (!write_glb_x3dom_file(std::filesystem::path(path), html_options, &message)) {
 		copy_error(message, error, error_length);
 		return false;
 	}

@@ -41,9 +41,9 @@ set_target_properties(mbsvptools PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(mbsvptools PUBLIC mbio NetCDF::NetCDF)
 
 add_executable(mbsvpbest mbsvpbest.c)
-target_link_libraries(mbsvpbest PRIVATE mbsvptools ${MB_SYSLIBS})
+target_link_libraries(mbsvpbest PRIVATE mbsvptools)
 
 add_executable(mbsvpextract mbsvpextract.c)
-target_link_libraries(mbsvpextract PRIVATE mbsvptools ${MB_SYSLIBS})
+target_link_libraries(mbsvpextract PRIVATE mbsvptools)
 
 install(TARGETS mbsvpbest mbsvpextract DESTINATION ${CMAKE_INSTALL_BINDIR})

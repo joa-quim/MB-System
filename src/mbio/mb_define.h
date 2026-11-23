@@ -37,8 +37,8 @@
 #include <stdint.h>
 
 /* Define version and date for this release */
-#define MB_VERSION "5.8.3beta29"
-#define MB_VERSION_DATE "11 November 2026"
+#define MB_VERSION "5.8.3beta31"
+#define MB_VERSION_DATE "20 November 2026"
 
 /* CMake supports current OS's and so there is only one form of RPC and XDR and no mb_config.h file */
 #ifdef CMAKE_BUILD_SYSTEM
@@ -47,6 +47,15 @@
   /* struct timeval, sockets — MUST precede windows.h on MSVC */
 #  include <winsock2.h>
 #  include <windows.h>
+  /* minwindef.h defines near and far as empty macros (16-bit pointer leftovers),
+     which breaks any C++ that uses them as names. FAR and NEAR expand to them,
+     so they become empty themselves rather than dangling. */
+#  undef near
+#  undef far
+#  undef NEAR
+#  undef FAR
+#  define NEAR
+#  define FAR
   /* Windows lacks SunRPC/TIRPC, so use the mb_xdr_win32 replacement */
 #  include <mb_xdr_win32.h>
 #else
@@ -925,7 +934,7 @@ MBIO_API int mb_mallocd(int verbose, const char *sourcefile, int sourceline, siz
 MBIO_API int mb_reallocd(int verbose, const char *sourcefile, int sourceline, size_t size, void **ptr, int *error);
 MBIO_API int mb_freed(int verbose, const char *sourcefile, int sourceline, void **ptr, int *error);
 MBIO_API int mb_memory_clear(int verbose, int *error);
-int mb_memory_status(int verbose, int *nalloc, int *nallocmax, int *overflow, size_t *allocsize, int *error);
+MBIO_API int mb_memory_status(int verbose, int *nalloc, int *nallocmax, int *overflow, size_t *allocsize, int *error);
 MBIO_API int mb_memory_list(int verbose, int *error);
 MBIO_API int mb_register_array(int verbose, void *mbio_ptr, int type, size_t size, void **handle, int *error);
 MBIO_API int mb_update_arrays(int verbose, void *mbio_ptr, int nbath, int namp, int nss, int *error);

@@ -200,7 +200,7 @@ WaterColumnWidget::WaterColumnWidget(Presentation presentation, QWidget *parent)
     bar->setObjectName("panel_bar");
     bar->setToolButtonStyle(Qt::ToolButtonTextOnly);
   }
-  auto *open = new QPushButton(panel ? "Open" : "Open .kmwcd/.kmall/.wcd/.all");
+  auto *open = new QPushButton(panel ? "Open" : "Open .kmwcd/.kmall/.wcd/.all/.s7k");
   connect(open, &QPushButton::clicked, this, &WaterColumnWidget::openDialog);
   to_header(open);
   file_name_ = new QLabel("No file loaded");
@@ -358,7 +358,8 @@ void WaterColumnWidget::showStatus(const QString &message, int timeout_ms) { emi
 
 /*--------------------------------------------------------------------*/
 void WaterColumnWidget::openDialog() {
-  const QString path = QFileDialog::getOpenFileName(this, "Open .kmwcd/.kmall/.wcd/.all", "", "*.kmwcd *.kmall *.wcd *.all");
+  const QString path = QFileDialog::getOpenFileName(this, "Open .kmwcd/.kmall/.wcd/.all/.s7k", "",
+                                                    "Swath files (*.kmwcd *.kmall *.wcd *.all *.s7k);;All files (*)");
   if (!path.isEmpty())
     openFile(path);
 }
@@ -420,7 +421,7 @@ void WaterColumnWidget::finishOpen(const QString &path, Line line, bool ok, cons
     showStatus(line_.has_survey ? "No water column data found."
                                 : QString("Cannot read %1: %2").arg(file_label_, QString::fromStdString(message)));
     view_->plot().setData(wcd::PlotData());
-    view_->update();
+    view_->redraw();
     emit fileOpenFailed(path);
     return;
   }
@@ -443,7 +444,7 @@ void WaterColumnWidget::finishOpen(const QString &path, Line line, bool ok, cons
   const double depth_max = wc.range_max_m + draft_max;
   dmin_->setRange(0, depth_max);
   dmax_->setRange(0, depth_max);
-  dmin_->setValue(0);
+  dmin_->setValue(line_.default_depth_min());
   dmax_->setValue(depth_max);
   xmax_->setRange(0, wc.range_max_m > 0 ? 2.0 * wc.range_max_m : 1.0e5);
   xmax_->setValue(0);
@@ -484,7 +485,7 @@ void WaterColumnWidget::updatePlotSettings() {
   plot.setColorRange(amin_->value(), amax_->value());
   plot.setDepthWindow(dmin_->value(), dmax_->value());
   plot.setAcrossMax(xmax_->value());
-  view_->update();
+  view_->redraw();
 }
 
 void WaterColumnWidget::redraw() {
@@ -500,7 +501,7 @@ void WaterColumnWidget::redraw() {
   wcd::SceneInfo info;
   wcd::build_scene(line_, ping, swath, options, data, info);
   view_->plot().setData(std::move(data));
-  view_->update();
+  view_->redraw();
   meta_->setText(wcd::metadata_text(line_, ping, swath));
   if (presentation_ == Presentation::Panel)
     meta_->setToolTip(file_label_ + "\n" + meta_->text());

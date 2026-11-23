@@ -19,10 +19,11 @@
  *    used for mbmesh.
  *
  *    Option mapping. GMT has no long-option keyword dictionary for an
- *    out-of-tree module, so the long forms the original accepted (--input,
- *    --binary, --quantize-position, ...) are resolved here before
- *    GMT_Create_Options() sees the command line. Every option the original
- *    accepted is still accepted.
+ *    out-of-tree module, so the long forms of the original, such as --input,
+ *    --no-draco, --draco-precision and --geoviewpoint, are resolved here
+ *    before GMT_Create_Options() sees the command line. Every option the
+ *    original accepts is accepted, and the --quantize-* and -Q options that
+ *    it has replaced are refused with its message.
  */
 
 #define THIS_MODULE_NAME    "mbgrd2gltf"
@@ -89,8 +90,8 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 
 	GMT_Message(API, GMT_TIME_NONE,
 	            "MBgrd2gltf converts a bathymetry grid in GMT GRD format into a glTF or GLB\n"
-	            "3D model, with optional Draco mesh compression, vertical exaggeration and\n"
-	            "binary output format.\n\n"
+	            "3D model, with Draco mesh compression, vertical exaggeration and colors by\n"
+	            "height.\n\n"
 	            "The output mesh vertices are positioned in an Earth-Centered, Earth-Fixed\n"
 	            "(ECEF) Cartesian coordinate system with units in meters. ECEF is a 3D\n"
 	            "right-handed coordinate system with its origin at Earth's center of mass.\n"
@@ -101,21 +102,35 @@ static int usage(struct GMTAPI_CTRL *API, int level) {
 
 	GMT_Message(API, GMT_TIME_NONE, "Options:\n");
 	GMT_Message(API, GMT_TIME_NONE, "  --input, -I FILE              Input GMT GRD format bathymetry grid file (required)\n");
-	GMT_Message(API, GMT_TIME_NONE, "  --binary, -B                  Output in binary glTF (GLB) format\n");
-	GMT_Message(API, GMT_TIME_NONE, "                                  (-Z is the GMT spelling; GMT reserves -B)\n");
+	GMT_Message(API, GMT_TIME_NONE, "  --no-binary, -A               Write glTF (.gltf, JSON with the buffers embedded) in place of the binary glTF (.glb)\n");
+	GMT_Message(API, GMT_TIME_NONE, "                                that is written by default; --binary, -B, -Z are accepted and do nothing\n");
 	GMT_Message(API, GMT_TIME_NONE, "  --output, -O ROOT             Output file root [default: input file basename]\n");
-	GMT_Message(API, GMT_TIME_NONE, "  --exaggeration, -E NUM        Vertical exaggeration factor [default: 1.0]\n");
-	GMT_Message(API, GMT_TIME_NONE, "  --geoorigin, -G [LON,LAT,EL]  GeoOrigin for high-precision local coordinates\n");
+	GMT_Message(API, GMT_TIME_NONE, "  --exaggeration, -E NUM        Vertical exaggeration factor, applied about the grid's mean altitude [default: 1.0]\n");
+	GMT_Message(API, GMT_TIME_NONE, "  --geoorigin[=LON,LAT,EL]      GeoOrigin for high-precision local coordinates\n");
+	GMT_Message(API, GMT_TIME_NONE, "  -G[LON,LAT,EL]                Short form; the value follows -G with no space\n");
 	GMT_Message(API, GMT_TIME_NONE, "                                  With values: use specified lon,lat,elev\n");
 	GMT_Message(API, GMT_TIME_NONE, "                                  Without values: use grid center and mean altitude\n");
 	GMT_Message(API, GMT_TIME_NONE, "                                  Not specified: original ECEF coordinates (default)\n");
-	GMT_Message(API, GMT_TIME_NONE, "  --draco, -D                   Enable Draco mesh compression\n");
-	GMT_Message(API, GMT_TIME_NONE, "  --quantize-position NUM       Draco position quantization bits (2-30) [default: 16]\n");
-	GMT_Message(API, GMT_TIME_NONE, "  --quantize-normal NUM         Draco normal quantization bits (2-30) [default: 7]\n");
-	GMT_Message(API, GMT_TIME_NONE, "  --quantize-texcoord NUM       Draco texcoord quantization bits (2-30) [default: 10]\n");
-	GMT_Message(API, GMT_TIME_NONE, "  --quantize-color NUM          Draco color quantization bits (2-30) [default: 8]\n");
-	GMT_Message(API, GMT_TIME_NONE, "                      (-Qp, -Qn, -Qt, -Qc for legacy style)\n");
-	GMT_Message(API, GMT_TIME_NONE, "  --html, -W                    Generate HTML viewer with inline glTF/GLB model\n");
+	GMT_Message(API, GMT_TIME_NONE, "                                GLB positions are 32-bit floats, so absolute ECEF (magnitudes of about\n");
+	GMT_Message(API, GMT_TIME_NONE, "                                6.4 million meters) resolves only about 0.5 m; use a GeoOrigin to\n");
+	GMT_Message(API, GMT_TIME_NONE, "                                preserve sub-meter detail\n");
+	GMT_Message(API, GMT_TIME_NONE, "  --no-draco, -N                Write the mesh as arrays. By default the mesh is compressed with Draco\n");
+	GMT_Message(API, GMT_TIME_NONE, "                                (KHR_draco_mesh_compression), as mbmesh does; --draco, -D are accepted and do nothing\n");
+	GMT_Message(API, GMT_TIME_NONE, "  --draco-precision, -T NUM     With Draco, keep positions to this many meters [default: 0.001]: each block (a primitive\n");
+	GMT_Message(API, GMT_TIME_NONE, "                                of the file) gets the bits that make the step of its quantization no coarser, between 8 and 30\n");
+	GMT_Message(API, GMT_TIME_NONE, "  --draco-normal-bits, -L NUM   With Draco, the bits of each normal, 2-30 [default: 10]; the mesh has no normals\n");
+	GMT_Message(API, GMT_TIME_NONE, "                                today, so this changes nothing\n");
+	GMT_Message(API, GMT_TIME_NONE, "  --geoviewpoint, -S VALUES     With --html or --cesium-html, add a GeoViewpoint to the page; can be repeated. The values are\n");
+	GMT_Message(API, GMT_TIME_NONE, "                                geodetic, in the order of --geoorigin: lon,lat,elev,clon,clat,celev, the camera position\n");
+	GMT_Message(API, GMT_TIME_NONE, "                                and the point it looks at, or lon,lat,elev,ax,ay,az,angle,clon,clat,celev, with the\n");
+	GMT_Message(API, GMT_TIME_NONE, "                                orientation as an axis and an angle. Heights are above the ellipsoid. The Copy GeoViewpoint\n");
+	GMT_Message(API, GMT_TIME_NONE, "                                button of the page gives the ten-number form\n");
+	GMT_Message(API, GMT_TIME_NONE, "  --no-colors, -M               Do not color the vertices by height. By default every vertex has a color (COLOR_0) from the\n");
+	GMT_Message(API, GMT_TIME_NONE, "                                Haxby table, and the pages have a \"color by height\" check box\n");
+	GMT_Message(API, GMT_TIME_NONE, "  --html, -W                    Generate HTML viewer with inline glTF/GLB model and print the command to view it\n");
+	GMT_Message(API, GMT_TIME_NONE, "  --cesium-html, -C             Also write a viewer page for CesiumJS, <output>_cesium.html beside the model\n");
+	GMT_Message(API, GMT_TIME_NONE, "  --cesium-url, -F URL          The directory of the CesiumJS build of the --cesium-html page, with Cesium.js and\n");
+	GMT_Message(API, GMT_TIME_NONE, "                                Widgets/widgets.css in it [https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium]\n");
 	GMT_Message(API, GMT_TIME_NONE, "  --verbose, -V                 Enable verbose output\n");
 	GMT_Message(API, GMT_TIME_NONE, "  --help, -H                    Print this help message\n\n");
 	return GMT_MODULE_USAGE;
@@ -139,24 +154,6 @@ static bool parse_geoorigin(struct mbgrd2gltf_options *o, const char *arg) {
 	return false;
 }
 
-/* -Q selects which Draco quantization the value applies to: p, n, t or c. */
-static bool parse_quantization(struct mbgrd2gltf_options *o, const char *arg) {
-	int value = 0;
-	int index;
-
-	if (arg == NULL || arg[0] == '\0') return false;
-	switch (arg[0]) {
-		case 'p': index = 0; break;
-		case 'n': index = 1; break;
-		case 't': index = 2; break;
-		case 'c': index = 3; break;
-		default: return false;
-	}
-	if (sscanf(arg + 1, "%d", &value) != 1) return false;
-	o->draco_quantization[index] = value;
-	return true;
-}
-
 /* Port of the option parsing. GMT hands each option over already split into a
  * letter and its argument; the long forms reach this switch through
  * preparse_long_options() below. */
@@ -165,6 +162,7 @@ static int parse_mbgrd2gltf(struct GMT_CTRL *GMT, struct MBGRD2GLTF_CTRL *Ctrl, 
 	struct GMT_OPTION *opt = NULL;
 	struct GMTAPI_CTRL *API = GMT->parent;
 	struct mbgrd2gltf_options *o = &Ctrl->options;
+	char reason[MBGRD2GLTF_ERROR_MAXLINE];
 
 	for (opt = options; opt; opt = opt->next) {
 		switch (opt->option) {
@@ -187,13 +185,81 @@ static int parse_mbgrd2gltf(struct GMT_CTRL *GMT, struct MBGRD2GLTF_CTRL *Ctrl, 
 
 		/* -Z, not -B: GMT reserves -B for the map frame and intercepts it before
 		 * the module sees it. preparse_long_options() rewrites both --binary and
-		 * the legacy -B into -Z, so both spellings still work. */
+		 * the legacy -B into -Z, so both spellings still work. GLB is the
+		 * default, so it changes nothing; -A, the short form of --no-binary,
+		 * writes glTF. */
 		case 'Z':
 			o->is_binary_output = true;
 			break;
 
+		case 'A':
+			o->is_binary_output = false;
+			break;
+
+		/* Draco is on by default; -D is accepted and changes nothing */
 		case 'D':
 			o->is_draco_compressed = true;
+			break;
+
+		case 'N':
+			o->is_draco_compressed = false;
+			break;
+
+		case 'T':
+			if (!mbgrd2gltf_parse_draco_precision(opt->arg, &o->draco_precision, reason, sizeof(reason))) {
+				GMT_Report(API, GMT_MSG_ERROR, "Invalid --draco-precision: %s\n", reason);
+				n_errors++;
+			}
+			break;
+
+		case 'L':
+			if (!mbgrd2gltf_parse_draco_normal_bits(opt->arg, &o->draco_normal_bits, reason, sizeof(reason))) {
+				GMT_Report(API, GMT_MSG_ERROR, "Invalid --draco-normal-bits: %s\n", reason);
+				n_errors++;
+			}
+			break;
+
+		case 'S':
+			if (opt->arg[0] == '\0') {
+				GMT_Report(API, GMT_MSG_ERROR,
+				           "--geoviewpoint requires a value, attached: --geoviewpoint=lon,lat,elev,clon,clat,celev\n");
+				n_errors++;
+			}
+			else if (!mbgrd2gltf_geoviewpoint_valid(opt->arg, reason, sizeof(reason))) {
+				GMT_Report(API, GMT_MSG_ERROR, "Invalid --geoviewpoint: %s\n", reason);
+				n_errors++;
+			}
+			else if (o->n_geoviewpoints >= MBGRD2GLTF_GEOVIEWPOINT_MAX) {
+				GMT_Report(API, GMT_MSG_ERROR, "At most %d --geoviewpoint values can be given\n",
+				           MBGRD2GLTF_GEOVIEWPOINT_MAX);
+				n_errors++;
+			}
+			else if (strlen(opt->arg) >= MBGRD2GLTF_GEOVIEWPOINT_MAXLINE) {
+				GMT_Report(API, GMT_MSG_ERROR, "Invalid --geoviewpoint: the value is too long\n");
+				n_errors++;
+			}
+			else {
+				snprintf(o->geoviewpoints[o->n_geoviewpoints], MBGRD2GLTF_GEOVIEWPOINT_MAXLINE, "%s", opt->arg);
+				o->n_geoviewpoints++;
+			}
+			break;
+
+		case 'M':
+			o->colors = false;
+			break;
+
+		case 'C':
+			o->is_cesium_html_output = true;
+			break;
+
+		case 'F':
+			if (opt->arg[0] == '\0') {
+				GMT_Report(API, GMT_MSG_ERROR, "--cesium-url requires the directory of a CesiumJS build\n");
+				n_errors++;
+			}
+			else {
+				snprintf(o->cesium_url, MBGRD2GLTF_PATH_MAXLINE, "%s", opt->arg);
+			}
 			break;
 
 		case 'E':
@@ -213,12 +279,12 @@ static int parse_mbgrd2gltf(struct GMT_CTRL *GMT, struct MBGRD2GLTF_CTRL *Ctrl, 
 			}
 			break;
 
+		/* the quantization bits of the original, which it now refuses */
 		case 'Q':
-			if (!parse_quantization(o, opt->arg)) {
-				GMT_Report(API, GMT_MSG_NORMAL,
-				           "Syntax error -Q option: expected p, n, t or c followed by a bit count\n");
-				n_errors++;
-			}
+			GMT_Report(API, GMT_MSG_ERROR,
+			           "-Q and --quantize-* are replaced by --draco-precision (the step of the positions in meters, "
+			           "for each block) and --draco-normal-bits, which mbmesh takes as well\n");
+			n_errors++;
 			break;
 
 		case 'W':
@@ -236,14 +302,19 @@ static int parse_mbgrd2gltf(struct GMT_CTRL *GMT, struct MBGRD2GLTF_CTRL *Ctrl, 
 		}
 	}
 
+	if (o->n_geoviewpoints > 0 && !o->is_html_output && !o->is_cesium_html_output) {
+		GMT_Report(API, GMT_MSG_ERROR,
+		           "--geoviewpoint adds a viewpoint to the page that --html or --cesium-html writes; use one of them too\n");
+		n_errors++;
+	}
+
 	return n_errors ? GMT_PARSE_ERROR : GMT_OK;
 }
 
 /* ======================================================================================================== */
 
-/* The long options the original accepted, mapped to the short forms GMT can
- * parse. --quantize-* have no short equivalent of their own, so they are
- * folded into -Q with the selector letter the legacy style uses. */
+/* The long options the original accepts, mapped to the short forms GMT can
+ * parse. The replaced --quantize-* options become -Q, which is refused. */
 /*--------------------------------------------------------------------*/
 /* Joins the argv[] form of a module's arguments into the single string that
  * preparse_long_options() works on. GMT hands a module its arguments either
@@ -333,8 +404,12 @@ static char *preparse_long_options(struct mbgrd2gltf_options *o, const char *arg
 
 		/* flags */
 		if (strcmp(name, "binary") == 0)            emit = "Z";   /* -B is reserved by GMT */
+		else if (strcmp(name, "no-binary") == 0)    emit = "A";
 		else if (strcmp(name, "draco") == 0)        emit = "D";
+		else if (strcmp(name, "no-draco") == 0)     emit = "N";
+		else if (strcmp(name, "no-colors") == 0)    emit = "M";
 		else if (strcmp(name, "html") == 0)         emit = "W";
+		else if (strcmp(name, "cesium-html") == 0)  emit = "C";
 		else if (strcmp(name, "verbose") == 0)      emit = "V";
 		if (emit != NULL) {
 			if (out > 0) rewritten[out++] = ' ';
@@ -355,10 +430,12 @@ static char *preparse_long_options(struct mbgrd2gltf_options *o, const char *arg
 		else if (strcmp(name, "output") == 0)            emit = "O";
 		else if (strcmp(name, "exaggeration") == 0)      emit = "E";
 		else if (strcmp(name, "geoorigin") == 0)         emit = "G";
-		else if (strcmp(name, "quantize-position") == 0) emit = "Qp";
-		else if (strcmp(name, "quantize-normal") == 0)   emit = "Qn";
-		else if (strcmp(name, "quantize-texcoord") == 0) emit = "Qt";
-		else if (strcmp(name, "quantize-color") == 0)    emit = "Qc";
+		else if (strcmp(name, "draco-precision") == 0)   emit = "T";
+		else if (strcmp(name, "draco-normal-bits") == 0) emit = "L";
+		else if (strcmp(name, "geoviewpoint") == 0)      emit = "S";
+		else if (strcmp(name, "cesium-url") == 0)        emit = "F";
+		/* replaced by --draco-precision; -Q is refused with the original's message */
+		else if (strncmp(name, "quantize-", 9) == 0)     emit = "Q";
 
 		if (emit == NULL) {
 			/* not ours: hand it to GMT unchanged */
@@ -497,11 +574,6 @@ int GMT_mbgrd2gltf(void *V_API, int mode, void *args) {
 		mbgrd2gltf_default_output_root(o->input_filepath, o->output_filepath, MBGRD2GLTF_PATH_MAXLINE);
 	}
 
-	if (o->is_draco_compressed && !mbgrd2gltf_draco_quantization_valid(o)) {
-		GMT_Report(API, GMT_MSG_ERROR, "Draco quantization bits must be between 2 and 30\n");
-		Return(GMT_RUNTIME_ERROR);
-	}
-
 	/* Configure logger based on verbose flag */
 	mbgrd2gltf_logger_set_verbose(o->is_verbose);
 
@@ -524,9 +596,8 @@ int GMT_mbgrd2gltf(void *V_API, int mode, void *args) {
 
 	if (o->is_draco_compressed) {
 		snprintf(message, sizeof(message),
-		         "Draco quantization bits - Position: %d Normal: %d Texcoord: %d Color: %d",
-		         o->draco_quantization[0], o->draco_quantization[1], o->draco_quantization[2],
-		         o->draco_quantization[3]);
+		         "Draco: positions kept to %g m in each block (--draco-precision), normals in %d bits (--draco-normal-bits)",
+		         o->draco_precision, o->draco_normal_bits);
 		log_info(API, message);
 	}
 
@@ -547,7 +618,7 @@ int GMT_mbgrd2gltf(void *V_API, int mode, void *args) {
 	snprintf(output_file, sizeof(output_file), "%s%s", o->output_filepath,
 	         o->is_binary_output ? ".glb" : ".gltf");
 
-	if (!mbgrd2gltf_write_gltf(geometry, o, error, sizeof(error))) {
+	if (!mbgrd2gltf_write_gltf(bathymetry, geometry, o, command_line, error, sizeof(error))) {
 		GMT_Report(API, GMT_MSG_ERROR, "%s\n", error);
 		Return(GMT_RUNTIME_ERROR);
 	}
@@ -556,31 +627,18 @@ int GMT_mbgrd2gltf(void *V_API, int mode, void *args) {
 	         file_size_mb(output_file));
 	log_info(API, message);
 
-	/* Generate HTML viewer if requested */
-	if (o->is_html_output) {
-		char timestamp[64] = "";
-		const time_t now = time(NULL);
-		struct tm gmt_time;
+	/* Generate the viewer pages if requested */
+	if (o->is_html_output || o->is_cesium_html_output) {
 		const char *output_dir;
 		const char *html_name;
 		char dir_buffer[MBGRD2GLTF_PATH_MAXLINE];
-		char html_buffer[MBGRD2GLTF_PATH_MAXLINE + 8];
+		char page_names[2][MBGRD2GLTF_PATH_MAXLINE + 16];
+		int n_pages = 0;
 		char *last_slash;
+		int i;
 
-		/* Get current timestamp in ISO 8601 format */
-#ifdef _WIN32
-		gmtime_s(&gmt_time, &now);
-#else
-		gmtime_r(&now, &gmt_time);
-#endif
-		strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", &gmt_time);
-
-		if (!mbgrd2gltf_write_html(bathymetry, geometry, o, command_line, timestamp, error, sizeof(error))) {
-			GMT_Report(API, GMT_MSG_ERROR, "%s\n", error);
-			Return(GMT_RUNTIME_ERROR);
-		}
-
-		/* Extract directory path for web server instructions */
+		/* The pages load the model over HTTP, which browsers require for local
+		 * files; log the command to run rather than starting a server. */
 		snprintf(dir_buffer, sizeof(dir_buffer), "%s", o->output_filepath);
 		last_slash = strrchr(dir_buffer, '/');
 		if (last_slash == NULL) last_slash = strrchr(dir_buffer, '\\');
@@ -593,15 +651,44 @@ int GMT_mbgrd2gltf(void *V_API, int mode, void *args) {
 			output_dir = ".";
 			html_name = o->output_filepath;
 		}
-		snprintf(html_buffer, sizeof(html_buffer), "%s.html", html_name);
 
-		log_info(API, "To view the HTML file (avoiding CORS issues):");
-		log_info(API, "  Start a local web server in the output directory:");
-		snprintf(message, sizeof(message), "    cd %s", output_dir);
+		if (o->is_html_output) {
+			char timestamp[64] = "";
+			const time_t now = time(NULL);
+			struct tm gmt_time;
+
+			/* Get current timestamp in ISO 8601 format */
+#ifdef _WIN32
+			gmtime_s(&gmt_time, &now);
+#else
+			gmtime_r(&now, &gmt_time);
+#endif
+			strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", &gmt_time);
+
+			if (!mbgrd2gltf_write_html(bathymetry, geometry, o, command_line, timestamp, error, sizeof(error))) {
+				GMT_Report(API, GMT_MSG_ERROR, "%s\n", error);
+				Return(GMT_RUNTIME_ERROR);
+			}
+			snprintf(page_names[n_pages++], sizeof(page_names[0]), "%s.html", html_name);
+		}
+		if (o->is_cesium_html_output) {
+			if (!mbgrd2gltf_write_cesium_html(geometry, o, error, sizeof(error))) {
+				GMT_Report(API, GMT_MSG_ERROR, "%s\n", error);
+				Return(GMT_RUNTIME_ERROR);
+			}
+			snprintf(page_names[n_pages++], sizeof(page_names[0]), "%s_cesium.html", html_name);
+		}
+
+		snprintf(message, sizeof(message),
+		         "To view %s, run this command in a terminal (Ctrl-C stops it), then open the URL%s:",
+		         n_pages > 1 ? "the pages" : page_names[0], n_pages > 1 ? "s" : "");
 		log_info(API, message);
-		log_info(API, "    python3 -m http.server 8000");
-		snprintf(message, sizeof(message), "  Then open: http://localhost:8000/%s", html_buffer);
+		snprintf(message, sizeof(message), "  python3 -m http.server 8000 --bind 127.0.0.1 --directory \"%s\"", output_dir);
 		log_info(API, message);
+		for (i = 0; i < n_pages; i++) {
+			snprintf(message, sizeof(message), "  http://127.0.0.1:8000/%s", page_names[i]);
+			log_info(API, message);
+		}
 	}
 
 	Return(GMT_NOERROR);
