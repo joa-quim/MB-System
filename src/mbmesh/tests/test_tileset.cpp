@@ -154,6 +154,9 @@ int main() {
     ok &= check(!write_tileset_json(directory / "none.json", frame, {}, MetaValue(), "test", &error) && !error.empty() && !std::filesystem::exists(directory / "none.json"),
                 "a tileset with no tiles is refused");
 
+    // Windows cannot remove a file that is open
+    input.close();
+    plain_input.close();
     std::filesystem::remove_all(directory);
     if (ok) {
         std::printf("OK: tileset\n");

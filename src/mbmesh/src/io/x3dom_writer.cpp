@@ -527,7 +527,8 @@ std::filesystem::path viewer_page_path(const std::filesystem::path &output_direc
 std::string viewer_title(const std::filesystem::path &web_root) {
     const std::filesystem::path directory = normalized_directory(web_root);
     std::vector<std::string> names;
-    for (const std::filesystem::path &part : directory) {
+    // relative_path() leaves out the root, which on Windows is a drive (C:) as well as a separator
+    for (const std::filesystem::path &part : directory.relative_path()) {
         const std::string name = part.string();
         if (!name.empty() && name != "/" && name != "\\") {
             names.push_back(name);

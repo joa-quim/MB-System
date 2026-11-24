@@ -9,7 +9,7 @@
  * the program, whatever options upstream adds to it, without a copy of its
  * driver to keep in step.
  *
- * mbmesh.cpp is compiled here unchanged, with three names changed, iso_utc_time being the third, below:
+ * mbmesh.cpp is compiled here unchanged, with four names changed (iso_utc_time and weld_coincident_vertices below):
  *   main       becomes mbmesh_program_main(), which mbmesh_run_program() calls;
  *   std::exit  becomes std::mbmesh_program_exit(), which throws instead of
  *              ending the process: parse_options() calls std::exit(1) on a bad
@@ -60,6 +60,9 @@
 #include "io/cesium_convert.h"
 #include "io/cesium_writer.h"
 #include "io/x3dom_writer.h"
+#include "algorithms/seam_blending.h"
+
+#include "fast_weld.h"
 
 #include "mbmesh_program.h"
 
@@ -94,7 +97,10 @@ static std::string mbmesh_program_iso_utc_time(double unix_seconds) {
 #define main mbmesh_program_main
 #define exit(status) mbmesh_program_exit(status)
 #define iso_utc_time mbmesh_program_iso_utc_time
+// the seams of a chunked mesh joined by the fork's faster copy of upstream's weld, the same result (fast_weld.h)
+#define weld_coincident_vertices mbmesh_fast_weld_coincident_vertices
 #include "mbmesh.cpp"
+#undef weld_coincident_vertices
 #undef iso_utc_time
 #undef exit
 #undef main

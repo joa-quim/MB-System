@@ -189,6 +189,7 @@ int main() {
     std::ifstream in(path);
     const std::string written((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     ok &= check(written == other, "the file holds the text");
+    in.close();   // Windows cannot remove a file that is open
     std::filesystem::remove(path);
     ok &= check(!write_cesium_page("/nonexistent_directory/x.html", options, &error) && !error.empty(), "a page that cannot be written is an error");
 

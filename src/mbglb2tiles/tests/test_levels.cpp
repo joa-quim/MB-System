@@ -177,6 +177,7 @@ int main() {
               json.find("L0/tile_0_0.glb") != std::string::npos && json.find("\"version\": \"1.1\"") != std::string::npos,
           "the tree has the transform, REPLACE, and the child");
 
+    json_file.close();   // Windows cannot remove a file that is open
     std::filesystem::remove_all(directory);
     std::printf("levels: %zu vertices, %zu coarse, %zu tiles\n", mesh.vertices.size(), coarse.vertices.size(), tiles.size());
     return failures == 0 ? 0 : 1;

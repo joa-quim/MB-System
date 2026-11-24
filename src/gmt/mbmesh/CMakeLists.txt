@@ -11,6 +11,8 @@
 #                             multigrid (--poisson-solver multigrid, the
 #                             module's default), in place of upstream's file
 #   poisson_multigrid.{h,cpp} the multigrid solver
+#   fast_weld.{h,cpp}         a faster copy of upstream weld_coincident_vertices(),
+#                             the same result
 # src/mbmesh itself, and its mbmesh program, are left as upstream has them.
 
 set(MBMESH_UPSTREAM ${CMAKE_SOURCE_DIR}/src/mbmesh)
@@ -22,6 +24,7 @@ add_library(mbmesh_pipeline STATIC
   mbmesh_program.cpp
   screened_poisson_fast.cpp
   poisson_multigrid.cpp
+  fast_weld.cpp
   ${MBMESH_UPSTREAM}/settings.cpp
   ${MBMESH_UPSTREAM}/src/io/coordinate_frame.cpp
   ${MBMESH_UPSTREAM}/src/io/datalist_reader.cpp

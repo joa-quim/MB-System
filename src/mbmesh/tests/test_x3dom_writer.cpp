@@ -32,6 +32,7 @@ std::string write_page(const X3DomWriterOptions &options) {
     }
     std::ifstream input(path);
     std::string page((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    input.close();   // Windows cannot remove a file that is open
     std::filesystem::remove(path);
     return page;
 }
@@ -511,6 +512,7 @@ int main() {
         ok &= check(write_log_file(log, {"INFO a", "DEBUG b < c"}, 3, &error), "the log file is written");
         std::ifstream input(log);
         const std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        input.close();   // Windows cannot remove a file that is open
         std::filesystem::remove(log);
         ok &= check(text == "INFO a\nDEBUG b < c\n... 3 further messages are not shown\n", "one message a line, unescaped, then the omitted count");
     }

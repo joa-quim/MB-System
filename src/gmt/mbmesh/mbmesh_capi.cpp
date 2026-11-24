@@ -15,6 +15,9 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <thread>
+#include <cstdio>
+#include <algorithm>
 
 #include <getopt.h>
 
@@ -61,12 +64,26 @@ extern "C" int mbmesh_run_program(int argc, char **argv, char **captured_output)
 	/* The fork's octree multigrid solves the Poisson equation (see mbmesh_fast_poisson.h) unless
 	 * --poisson-solver names another: it is given first, so that a later --poisson-solver wins. It
 	 * solves the finest grid as far from the soundings as void filling keeps mesh, half --void-size.
-	 * Without arguments the program prints its usage, and is left so. */
+	 * Without arguments the program prints its usage, and is left so.
+	 * One more default of the module, only when not given: --threads 8 (fewer on a smaller machine),
+	 * the chunks reconstructed at once, in place of the 4 of the program. The seams stay the program's
+	 * (--seam-method solve): blend, though faster, moved the EM122 test survey's mesh by tens of meters. */
 	std::vector<char *> arguments(argv, argv + argc);
 	static char solver_option[] = "--poisson-solver";
 	static char solver_name[] = "multigrid";
-	if (argc > 1 && long_option_value(argc, argv, "--poisson-solver") == nullptr) {
-		arguments.insert(arguments.begin() + 1, {solver_option, solver_name});
+	static char threads_option[] = "--threads";
+	static char threads_count[16];
+	if (argc > 1) {
+		std::vector<char *> defaults;
+		if (long_option_value(argc, argv, "--poisson-solver") == nullptr) {
+			defaults.insert(defaults.end(), {solver_option, solver_name});
+		}
+		if (long_option_value(argc, argv, "--threads") == nullptr) {
+			const unsigned cores = std::thread::hardware_concurrency();
+			std::snprintf(threads_count, sizeof(threads_count), "%u", cores == 0 ? 4u : std::min(cores, 8u));
+			defaults.insert(defaults.end(), {threads_option, threads_count});
+		}
+		arguments.insert(arguments.begin() + 1, defaults.begin(), defaults.end());
 	}
 	const char *void_size = long_option_value(argc, argv, "--void-size");
 	mbmesh_fast_poisson_set_min_reach(void_size != nullptr ? 0.5 * std::atof(void_size) : 1.0);

@@ -417,10 +417,15 @@ ScalarGrid3D screened_poisson(const OrientedPointCloud &oriented_points, Screene
 		const int max_cycles = options.solver_iterations > 0 ? std::min(options.solver_iterations, 40) : 40;
 		MultigridReport report;
 		const mbmesh::Stopwatch multigrid_timer;
+		// Chunked reconstruction gives each chunk's solve the threads of all the chunks it runs at once
+		// (poisson.threads = chunking.threads): n chunks at once would make n * n threads. Each solve takes
+		// its share of the cores instead.
+		const int cores = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
+		const int solve_threads = std::max(1, cores / std::max(1, options.threads));
 		poisson_multigrid_solve(&scalar_indicator_field.values, static_cast<int>(scalar_indicator_field.nx),
 		                        static_cast<int>(scalar_indicator_field.ny), static_cast<int>(scalar_indicator_field.nz), cell,
 		                        std::move(source), std::move(screening), fixed_nodes, std::move(occupied), refine_radius,
-		                        0, 1.0e-4, max_cycles, options.threads, &report);
+		                        0, 1.0e-4, max_cycles, solve_threads, &report);
 		fast_poisson_last_report = report;
 		if (diagnostics != nullptr) {
 			diagnostics->iterations = report.cycles;
