@@ -1,8 +1,13 @@
 #include "fast_weld.h"
 
 #include <cmath>
+#include <functional>
 #include <cstdint>
+#include <algorithm>
+#include <thread>
 #include <vector>
+
+#include "util/parallel.h"
 
 namespace {
 
@@ -70,16 +75,80 @@ std::size_t mbmesh_fast_weld_coincident_vertices(Mesh *mesh, double tolerance) {
     const bool had_normals = mesh->normals.size() == count;
     const double tolerance_squared = tolerance * tolerance;
 
-    CellTable cells(count);
+    // A vertex can only be merged, or have others merged into it, if another vertex is within the tolerance: those
+    // candidates, found first in parallel among all the vertices (sorted by cell), are the only ones the sequential
+    // pass below has to see. It sees them in their order, as upstream sees all of them, so every merge is the same.
+    std::vector<Cell> keys(count);
+    const int threads = static_cast<int>(std::max(1u, std::min(16u, std::thread::hardware_concurrency())));
+    const auto parallel = [&](std::size_t n, const std::function<void(long, long)> &body) {
+        mbmesh::parallel_for_ranges(0, static_cast<long>(n), n > 50000 ? threads : 1, body);
+    };
+    parallel(count, [&](long begin, long end) {
+        for (long n = begin; n < end; n++) {
+            const Vec3 &v = mesh->vertices[static_cast<std::size_t>(n)];
+            keys[static_cast<std::size_t>(n)] = Cell{static_cast<long long>(std::floor(v.x / tolerance)),
+                                                     static_cast<long long>(std::floor(v.y / tolerance)),
+                                                     static_cast<long long>(std::floor(v.z / tolerance))};
+        }
+    });
+    const auto less = [](const Cell &a, const Cell &b) {
+        return a.x != b.x ? a.x < b.x : (a.y != b.y ? a.y < b.y : a.z < b.z);
+    };
+    std::vector<unsigned int> by_cell(count);
+    for (std::size_t n = 0; n < count; n++) {
+        by_cell[n] = static_cast<unsigned int>(n);
+    }
+    std::sort(by_cell.begin(), by_cell.end(), [&](unsigned int a, unsigned int b) {
+        return less(keys[a], keys[b]) || (!less(keys[b], keys[a]) && a < b);
+    });
+    std::vector<unsigned char> candidate(count, 0);
+    parallel(count, [&](long begin, long end) {
+        for (long n = begin; n < end; n++) {
+            const Cell &c = keys[static_cast<std::size_t>(n)];
+            const Vec3 &v = mesh->vertices[static_cast<std::size_t>(n)];
+            bool near = false;
+            for (long long dx = -1; dx <= 1 && !near; dx++) {
+                for (long long dy = -1; dy <= 1 && !near; dy++) {
+                    for (long long dz = -1; dz <= 1 && !near; dz++) {
+                        const Cell want{c.x + dx, c.y + dy, c.z + dz};
+                        auto it = std::lower_bound(by_cell.begin(), by_cell.end(), want,
+                                                   [&](unsigned int a, const Cell &w) { return less(keys[a], w); });
+                        for (; it != by_cell.end() && !less(want, keys[*it]); ++it) {
+                            if (*it == static_cast<unsigned int>(n)) {
+                                continue;
+                            }
+                            const Vec3 &o = mesh->vertices[*it];
+                            const double ex = v.x - o.x, ey = v.y - o.y, ez = v.z - o.z;
+                            if (ex * ex + ey * ey + ez * ez <= tolerance_squared) {
+                                near = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            candidate[static_cast<std::size_t>(n)] = near ? 1 : 0;
+        }
+    });
+    by_cell = std::vector<unsigned int>();
+
+    // The sequential pass of upstream over the candidates only: each merged into the first earlier kept candidate
+    // within the tolerance, found in upstream's order (cells -1..1 in x, then y, then z; in a cell, the order added).
+    std::size_t candidates = 0;
+    for (std::size_t n = 0; n < count; n++) {
+        candidates += candidate[n];
+    }
+    CellTable cells(std::max<std::size_t>(candidates, 1));
     std::vector<unsigned int> next_in_cell(count, CellTable::kEmpty);
-    std::vector<unsigned int> new_index(count);
-    std::vector<Vec3> vertices;
-    vertices.reserve(count);
+    std::vector<unsigned int> merged_into(count);
     std::size_t merged = 0;
     for (std::size_t n = 0; n < count; n++) {
+        merged_into[n] = static_cast<unsigned int>(n);
+        if (candidate[n] == 0) {
+            continue;
+        }
         const Vec3 &v = mesh->vertices[n];
-        const Cell cell{static_cast<long long>(std::floor(v.x / tolerance)), static_cast<long long>(std::floor(v.y / tolerance)),
-                        static_cast<long long>(std::floor(v.z / tolerance))};
+        const Cell &cell = keys[n];
         bool found = false;
         for (long long dx = -1; dx <= 1 && !found; dx++) {
             for (long long dy = -1; dy <= 1 && !found; dy++) {
@@ -89,7 +158,7 @@ std::size_t mbmesh_fast_weld_coincident_vertices(Mesh *mesh, double tolerance) {
                         const Vec3 &o = mesh->vertices[other];
                         const double ex = v.x - o.x, ey = v.y - o.y, ez = v.z - o.z;
                         if (ex * ex + ey * ey + ez * ez <= tolerance_squared) {
-                            new_index[n] = new_index[other];
+                            merged_into[n] = other;
                             found = true;
                             merged++;
                             break;
@@ -99,9 +168,20 @@ std::size_t mbmesh_fast_weld_coincident_vertices(Mesh *mesh, double tolerance) {
             }
         }
         if (!found) {
-            new_index[n] = static_cast<unsigned int>(vertices.size());
-            vertices.push_back(v);
             cells.append(cells.slot(cell), cell, static_cast<unsigned int>(n), &next_in_cell);
+        }
+    }
+    // The kept vertices in their order, and the new index of each vertex.
+    std::vector<unsigned int> new_index(count);
+    std::vector<Vec3> vertices;
+    vertices.reserve(count - merged);
+    for (std::size_t n = 0; n < count; n++) {
+        if (merged_into[n] == n) {
+            new_index[n] = static_cast<unsigned int>(vertices.size());
+            vertices.push_back(mesh->vertices[n]);
+        }
+        else {
+            new_index[n] = new_index[merged_into[n]];
         }
     }
     if (merged == 0) {

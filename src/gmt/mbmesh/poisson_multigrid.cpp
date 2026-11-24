@@ -3,11 +3,117 @@
 #include "util/parallel.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <condition_variable>
+#include <deque>
+#include <functional>
+#include <mutex>
+#include <thread>
+#include <vector>
 
 // See poisson_multigrid.h for what this solves and how.
 
 namespace {
+
+// One pool of worker threads, one per core, shared by every solve in the process. Chunked reconstruction runs several
+// solves at once, each of which used to take a fixed number of threads of its own, started and joined for every sweep:
+// a solve alone on the critical path of the chunks then had a few cores while the others were idle. Here each sweep is
+// cut into pieces that whichever workers are free take, the calling thread taking pieces as well while it waits. The
+// pieces of a sweep touch nodes no other piece of it writes, so the result does not depend on who runs them.
+class WorkerPool {
+public:
+	static WorkerPool &instance() {
+		// never destroyed: joining threads while a library is unloaded can deadlock
+		static WorkerPool *pool = new WorkerPool(std::max(1u, std::thread::hardware_concurrency()));
+		return *pool;
+	}
+
+	int size() const { return static_cast<int>(workers_.size()); }
+
+	// body(begin, end) over [first, last) cut into `pieces` ranges; returns when all have run.
+	void run(long first, long last, int pieces, const std::function<void(long, long)> &body) {
+		const long total = std::max(0L, last - first);
+		pieces = static_cast<int>(std::max(1L, std::min<long>(pieces, total)));
+		if (pieces <= 1) {
+			body(first, last);
+			return;
+		}
+		struct Sweep {
+			std::mutex mutex;
+			std::condition_variable done;
+			int left = 0;
+		} sweep;
+		sweep.left = pieces;
+		const auto finish = [&sweep] {
+			std::lock_guard<std::mutex> lock(sweep.mutex);
+			if (--sweep.left == 0) {
+				sweep.done.notify_all();
+			}
+		};
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+			for (int k = 1; k < pieces; k++) {
+				const long b = first + total * k / pieces;
+				const long e = first + total * (k + 1) / pieces;
+				tasks_.push_back([&body, &finish, b, e] {
+					body(b, e);
+					finish();
+				});
+			}
+		}
+		ready_.notify_all();
+		body(first, first + total / pieces);
+		finish();
+		// take queued pieces (of this sweep or another) while there are any, then sleep until this sweep is done
+		for (;;) {
+			std::function<void()> task;
+			{
+				std::lock_guard<std::mutex> lock(mutex_);
+				if (!tasks_.empty()) {
+					task = std::move(tasks_.front());
+					tasks_.pop_front();
+				}
+			}
+			if (!task) {
+				break;
+			}
+			task();
+		}
+		std::unique_lock<std::mutex> lock(sweep.mutex);
+		sweep.done.wait(lock, [&sweep] { return sweep.left == 0; });
+	}
+
+private:
+	explicit WorkerPool(unsigned count) {
+		for (unsigned k = 0; k < count; k++) {
+			workers_.emplace_back([this] {
+				for (;;) {
+					std::function<void()> task;
+					{
+						std::unique_lock<std::mutex> lock(mutex_);
+						ready_.wait(lock, [this] { return !tasks_.empty(); });
+						task = std::move(tasks_.front());
+						tasks_.pop_front();
+					}
+					task();
+				}
+			});
+		}
+	}
+
+	std::vector<std::thread> workers_;
+	std::deque<std::function<void()>> tasks_;
+	std::mutex mutex_;
+	std::condition_variable ready_;
+};
+
+// The pieces a sweep over n items is cut into: enough for every core, none too small to pay for itself.
+int pieces_for(long long n) {
+	const int cores = WorkerPool::instance().size();
+	return static_cast<int>(std::max(1LL, std::min<long long>(4LL * cores, n / 20000)));
+}
+
 
 // One level of the hierarchy. Values are stored x fastest, as in ScalarGrid3D.
 struct Level {
@@ -29,6 +135,7 @@ struct Level {
 	std::vector<long long> ring;         // unrefined, unfixed nodes next to a refined one: the values the smoothing leans on
 	std::vector<long long> covered;      // unfixed nodes whose twin on the finer level is refined
 	std::vector<long long> frozen;       // interior nodes held because a fixed node of the finer level is in their stencil
+	bool dense = false;                  // every interior node that is not fixed is refined: sweep the grid, not the lists
 
 	long long size() const { return static_cast<long long>(nx) * ny * nz; }
 	long long index(int x, int y, int z) const { return (static_cast<long long>(z) * ny + y) * nx + x; }
@@ -118,34 +225,71 @@ public:
 	std::vector<Level> levels;
 	int threads = 1;
 
-	// Runs body over the entries of a list, split between the threads when it is long enough to pay for them.
-	void for_list(const std::vector<long long> &list, const std::function<void(long long)> &body) const {
+	// Runs body over the entries of a list, split between the threads when it is long enough to pay for them. The body
+	// is called directly (a template, not a std::function per node), as it runs for every node of every sweep.
+	template <typename Body>
+	void for_list(const std::vector<long long> &list, const Body &body) const {
 		const long n = static_cast<long>(list.size());
-		const int count = n > 40000 ? threads : 1;
-		mbmesh::parallel_for_ranges(0, n, count, [&](long begin, long end) {
+		const long long *entries = list.data();
+		WorkerPool::instance().run(0, n, pieces_for(n), [&](long begin, long end) {
 			for (long k = begin; k < end; k++) {
-				body(list[static_cast<std::size_t>(k)]);
+				body(entries[k]);
 			}
 		});
 	}
 
 	// Red-black Gauss-Seidel on the refined nodes. A node's six neighbors all have the other colour, so each colour is
 	// updated in place and the result does not depend on the order or on the number of threads.
+	// Runs body(i) on the nodes of one colour of a dense level, interior and not fixed, straight along the grid: the
+	// same nodes as the colour's list, without reading the list. Split between the threads by planes of z.
+	template <typename Body>
+	void for_colour_dense(const Level &level, int colour, const Body &body) const {
+		const int planes = level.nz - 2;
+		const int count = std::min<long long>(planes, pieces_for(static_cast<long long>(level.nx) * level.ny * planes));
+		const auto run = [&](long z_begin, long z_end) {
+			const unsigned char *fixed = level.fixed.data();
+			for (long z = z_begin; z < z_end; z++) {
+				for (int y = 1; y < level.ny - 1; y++) {
+					const long long row = level.index(0, y, static_cast<int>(z));
+					for (int x = 1 + ((1 + y + static_cast<int>(z) + colour) & 1); x < level.nx - 1; x += 2) {
+						const long long i = row + x;
+						if (fixed[i] == 0) {
+							body(i);
+						}
+					}
+				}
+			}
+		};
+		WorkerPool::instance().run(1, level.nz - 1, count, run);
+	}
+
 	void smooth(Level &level, int sweeps) const {
 		for (int s = 0; s < sweeps; s++) {
 			for (int colour = 0; colour < 2; colour++) {
-				for_list(level.smooth[colour], [&level](long long i) {
+				const auto update = [&level](long long i) {
 					level.u[i] = (level.neighbors(level.u, i) + level.f[i]) / level.diag[i];
-				});
+				};
+				if (level.dense) {
+					for_colour_dense(level, colour, update);
+				}
+				else {
+					for_list(level.smooth[colour], update);
+				}
 			}
 		}
 	}
 
 	void residual(Level &level) const {
 		for (int colour = 0; colour < 2; colour++) {
-			for_list(level.smooth[colour], [&level](long long i) {
+			const auto update = [&level](long long i) {
 				level.r[i] = level.f[i] - (level.diag[i] * level.u[i] - level.neighbors(level.u, i));
-			});
+			};
+			if (level.dense) {
+				for_colour_dense(level, colour, update);
+			}
+			else {
+				for_list(level.smooth[colour], update);
+			}
 		}
 	}
 
@@ -436,6 +580,22 @@ void poisson_multigrid_solve(std::vector<double> *u, int nx, int ny, int nz, dou
 				}
 			}
 		}
+	}
+
+	// A level is dense when every interior node is either fixed or refined: true of the finest level of a chunk solved
+	// with its neighbours' fields fixed inside it, which is then refined everywhere.
+	for (Level &level : levels) {
+		long long interior = 0;
+		long long held = 0;
+		for (int z = 1; z < level.nz - 1; z++) {
+			for (int y = 1; y < level.ny - 1; y++) {
+				for (int x = 1; x < level.nx - 1; x++) {
+					interior++;
+					held += level.fixed[level.index(x, y, z)] != 0 ? 1 : 0;
+				}
+			}
+		}
+		level.dense = static_cast<long long>(level.smooth[0].size() + level.smooth[1].size()) + held == interior;
 	}
 
 	// Full multigrid start: the coarsest level solved, then each finer one started from the coarser solution and given

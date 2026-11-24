@@ -63,6 +63,7 @@
 #include "algorithms/seam_blending.h"
 
 #include "fast_weld.h"
+#include "mesh_capture.h"
 
 #include "mbmesh_program.h"
 
@@ -94,13 +95,59 @@ static std::string mbmesh_program_iso_utc_time(double unix_seconds) {
     return buffer;
 }
 
+// A host that takes the mesh in memory (mbmesh_run_mesh) gets the mesh mbmesh.cpp would write as mesh.glb, and
+// the files only when it asks for them. mbmesh.cpp's GLB writes are routed here, and its geodetic_to_ecef() calls,
+// the last of which before mesh.glb, on the same thread, is the GeoOrigin the vertices are written relative to.
+namespace {
+thread_local Vec3 program_last_geoorigin_ecef(0.0, 0.0, 0.0);
+}
+
+static Vec3 mbmesh_program_geodetic_to_ecef(const GeodeticPosition &position) {
+    program_last_geoorigin_ecef = geodetic_to_ecef(position);
+    return program_last_geoorigin_ecef;
+}
+
+static bool mbmesh_program_write_mesh_glb_file(const std::filesystem::path &path, const Mesh &mesh, std::string *error,
+                                               const GlbContent &content = GlbContent(),
+                                               const std::vector<std::uint32_t> *triangle_groups = nullptr) {
+    if (mbmesh_capture_active()) {
+        if (path.filename() == "mesh.glb" && path.parent_path().filename() != "chunks") {
+            mbmesh_capture_mesh(mesh, program_last_geoorigin_ecef);
+        }
+        if (!mbmesh_capture_save_files()) {
+            return true;
+        }
+    }
+    return write_mesh_glb_file(path, mesh, error, content, triangle_groups);
+}
+
+namespace std {
+namespace filesystem {
+// mbmesh.cpp's std::filesystem::create_directories() calls, through the macro below: when the host takes the mesh in
+// memory and saves nothing, no directory is made either.
+inline bool mbmesh_program_create_directories(const path &directory, std::error_code &ec) {
+    if (mbmesh_capture_active() && !mbmesh_capture_save_files()) {
+        ec.clear();
+        return false;
+    }
+    return create_directories(directory, ec);
+}
+}  // namespace filesystem
+}  // namespace std
+
 #define main mbmesh_program_main
 #define exit(status) mbmesh_program_exit(status)
 #define iso_utc_time mbmesh_program_iso_utc_time
 // the seams of a chunked mesh joined by the fork's faster copy of upstream's weld, the same result (fast_weld.h)
 #define weld_coincident_vertices mbmesh_fast_weld_coincident_vertices
+#define geodetic_to_ecef mbmesh_program_geodetic_to_ecef
+#define write_mesh_glb_file mbmesh_program_write_mesh_glb_file
+#define create_directories mbmesh_program_create_directories
 #include "mbmesh.cpp"
 #undef weld_coincident_vertices
+#undef geodetic_to_ecef
+#undef write_mesh_glb_file
+#undef create_directories
 #undef iso_utc_time
 #undef exit
 #undef main

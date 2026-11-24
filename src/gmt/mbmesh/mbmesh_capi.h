@@ -43,6 +43,25 @@ int mbmesh_run_program(int argc, char **argv, char **captured_output);
  * threads threads. Returns 0 on success; on failure 1, with the reason in error. */
 MBMESH_CAPI_EXPORT int mbmesh_read_glb_geodetic(const char *path, int threads, double **vertices, size_t *nvertices,
                                                 int **triangles, size_t *ntriangles, char *error, size_t error_length);
+/* Runs the mbmesh program as mbmesh_run_program() does and hands back the mesh it makes, in memory: in WGS 84
+ * geodetic coordinates, as mbmesh_read_glb_geodetic() gives a GLB's. Nothing is written unless save_files is not 0:
+ * then the program writes its files (mesh.glb, the chunks, what its options ask for) in its output directory as
+ * usual; otherwise nothing is written, not even a directory. Both arrays are released with
+ * mbmesh_free(). Returns the program's exit status, and 0 meshes when it made none. */
+MBMESH_CAPI_EXPORT int mbmesh_run_mesh(int argc, char **argv, int save_files, double **vertices, size_t *nvertices,
+                                       int **triangles, size_t *ntriangles);
+/* As mbmesh_run_mesh(), with the soundings taken from memory instead of the file -I names (which then only names
+ * the input in the program's messages): npoints of them, longitude and latitude (degrees) and height (meters,
+ * positive up) each, read as MBIO's generic lon lat topography points are. */
+MBMESH_CAPI_EXPORT int mbmesh_run_mesh_points(int argc, char **argv, const double *points, size_t npoints, int save_files,
+                                              double **vertices, size_t *nvertices, int **triangles, size_t *ntriangles);
+/* Writes a triangle mesh as a GLB the way mbmesh writes mesh.glb (MB-System's writer, Draco-compressed): vertices
+ * holds nvertices x, y, z, triangles ntriangles triples of 0-based vertex indices. When geographic is not 0, x, y, z
+ * are longitude, latitude (degrees) and height above the ellipsoid (meters): the file is georeferenced as mbmesh's,
+ * the positions relative to the middle of the mesh, which its metadata names; otherwise they are written as they are.
+ * Returns 0 on success; on failure 1, with the reason in error. */
+MBMESH_CAPI_EXPORT int mbmesh_write_glb(const char *path, const double *vertices, size_t nvertices, const int *triangles,
+                                        size_t ntriangles, int geographic, char *error, size_t error_length);
 MBMESH_CAPI_EXPORT void mbmesh_free(void *pointer);
 
 #ifdef __cplusplus

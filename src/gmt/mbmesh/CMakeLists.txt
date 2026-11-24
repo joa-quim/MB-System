@@ -25,9 +25,9 @@ add_library(mbmesh_pipeline STATIC
   screened_poisson_fast.cpp
   poisson_multigrid.cpp
   fast_weld.cpp
-  ${MBMESH_UPSTREAM}/settings.cpp
+  settings_hooked.cpp
   ${MBMESH_UPSTREAM}/src/io/coordinate_frame.cpp
-  ${MBMESH_UPSTREAM}/src/io/datalist_reader.cpp
+  input_hooks.cpp
   ${MBMESH_UPSTREAM}/src/io/point_spill.cpp
   ${MBMESH_UPSTREAM}/src/io/xyz_writer.cpp
   ${MBMESH_UPSTREAM}/src/io/track.cpp
