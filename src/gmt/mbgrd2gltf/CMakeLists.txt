@@ -36,3 +36,9 @@ target_include_directories(mbgrd2gltf_pipeline PRIVATE
   ${CMAKE_SOURCE_DIR}/src/mbio
   ${CMAKE_SOURCE_DIR}/src/mbdraco)
 target_link_libraries(mbgrd2gltf_pipeline PUBLIC ${NetCDF_LIBRARIES} mbdraco ${CMAKE_DL_LIBS})
+# mbgrd2gltf_capi.cpp includes mb_define.h (MB_VERSION), which on Linux takes
+# <rpc/rpc.h> from TIRPC, as src/mbio finds it
+if(CMAKE_SYSTEM_NAME STREQUAL Linux)
+  find_package(TIRPC REQUIRED)
+  target_link_libraries(mbgrd2gltf_pipeline PRIVATE TIRPC::TIRPC)
+endif()
